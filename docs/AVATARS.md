@@ -39,3 +39,38 @@ Every agent (`agent_characters.AGENTS`) with the poses this client can decide on
 Routes: `GET /api/client/avatars`, `GET /api/client/avatars/pose/{id}/thumb` (grid size, cached in
 memory), `POST /api/client/avatars/poses/decide` (the client's own session only — the admin's
 read-only view cannot decide). `tests/test_pose_approval.py`.
+
+### Asking for new poses of a team member
+
+"בקשת תנוחות חדשות" on an agent's block: one line per pose in the client's own words (translated to an
+English phrase by one small model call, `business_avatars.to_english`), up to
+`agent_characters.MAX_REQUEST_POSES` (4) per request, made together on the REAL pose path (`make_pose`:
+the reference set, the cut-out, the library) inside the request
+(`POST /api/client/avatars/team/{agent}/poses`, `agent_characters.client_request_poses`). They arrive
+pending. These run on uallak's own key (`HIGGSFIELD_AGENTS_KEY`) — our credits, with no per-client limit
+beyond 4 per request (an open decision, see the report of 2026-11-25).
+
+## B. "הדמויות של העסק" — the business's own characters (`core/business_avatars`)
+
+Empty at first. The client creates a character from scratch: a name, a described personality, a described
+look — a typical-customer persona.
+
+- Technically: ONE generated face (`FACE_PROMPT`, a stylized 3D character — the team's visual family, never
+  a photo-real person), stored by us in our Shared Drive (`uallak-agents/business/<client_id>/`). Every pose
+  made afterwards sends THAT face as the reference image in the model's documented reference field
+  (`media_gen_service.generate_with_references`) → local background removal → verified transparent PNG.
+  No vendor-side reference element exists or is used.
+- Runs on the CLIENT's own creative-tool key and credits (`media_agent._generation_key`); no key →
+  `no_tool` and a button to that tool's card. Nothing here uses uallak's key.
+- Record: app_settings `business_avatars:<client_id>` (cleared with the client; the deletion guard covers
+  it, as it does `pose_approvals:<client_id>`). Up to 6 avatars, 60 poses each, 4 poses per request.
+- A pose is pending until the client approves it; `approved_poses(client_id, avatar_id)` is the seam for
+  production.
+- **Not wired into posts yet**: a post's `characters` are the uallak agents only (`core/post_brief`). A
+  business avatar can be created, posed and approved; no post casts it. The feature catalog says so.
+
+Routes: `POST /api/client/avatars/business` (create), `…/{avatar_id}/poses`, `…/poses/decide`,
+`…/{avatar_id}/delete`, `GET …/{avatar_id}/face`, `GET …/pose/{pose_id}/thumb`. Every write is the client's
+own session (`_avatars_write`). `tests/test_business_avatars.py`.
+
+Nothing on this page has run against the live vendor.

@@ -90,6 +90,8 @@ Trivial gaps closed in this change:
 | P2 | `POST /api/client/website/assess` | assess_site card (the same assess_existing_site check) |
 | P2 | `POST /api/client/website/migrate-request` | request_site_migration card (the same request_migration) |
 | P3 | `GET /api/client/external-costs` | external tool costs in account_state |
+| P3 | `POST /api/client/avatars/business` | create a business avatar from the chat (a card with name, personality, look) |
+| P3 | `POST /api/client/avatars/business/{avatar_id}/poses` | ask for a business avatar's pose from the chat |
 | P3 | `GET /api/client/ownership` | an ownership section in account_state (what they own, where) |
 | P3 | `GET /api/oauth/google-drive/start` | connect_google_drive link card |
 | P3 | `POST /api/client/crm/disconnect` | disconnect_crm card |

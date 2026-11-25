@@ -110,8 +110,9 @@ class Models(unittest.TestCase):
                     users.append(name)
         # + steps no client reads either (2026-11-23): describing / classifying the
         # client's own Drive files for the index, and the media agent choosing one
+        # + business_avatars (2026-11-25): the client's description → an English phrase for the image model
         self.assertEqual(sorted(users), sorted(["question_filter.py", "drive_assets.py", "drive_folders.py",
-                                                "media_agent.py"]))
+                                                "media_agent.py", "business_avatars.py"]))
         self.assertIn("model=CLASSIFY_MODEL", _src("agents", "question_filter.py"))
         # and the haiku id is never hard-coded at a call site
         for folder in ("agents",):

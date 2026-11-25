@@ -910,6 +910,33 @@ def client_pose_image(client_id: int, pose_id: str) -> bytes:
     return pose_bytes(pose_id)
 
 
+def client_request_poses(client_id: int, agent: str, poses: list, _make=None, _english=None) -> dict:
+    """The client asks for NEW poses of a uallak agent (the Avatars page): up
+    to MAX_REQUEST_POSES, made together on the real pose path (make_pose —
+    the reference set, the cut-out, the library). They arrive PENDING, like
+    every pose: the client approves what they like. Runs on uallak's key.
+    Returns {"made": [pose_id], "failed": n, "reason": first failure's code}."""
+    from core import parallel
+    agent = clean_agent(agent)
+    wanted = [clean_pose(p) for p in poses or [] if clean_pose(p)][:MAX_REQUEST_POSES]
+    if not wanted:
+        raise ValueError("a pose description is needed")
+    if _english is None:
+        from core import business_avatars
+        _english = business_avatars.to_english                 # the client's own words → what the model reads
+    got = parallel.gather({i: (lambda p=p: (_make or make_pose)(agent, _english(p, client_id)))
+                           for i, p in enumerate(wanted)})
+    made = [value["pose_id"] for _i, (ok, value) in sorted(got.items()) if ok]
+    errors = [value for _i, (ok, value) in sorted(got.items()) if not ok]
+    if errors:
+        _alert([f"client {client_id}: {len(errors)} requested pose(s) of {agent} not made "
+                f"({type(errors[0]).__name__}: {str(errors[0])[:160]})"])
+    first = errors[0] if errors else None
+    reason = "" if first is None else ("no_reference" if isinstance(first, MissingReference)
+                                       else getattr(first, "reason", "") or "failed")
+    return {"made": made, "failed": len(errors), "reason": reason}
+
+
 THUMB_PX = 420
 _THUMBS = {}                       # pose_id → PNG bytes (a pose's file never changes)
 _THUMBS_MAX = 400

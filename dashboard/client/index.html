@@ -1686,6 +1686,13 @@ body.bs-open { overflow: hidden; }
   display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); color: #fff; }
 .av-mini.ok:hover { background: var(--green); color: #04130b; }
 .av-mini.no:hover { background: #d33; }
+.av-face.big { width: 76px; height: 76px; border-radius: 18px; background: #e9e9ec; }
+.av-ask, .av-create { display: grid; gap: 8px; margin-top: 14px; }
+.av-create { max-width: 640px; }
+.av-ask textarea, .av-create textarea, .av-create input[type=text] { width: 100%; box-sizing: border-box; background: var(--panel);
+  border: 1px solid var(--border); color: var(--white); border-radius: 9px; padding: 9px 11px; font: inherit; font-size: 14px; }
+.av-ask textarea, .av-create textarea { min-height: 84px; resize: vertical; }
+.av-warn .media-chip { margin-top: 8px; }
 @media (max-width: 640px) {
   .av-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
   .av-mini, .av-check { width: 38px; height: 38px; }
@@ -3196,6 +3203,44 @@ const DASH_I18N = {
   av_designs_updated: { he:'הדמות נוספה ל-{n} עיצובים שחיכו לה בסושיאל.', en:'The character was added to {n} designs that were waiting for it in Social.', fr:'Le personnage a été ajouté à {n} designs qui l’attendaient dans Réseaux sociaux.', ar:'أُضيفت الشخصية إلى {n} تصاميم كانت بانتظارها في السوشيال.', ru:'Персонаж добавлен в дизайны, которые его ждали в «Соцсетях»: {n}.' },
   av_failed: { he:'לא הצלחנו לשמור — נסו שוב.', en:'We couldn’t save that — try again.', fr:'Enregistrement impossible — réessayez.', ar:'تعذر الحفظ — حاولوا مجددًا.', ru:'Не удалось сохранить — попробуйте ещё раз.' },
   soc_go_avatars: { he:'לאישור תנוחות בעמוד האווטרים', en:'Approve poses on the Avatars page', fr:'Valider des poses sur la page Avatars', ar:'اعتماد الوضعيات في صفحة الأفاتارات', ru:'Одобрить позы на странице «Аватары»' },
+  av_ask_poses: { he:'בקשת תנוחות חדשות', en:'Ask for new poses', fr:'Demander de nouvelles poses', ar:'طلب وضعيات جديدة', ru:'Запросить новые позы' },
+  av_ask_label: { he:'אילו תנוחות של {name} להכין? שורה לכל תנוחה, עד {n}.', en:'Which poses of {name} should we prepare? One line per pose, up to {n}.', fr:'Quelles poses de {name} préparer ? Une ligne par pose, {n} au maximum.', ar:'أي وضعيات لـ {name} نُعد؟ سطر لكل وضعية، حتى {n}.', ru:'Какие позы {name} подготовить? По одной на строку, до {n}.' },
+  av_ask_placeholder: { he:'למשל: מחזיקה כוס קפה ומחייכת\nמצביעה למעלה בהתלהבות', en:'For example: holding a coffee cup and smiling\npointing up, excited', fr:'Par exemple : tient une tasse de café et sourit\npointe vers le haut, enthousiaste', ar:'مثلًا: تمسك كوب قهوة وتبتسم\nتشير إلى الأعلى بحماس', ru:'Например: держит чашку кофе и улыбается\nуказывает вверх с восторгом' },
+  av_ask_note_team: { he:'ההכנה לוקחת כדקה או שתיים. התנוחות יגיעו לכאן כ״ממתינות״ — מאשרים את מה שאוהבים.', en:'This takes a minute or two. The poses arrive here as “waiting” — approve the ones you like.', fr:'Cela prend une à deux minutes. Les poses arrivent ici « en attente » — validez celles qui vous plaisent.', ar:'يستغرق ذلك دقيقة أو دقيقتين. تصل الوضعيات هنا «بالانتظار» — اعتمدوا ما يعجبكم.', ru:'Это займёт минуту-две. Позы появятся здесь как «ожидающие» — одобрите те, что нравятся.' },
+  av_ask_note_biz: { he:'ההכנה לוקחת כדקה או שתיים ונעשית מהחשבון ליצירת מדיה שחיברתם. התנוחות יגיעו כ״ממתינות״.', en:'This takes a minute or two and runs on the media creation account you connected. The poses arrive as “waiting”.', fr:'Cela prend une à deux minutes et utilise le compte de création média que vous avez connecté. Les poses arrivent « en attente ».', ar:'يستغرق ذلك دقيقة أو دقيقتين ويتم من حساب إنشاء الوسائط الذي ربطتموه. تصل الوضعيات «بالانتظار».', ru:'Это займёт минуту-две и выполняется с подключённого вами аккаунта создания медиа. Позы появятся как «ожидающие».' },
+  av_ask_send: { he:'להכין', en:'Prepare them', fr:'Préparer', ar:'تحضير', ru:'Подготовить' },
+  av_ask_empty: { he:'כתבו לפחות תנוחה אחת.', en:'Write at least one pose.', fr:'Écrivez au moins une pose.', ar:'اكتبوا وضعية واحدة على الأقل.', ru:'Опишите хотя бы одну позу.' },
+  av_making: { he:'מכינים את התנוחות… זה לוקח כדקה או שתיים, אפשר להשאיר את העמוד פתוח.', en:'Preparing the poses… this takes a minute or two, keep the page open.', fr:'Préparation des poses… une à deux minutes, gardez la page ouverte.', ar:'نُعد الوضعيات… دقيقة أو دقيقتان، أبقوا الصفحة مفتوحة.', ru:'Готовим позы… минута-две, не закрывайте страницу.' },
+  av_made: { he:'{n} תנוחות חדשות מחכות לאישור שלכם.', en:'{n} new poses are waiting for your approval.', fr:'{n} nouvelles poses attendent votre validation.', ar:'{n} وضعيات جديدة بانتظار اعتمادكم.', ru:'Новых поз ждёт вашего одобрения: {n}.' },
+  av_made_some: { he:'{n} תנוחות חדשות מחכות לאישור שלכם; {failed} לא הצליחו — הצוות קיבל הודעה.', en:'{n} new poses are waiting for your approval; {failed} did not work — the team was told.', fr:'{n} nouvelles poses attendent votre validation ; {failed} ont échoué — l’équipe est prévenue.', ar:'{n} وضعيات جديدة بانتظار اعتمادكم؛ {failed} لم تنجح — تم إبلاغ الفريق.', ru:'Новых поз ждёт одобрения: {n}; не получилось: {failed} — команда уведомлена.' },
+  av_made_none: { he:'התנוחות לא הוכנו הפעם — הצוות קיבל הודעה. אפשר לנסות שוב בעוד כמה דקות.', en:'The poses were not prepared this time — the team was told. You can try again in a few minutes.', fr:'Les poses n’ont pas été préparées cette fois — l’équipe est prévenue. Réessayez dans quelques minutes.', ar:'لم تُعد الوضعيات هذه المرة — تم إبلاغ الفريق. يمكن المحاولة بعد دقائق.', ru:'Позы не удалось подготовить — команда уведомлена. Попробуйте через несколько минут.' },
+  av_made_unavailable: { he:'הדמות הזו עוד לא מוכנה ליצירת תנוחות חדשות — הצוות קיבל הודעה.', en:'This character is not ready for new poses yet — the team was told.', fr:'Ce personnage n’est pas encore prêt pour de nouvelles poses — l’équipe est prévenue.', ar:'هذه الشخصية غير جاهزة بعد لوضعيات جديدة — تم إبلاغ الفريق.', ru:'Этот персонаж ещё не готов к новым позам — команда уведомлена.' },
+  av_err_no_tool: { he:'כדי ליצור דמות משלכם צריך קודם לחבר את החשבון ליצירת חומרי מדיה.', en:'To create your own character, connect the media creation account first.', fr:'Pour créer votre personnage, connectez d’abord le compte de création média.', ar:'لإنشاء شخصيتكم، اربطوا أولًا حساب إنشاء الوسائط.', ru:'Чтобы создать своего персонажа, сначала подключите аккаунт создания медиа.' },
+  av_err_name_needed: { he:'תנו לדמות שם.', en:'Give the character a name.', fr:'Donnez un nom au personnage.', ar:'امنحوا الشخصية اسمًا.', ru:'Дайте персонажу имя.' },
+  av_err_look_needed: { he:'תארו איך הדמות נראית.', en:'Describe how the character looks.', fr:'Décrivez l’apparence du personnage.', ar:'صِفوا مظهر الشخصية.', ru:'Опишите, как выглядит персонаж.' },
+  av_err_pose_needed: { he:'כתבו לפחות תנוחה אחת.', en:'Write at least one pose.', fr:'Écrivez au moins une pose.', ar:'اكتبوا وضعية واحدة على الأقل.', ru:'Опишите хотя бы одну позу.' },
+  av_err_limit: { he:'הגעתם למספר המרבי — אפשר למחוק דמות או תנוחות ישנות.', en:'You reached the maximum — remove a character or old poses first.', fr:'Maximum atteint — supprimez d’abord un personnage ou d’anciennes poses.', ar:'بلغتم الحد الأقصى — احذفوا شخصية أو وضعيات قديمة أولًا.', ru:'Достигнут максимум — сначала удалите персонажа или старые позы.' },
+  av_biz_title: { he:'הדמויות של העסק', en:'Your business’s characters', fr:'Les personnages de votre entreprise', ar:'شخصيات عملكم', ru:'Персонажи вашего бизнеса' },
+  av_biz_sub: { he:'דמות משלכם — למשל הלקוח הטיפוסי של העסק. נותנים לה שם, אופי ומראה; אנחנו יוצרים לה פנים פעם אחת, וכל תנוחה שתבקשו אחר כך נשענת על אותן פנים.', en:'A character of your own — for example your typical customer. Give it a name, a personality and a look; we create its face once, and every pose you ask for afterwards is built on that same face.', fr:'Un personnage à vous — par exemple votre client type. Donnez-lui un nom, un caractère et une apparence ; nous créons son visage une fois, et chaque pose demandée ensuite s’appuie sur ce même visage.', ar:'شخصية خاصة بكم — مثل زبونكم النموذجي. امنحوها اسمًا وطباعًا ومظهرًا؛ ننشئ وجهها مرة واحدة، وكل وضعية تطلبونها لاحقًا تعتمد على الوجه نفسه.', ru:'Собственный персонаж — например, ваш типичный клиент. Дайте ему имя, характер и внешность; лицо создаётся один раз, и каждая следующая поза строится на этом же лице.' },
+  av_biz_empty: { he:'עוד אין לעסק דמויות משלו.', en:'Your business has no characters of its own yet.', fr:'Votre entreprise n’a pas encore de personnages.', ar:'لا توجد لعملكم شخصيات خاصة بعد.', ru:'У вашего бизнеса пока нет своих персонажей.' },
+  av_biz_no_poses: { he:'עוד אין תנוחות — מבקשים את הראשונות.', en:'No poses yet — ask for the first ones.', fr:'Pas encore de poses — demandez les premières.', ar:'لا وضعيات بعد — اطلبوا الأولى.', ru:'Поз пока нет — запросите первые.' },
+  av_biz_new: { he:'דמות חדשה', en:'A new character', fr:'Nouveau personnage', ar:'شخصية جديدة', ru:'Новый персонаж' },
+  av_biz_new_sub: { he:'שלושה שדות, ואחרי כדקה הפנים מוכנות.', en:'Three fields, and the face is ready in about a minute.', fr:'Trois champs, et le visage est prêt en une minute environ.', ar:'ثلاثة حقول، ويجهز الوجه خلال دقيقة تقريبًا.', ru:'Три поля — и лицо готово примерно через минуту.' },
+  av_biz_name: { he:'שם', en:'Name', fr:'Nom', ar:'الاسم', ru:'Имя' },
+  av_biz_name_ph: { he:'למשל: נועה', en:'For example: Noa', fr:'Par exemple : Noa', ar:'مثلًا: نوعا', ru:'Например: Ноа' },
+  av_biz_personality: { he:'אופי', en:'Personality', fr:'Caractère', ar:'الطباع', ru:'Характер' },
+  av_biz_personality_ph: { he:'מי היא? מה חשוב לה? איך היא מדברת?', en:'Who are they? What matters to them? How do they talk?', fr:'Qui est-ce ? Qu’est-ce qui compte pour lui ? Comment parle-t-il ?', ar:'من هي؟ ما الذي يهمها؟ كيف تتحدث؟', ru:'Кто это? Что для него важно? Как он говорит?' },
+  av_biz_look: { he:'מראה', en:'Look', fr:'Apparence', ar:'المظهر', ru:'Внешность' },
+  av_biz_look_ph: { he:'גיל, שיער, לבוש, סגנון — כל מה שחשוב שיראו', en:'Age, hair, clothing, style — whatever should be seen', fr:'Âge, cheveux, vêtements, style — tout ce qui doit se voir', ar:'العمر، الشعر، اللباس، الأسلوب — كل ما يجب أن يُرى', ru:'Возраст, волосы, одежда, стиль — всё, что должно быть видно' },
+  av_biz_cost_note: { he:'היצירה נעשית מהחשבון ליצירת מדיה שחיברתם, על חשבון הקרדיטים שלו.', en:'Creation runs on the media creation account you connected, using its credits.', fr:'La création utilise le compte de création média que vous avez connecté et ses crédits.', ar:'يتم الإنشاء من حساب إنشاء الوسائط الذي ربطتموه وعلى رصيده.', ru:'Создание выполняется с подключённого вами аккаунта создания медиа и расходует его кредиты.' },
+  av_biz_create: { he:'יצירת הדמות', en:'Create the character', fr:'Créer le personnage', ar:'إنشاء الشخصية', ru:'Создать персонажа' },
+  av_biz_creating: { he:'יוצרים את הפנים… זה לוקח כדקה, אפשר להשאיר את העמוד פתוח.', en:'Creating the face… about a minute, keep the page open.', fr:'Création du visage… environ une minute, gardez la page ouverte.', ar:'ننشئ الوجه… نحو دقيقة، أبقوا الصفحة مفتوحة.', ru:'Создаём лицо… около минуты, не закрывайте страницу.' },
+  av_biz_created: { he:'הדמות נוצרה. עכשיו אפשר לבקש לה תנוחות.', en:'The character was created. You can now ask for its poses.', fr:'Le personnage est créé. Vous pouvez maintenant demander ses poses.', ar:'تم إنشاء الشخصية. يمكنكم الآن طلب وضعياتها.', ru:'Персонаж создан. Теперь можно запросить его позы.' },
+  av_biz_delete: { he:'מחיקת הדמות', en:'Delete the character', fr:'Supprimer le personnage', ar:'حذف الشخصية', ru:'Удалить персонажа' },
+  av_biz_delete_sure: { he:'למחוק? לחיצה נוספת מוחקת', en:'Delete? Tap again to delete', fr:'Supprimer ? Touchez encore pour supprimer', ar:'حذف؟ اضغطوا مجددًا للحذف', ru:'Удалить? Нажмите ещё раз' },
+  av_biz_deleted: { he:'הדמות נמחקה.', en:'The character was deleted.', fr:'Le personnage a été supprimé.', ar:'تم حذف الشخصية.', ru:'Персонаж удалён.' },
+  av_biz_full: { he:'יש לעסק {n} דמויות — זה המספר המרבי. אפשר למחוק אחת כדי ליצור חדשה.', en:'Your business has {n} characters — the maximum. Delete one to create another.', fr:'Votre entreprise a {n} personnages — le maximum. Supprimez-en un pour en créer un autre.', ar:'لدى عملكم {n} شخصيات — الحد الأقصى. احذفوا واحدة لإنشاء أخرى.', ru:'У вашего бизнеса {n} персонажей — это максимум. Удалите одного, чтобы создать нового.' },
+  av_biz_connect: { he:'לחיבור החשבון ליצירת מדיה', en:'Connect the media creation account', fr:'Connecter le compte de création média', ar:'ربط حساب إنشاء الوسائط', ru:'Подключить аккаунт создания медиа' },
   soc_play: { he:'צפייה', en:'Play', fr:'Lire', ar:'تشغيل', ru:'Смотреть' },
   soc_copy: { he:'העתקת הכיתוב', en:'Copy caption', fr:'Copier la légende', ar:'نسخ النص', ru:'Скопировать подпись' },
   soc_copied: { he:'הכיתוב הועתק.', en:'Caption copied.', fr:'Légende copiée.', ar:'تم نسخ النص.', ru:'Подпись скопирована.' },
@@ -10760,6 +10805,7 @@ async function loadAvatars() {
     if (!j.success) throw new Error('unavailable');
     avUI.team = j.data.team || [];
     avUI.business = j.data.business || null;
+    avUI.requestMax = j.data.request_max || 4;
     avUI.loaded = true;
     const known = new Set(avPoses().map(p => p.pose_id));
     Array.from(avUI.selected).forEach(id => { if (!known.has(id)) avUI.selected.delete(id); });
@@ -10880,6 +10926,7 @@ async function avDecide(ids, verdict) {
     const j = await res.json().catch(() => ({}));
     if (!res.ok || !j.success) throw new Error('refused');
     avUI.team = j.data.team || avUI.team;
+    if (j.data.business) avUI.business = j.data.business;
     ids.forEach(id => avUI.selected.delete(id));
     const n = (j.data.changed || []).length;
     avNote(t('av_done_' + verdict, { n }) + (j.data.designs_updated ? ' ' + t('av_designs_updated', { n: j.data.designs_updated }) : ''));
@@ -10980,6 +11027,173 @@ document.addEventListener('mousedown', avDragStart);
 document.addEventListener('selectstart', e => { if (avDrag.on) e.preventDefault(); });
 document.addEventListener('mousemove', avDragMove);
 document.addEventListener('mouseup', avDragEnd);
+
+// ─── Asking for NEW poses of a team member ───────────────────────────────────
+// One line per pose, in the client's own words; they are made together and
+// arrive WAITING, like every pose — the client approves what they like.
+function avLines(text, max) {
+  return String(text || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, max || 4);
+}
+function avRequestBtn(a) {
+  if (ADMIN_VIEW) return '';
+  return `<button type="button" class="media-chip" data-av-ask="${esc(a.agent)}">${esc(uallakI18n.t('av_ask_poses'))}</button>`;
+}
+function avRequestForm(kind, id, name) {
+  const t = uallakI18n.t;
+  return `<div class="av-ask" data-av-form="${esc(kind)}:${esc(id)}">
+      <label class="soc-meta"><b>${esc(t('av_ask_label', { name, n: avUI.requestMax || 4 }))}</b></label>
+      <textarea data-av-ask-text maxlength="900" dir="auto" placeholder="${esc(t('av_ask_placeholder'))}"></textarea>
+      <div class="soc-meta">${esc(t(kind === 'team' ? 'av_ask_note_team' : 'av_ask_note_biz'))}</div>
+      <div class="soc-actions">
+        <button type="button" class="sugg-btn approve" data-av-ask-send>${esc(t('av_ask_send'))}</button>
+        <button type="button" class="media-chip" data-av-ask-cancel>${esc(t('soc_cancel'))}</button>
+      </div></div>`;
+}
+function avRequestBox(a) {
+  return avUI.asking === 'team:' + a.agent ? avRequestForm('team', a.agent, a.name) : '';
+}
+function wireAvatarRequests(box) {
+  box.querySelectorAll('[data-av-ask]').forEach(b => { b.onclick = () => { avUI.asking = 'team:' + b.getAttribute('data-av-ask'); renderAvatars(); avFocusAsk(); }; });
+  wireAvatarForms(box);
+}
+function avFocusAsk() {
+  const ta = document.querySelector('#viewAvatars [data-av-ask-text]');
+  if (ta) ta.focus();
+}
+function wireAvatarForms(box) {
+  box.querySelectorAll('[data-av-form]').forEach(form => {
+    const [kind, id] = form.getAttribute('data-av-form').split(':');
+    form.querySelector('[data-av-ask-cancel]').onclick = () => { avUI.asking = ''; renderAvatars(); };
+    form.querySelector('[data-av-ask-send]').onclick = () => {
+      const poses = avLines(form.querySelector('[data-av-ask-text]').value, avUI.requestMax);
+      if (!poses.length) { avNote(uallakI18n.t('av_ask_empty')); return; }
+      avSend(kind === 'team' ? '/api/client/avatars/team/' + encodeURIComponent(id) + '/poses'
+                             : '/api/client/avatars/business/' + encodeURIComponent(id) + '/poses',
+             { poses }, 'av_making', d => {
+               avUI.asking = '';
+               const made = (d.made || []).length;
+               return made ? uallakI18n.t(d.failed ? 'av_made_some' : 'av_made', { n: made, failed: d.failed || 0 })
+                           : uallakI18n.t(d.reason === 'no_reference' || d.reason === 'not_configured' ? 'av_made_unavailable' : 'av_made_none');
+             }, form);
+    };
+  });
+}
+// One POST of the Avatars page: the buttons of `scope` wait, the page redraws from the answer
+async function avSend(url, body, busyKey, doneText, scope) {
+  const t = uallakI18n.t;
+  if (avUI.busy || ADMIN_VIEW) return;
+  avUI.busy = true;
+  avNote(t(busyKey));
+  const buttons = scope ? Array.from(scope.querySelectorAll('button')) : [];
+  buttons.forEach(b => { b.disabled = true; });
+  window.__uallakBusy = (window.__uallakBusy || 0) + 1;         // no version reload while a generation is in flight
+  try {
+    const res = await fetch(url, { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.success) {
+      const code = (j && j.code) || '';
+      avNote(t(['no_tool', 'name_needed', 'look_needed', 'pose_needed', 'limit'].indexOf(code) !== -1 ? 'av_err_' + code : 'av_failed'));
+      buttons.forEach(b => { b.disabled = false; });
+      return;
+    }
+    const d = j.data || {};
+    if (d.team) avUI.team = d.team;
+    if (d.business) avUI.business = d.business;
+    avNote(doneText ? doneText(d) : '');
+    renderAvatars();
+  } catch (e) {
+    avNote(t('av_failed'));
+    buttons.forEach(b => { b.disabled = false; });
+  } finally {
+    avUI.busy = false;
+    window.__uallakBusy = Math.max(0, (window.__uallakBusy || 1) - 1);
+  }
+}
+
+// ─── Part B — the business's own characters ──────────────────────────────────
+// Empty at first. The client creates one from scratch: a name, a described
+// personality, a described look. One face is generated and kept; every pose
+// made afterwards uses that face as its reference.
+function bizPoseCard(p) {
+  const t = uallakI18n.t;
+  const acts = ADMIN_VIEW ? '' : `<div class="av-card-acts">
+      ${p.status !== 'approved' ? `<button type="button" class="av-mini ok" data-bz-one="approved" data-id="${esc(p.pose_id)}" title="${esc(t('av_approve'))}" aria-label="${esc(t('av_approve'))}">✓</button>` : ''}
+      ${p.status !== 'rejected' ? `<button type="button" class="av-mini no" data-bz-one="rejected" data-id="${esc(p.pose_id)}" title="${esc(t('av_reject'))}" aria-label="${esc(t('av_reject'))}">✕</button>` : ''}
+    </div>`;
+  return `<div class="av-card ${esc(p.status)}">
+      <img src="/api/client/avatars/business/pose/${encodeURIComponent(p.pose_id)}/thumb" alt="${esc(p.description || '')}" loading="lazy" draggable="false" onerror="this.classList.add('gone')">
+      <span class="av-status ${esc(p.status)}">${esc(t('av_status_' + p.status))}</span>${acts}</div>`;
+}
+function bizAvatarBlock(a) {
+  const t = uallakI18n.t;
+  const c = a.counts || {};
+  const pending = (a.poses || []).filter(p => p.status === 'pending').map(p => p.pose_id);
+  const arming = avUI.removing === a.avatar_id;
+  return `<section class="av-agent" data-bz="${esc(a.avatar_id)}">
+      <div class="av-agent-head">
+        <span class="av-face big"><img src="/api/client/avatars/business/${encodeURIComponent(a.avatar_id)}/face" alt="" onerror="this.remove()"></span>
+        <div class="av-agent-names"><b><bdi dir="auto">${esc(a.name)}</bdi></b>
+          ${a.personality ? `<span class="av-counts"><bdi dir="auto">${esc(a.personality)}</bdi></span>` : ''}
+          <span class="av-counts">${(a.poses || []).length
+            ? `<span class="ok">${esc(t('av_count_approved', { n: c.approved || 0 }))}</span> · <span class="${c.pending ? 'hot' : ''}">${esc(t('av_count_pending', { n: c.pending || 0 }))}</span>`
+            : esc(t('av_biz_no_poses'))}</span></div>
+        <div class="av-agent-acts">${ADMIN_VIEW ? '' : `
+          ${pending.length ? `<button type="button" class="sugg-btn approve" data-bz-all="${esc(a.avatar_id)}">${esc(t('av_approve_all', { n: pending.length }))}</button>` : ''}
+          <button type="button" class="media-chip" data-bz-ask="${esc(a.avatar_id)}">${esc(t('av_ask_poses'))}</button>
+          <button type="button" class="${arming ? 'sugg-btn reject' : 'media-chip'}" data-bz-del="${esc(a.avatar_id)}">${esc(t(arming ? 'av_biz_delete_sure' : 'av_biz_delete'))}</button>`}
+        </div></div>
+      ${(a.poses || []).length ? `<div class="av-grid">${a.poses.map(bizPoseCard).join('')}</div>` : ''}
+      ${avUI.asking === 'biz:' + a.avatar_id ? avRequestForm('biz', a.avatar_id, a.name) : ''}
+    </section>`;
+}
+function renderBusinessAvatars() {
+  const t = uallakI18n.t;
+  const box = document.getElementById('avBusiness');
+  const b = avUI.business || { avatars: [] };
+  const full = (b.avatars || []).length >= (b.max || 6);
+  const form = ADMIN_VIEW ? '' : full ? `<div class="av-intro">${esc(t('av_biz_full', { n: b.max || 6 }))}</div>`
+    : !b.connected ? `<div class="av-warn">${esc(t('av_err_no_tool'))}
+          <div><button type="button" class="media-chip" onclick="showView('home'); setTimeout(() => { const c = document.getElementById('toolCard-higgsfield'); if (c) { if (typeof connReveal === 'function') connReveal(c); c.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }, 300);">${esc(t('av_biz_connect'))}</button></div></div>`
+    : `<div class="av-agent av-create" data-bz-create>
+        <div class="av-agent-names"><b>${esc(t('av_biz_new'))}</b><span class="av-counts">${esc(t('av_biz_new_sub'))}</span></div>
+        <label class="soc-meta"><b>${esc(t('av_biz_name'))}</b></label>
+        <input type="text" data-bz-name maxlength="40" dir="auto" placeholder="${esc(t('av_biz_name_ph'))}">
+        <label class="soc-meta"><b>${esc(t('av_biz_personality'))}</b></label>
+        <textarea data-bz-personality maxlength="400" dir="auto" placeholder="${esc(t('av_biz_personality_ph'))}"></textarea>
+        <label class="soc-meta"><b>${esc(t('av_biz_look'))}</b></label>
+        <textarea data-bz-look maxlength="400" dir="auto" placeholder="${esc(t('av_biz_look_ph'))}"></textarea>
+        <div class="soc-meta">${esc(t('av_biz_cost_note'))}</div>
+        <div class="soc-actions"><button type="button" class="sugg-btn approve" data-bz-create-send>${esc(t('av_biz_create'))}</button></div>
+      </div>`;
+  box.innerHTML = `<div class="av-h">${esc(t('av_biz_title'))}</div>
+    <div class="av-intro">${esc(t('av_biz_sub'))}</div>
+    ${(b.avatars || []).length ? b.avatars.map(bizAvatarBlock).join('') : `<div class="empty-row">${esc(t('av_biz_empty'))}</div>`}
+    ${form}`;
+  const decide = (ids, verdict) => avSend('/api/client/avatars/business/poses/decide', { pose_ids: ids, verdict }, 'av_saving',
+    d => uallakI18n.t('av_done_' + verdict, { n: (d.changed || []).length }));
+  box.querySelectorAll('[data-bz-one]').forEach(btn => { btn.onclick = () => decide([btn.getAttribute('data-id')], btn.getAttribute('data-bz-one')); });
+  box.querySelectorAll('[data-bz-all]').forEach(btn => { btn.onclick = () => {
+    const a = (b.avatars || []).find(x => x.avatar_id === btn.getAttribute('data-bz-all'));
+    decide((a ? a.poses : []).filter(p => p.status === 'pending').map(p => p.pose_id), 'approved');
+  }; });
+  box.querySelectorAll('[data-bz-ask]').forEach(btn => { btn.onclick = () => { avUI.asking = 'biz:' + btn.getAttribute('data-bz-ask'); renderAvatars(); avFocusAsk(); }; });
+  // delete: the second tap on the same button (no dialog), anything else disarms it
+  box.querySelectorAll('[data-bz-del]').forEach(btn => { btn.onclick = () => {
+    const id = btn.getAttribute('data-bz-del');
+    if (avUI.removing !== id) { avUI.removing = id; renderBusinessAvatars(); return; }
+    avUI.removing = '';
+    avSend('/api/client/avatars/business/' + encodeURIComponent(id) + '/delete', {}, 'av_saving', () => uallakI18n.t('av_biz_deleted'));
+  }; });
+  const create = box.querySelector('[data-bz-create]');
+  if (create) create.querySelector('[data-bz-create-send]').onclick = () => {
+    avSend('/api/client/avatars/business', { name: create.querySelector('[data-bz-name]').value,
+      personality: create.querySelector('[data-bz-personality]').value, look: create.querySelector('[data-bz-look]').value },
+      'av_biz_creating', () => uallakI18n.t('av_biz_created'), create);
+  };
+  wireAvatarForms(box);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS (PDF / Excel / Google Docs)

@@ -9025,7 +9025,10 @@ class PoseDecisionRequest(BaseModel):
 def client_avatars(request: Request):
     client_id = _require_session(request)
     from core import agent_characters
-    return {"success": True, "data": {"team": agent_characters.client_team(client_id, _client_lang(client_id))}}
+    from core import business_avatars
+    return {"success": True, "data": {"team": agent_characters.client_team(client_id, _client_lang(client_id)),
+                                      "request_max": agent_characters.MAX_REQUEST_POSES,
+                                      "business": business_avatars.view(client_id)}}
 
 @app.get("/api/client/avatars/pose/{pose_id}/thumb")
 def client_avatar_pose_thumb(pose_id: str, request: Request):
@@ -9056,7 +9059,111 @@ def client_avatar_poses_decide(req: PoseDecisionRequest, request: Request):
     out["designs_updated"] = len(slide_design.apply_approved_poses(client_id)) if req.verdict == "approved" else 0
     log_activity(client_id, "agent_characters", "poses_decided",
                  {"verdict": req.verdict, "count": len(out["changed"])}, {})
-    return {"success": True, "data": {**out, "team": agent_characters.client_team(client_id, _client_lang(client_id))}}
+    return {"success": True, "data": {**out, **_avatars_data(client_id)}}
+
+class PoseRequest(BaseModel):
+    poses: list = []
+
+class BusinessAvatarRequest(BaseModel):
+    name: str = ""
+    personality: str = ""
+    look: str = ""
+
+def _avatars_write(request: Request):
+    """A write on the Avatars page is the client's own — never the admin's read-only view."""
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+
+def _avatars_data(client_id: int) -> dict:
+    from core import agent_characters, business_avatars
+    return {"team": agent_characters.client_team(client_id, _client_lang(client_id)),
+            "request_max": agent_characters.MAX_REQUEST_POSES, "business": business_avatars.view(client_id)}
+
+@app.post("/api/client/avatars/team/{agent}/poses")
+def client_avatar_team_request(agent: str, req: PoseRequest, request: Request):
+    # Plain `def`: the poses are generated inside this request (a thread after
+    # the response only moves while a request is in flight — CLAUDE.md)
+    client_id = _require_session(request)
+    _avatars_write(request)
+    from core import agent_characters
+    try:
+        out = agent_characters.client_request_poses(client_id, agent, [str(p) for p in req.poses])
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"code": "pose_needed"})
+    except Exception as e:
+        print(f"[avatars] client {client_id}: pose request failed: {type(e).__name__}: {str(e)[:200]}")
+        return {"success": False, "code": "failed"}
+    log_activity(client_id, "agent_characters", "poses_requested",
+                 {"agent": agent, "made": len(out["made"]), "failed": out["failed"]}, {})
+    return {"success": True, "data": {**out, **_avatars_data(client_id)}}
+
+@app.post("/api/client/avatars/business")
+def client_business_avatar_create(req: BusinessAvatarRequest, request: Request):
+    client_id = _require_session(request)
+    _avatars_write(request)
+    from core import business_avatars
+    try:
+        made = business_avatars.create(client_id, req.name, req.personality, req.look)
+    except business_avatars.Refused as e:
+        return {"success": False, "code": e.code}
+    log_activity(client_id, "business_avatars", "avatar_created", {"avatar_id": made["avatar_id"]}, {})
+    return {"success": True, "data": {"avatar_id": made["avatar_id"], **_avatars_data(client_id)}}
+
+@app.post("/api/client/avatars/business/{avatar_id}/poses")
+def client_business_avatar_poses(avatar_id: str, req: PoseRequest, request: Request):
+    client_id = _require_session(request)
+    _avatars_write(request)
+    from core import business_avatars
+    try:
+        out = business_avatars.add_poses(client_id, avatar_id, [str(p) for p in req.poses])
+    except business_avatars.Refused as e:
+        return {"success": False, "code": e.code}
+    except Exception as e:
+        print(f"[avatars] client {client_id}: business pose request failed: {type(e).__name__}: {str(e)[:200]}")
+        return {"success": False, "code": "failed"}
+    return {"success": True, "data": {**out, **_avatars_data(client_id)}}
+
+@app.post("/api/client/avatars/business/poses/decide")
+def client_business_avatar_decide(req: PoseDecisionRequest, request: Request):
+    client_id = _require_session(request)
+    _avatars_write(request)
+    from core import business_avatars
+    if req.verdict not in business_avatars.VERDICTS or not req.pose_ids or len(req.pose_ids) > 500:
+        raise HTTPException(status_code=400, detail={"code": "bad_decision"})
+    out = business_avatars.decide(client_id, [str(p) for p in req.pose_ids], req.verdict)
+    return {"success": True, "data": {**out, **_avatars_data(client_id)}}
+
+@app.post("/api/client/avatars/business/{avatar_id}/delete")
+def client_business_avatar_delete(avatar_id: str, request: Request):
+    client_id = _require_session(request)
+    _avatars_write(request)
+    from core import business_avatars
+    try:
+        business_avatars.remove(client_id, avatar_id)
+    except business_avatars.Refused as e:
+        return {"success": False, "code": e.code}
+    log_activity(client_id, "business_avatars", "avatar_removed", {"avatar_id": avatar_id}, {})
+    return {"success": True, "data": _avatars_data(client_id)}
+
+@app.get("/api/client/avatars/business/{avatar_id}/face")
+def client_business_avatar_face(avatar_id: str, request: Request):
+    client_id = _require_session(request)
+    from core import business_avatars
+    try:
+        content = business_avatars.thumb(client_id, avatar_id=avatar_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    return Response(content=content, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+@app.get("/api/client/avatars/business/pose/{pose_id}/thumb")
+def client_business_avatar_pose_thumb(pose_id: str, request: Request):
+    client_id = _require_session(request)
+    from core import business_avatars
+    try:
+        content = business_avatars.thumb(client_id, pose_id=pose_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    return Response(content=content, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
 
 @app.post("/api/client/actions/{proposal_id}/decide")
 def client_decide_action(proposal_id: int, req: ActionDecisionRequest, request: Request,

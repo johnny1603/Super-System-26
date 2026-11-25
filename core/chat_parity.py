@@ -58,6 +58,14 @@ PARITY = {
     # ── Avatars page (docs/AVATARS.md) ───────────────────────────────────────
     "GET /api/client/avatars": (NOT_CHAT, "a picture gallery: poses are judged by looking at them"),
     "GET /api/client/avatars/pose/{pose_id}/thumb": (NOT_CHAT, _PLUMBING),
+    "POST /api/client/avatars/team/{agent}/poses": (NOT_CHAT, "new poses are asked for beside the pictures they join; the "
+                                                             "result is a picture to judge, not a chat answer"),
+    "POST /api/client/avatars/business": (GAP, "P3: create a business avatar from the chat (a card with name, personality, look)"),
+    "POST /api/client/avatars/business/{avatar_id}/poses": (GAP, "P3: ask for a business avatar's pose from the chat"),
+    "POST /api/client/avatars/business/poses/decide": (NOT_CHAT, "a decision made on the picture itself, in the gallery"),
+    "POST /api/client/avatars/business/{avatar_id}/delete": (NOT_CHAT, "removing a character is done where it is shown"),
+    "GET /api/client/avatars/business/{avatar_id}/face": (NOT_CHAT, _PLUMBING),
+    "GET /api/client/avatars/business/pose/{pose_id}/thumb": (NOT_CHAT, _PLUMBING),
     "POST /api/client/avatars/poses/decide": (NOT_CHAT, "approving a pose is a decision made on the picture itself, in "
                                                          "the gallery; the chat points there when a post is waiting on it"),
     # ── Package, upgrade, billing ────────────────────────────────────────────

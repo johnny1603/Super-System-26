@@ -1004,7 +1004,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   "אווטרים" approves poses (one / all waiting / a drag selection) into app_settings `pose_approvals:<client_id>`; a post
   (`poses_for(client_id=)`) uses ONLY a pose that client approved — none = `NeedsApproval`: nothing generated in its place,
   alert + `character_needs_approval` on the card, and the pose is drawn in when they approve (`apply_approved_poses`). The
-  admin's Keep only seeds. `tests/test_pose_approval.py`. Pose library `agent_poses`: offered before generating,
+  admin's Keep only seeds. `tests/test_pose_approval.py`. The same page: "request new poses" of an agent (our key, ≤4 per
+  request, arrive pending) and the BUSINESS's own characters (`core/business_avatars`, app_settings `business_avatars:<id>`: one
+  generated face stored by us = the reference of every later pose, on the CLIENT's key; not cast in posts yet).
+  `tests/test_business_avatars.py`. Pose library `agent_poses`: offered before generating,
   last pose never repeated. **No agent ever sets or rebuilds a character** (`set_reference` admin-only,
   `create_element` refuses; `report_element_weak` only). Background removal path NOT in the docs, NOT run
   live. `tests/test_agent_characters.py`.
