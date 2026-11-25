@@ -177,13 +177,14 @@ function libraryHtml(a) {
   const tiles = (a.poses || []).map(p => `<div class="tile">
       <img src="/api/admin/characters/pose/${esc(p.pose_id)}" alt="" loading="lazy">
       <button class="x" title="הסרה מהמאגר" onclick="removePose('${esc(p.pose_id)}')">✕</button>
-      <div class="cap">${p.approved ? '<span class="badge ok">מאושרת</span>' : '<span class="badge warn">ממתינה</span>'}${p.transparent ? '<span class="badge">שקופה</span>' : '<span class="badge">סצנה</span>'}
+      <div class="cap">${p.approved_clients ? `<span class="badge ok" title="לקוחות: ${esc((p.approved_client_ids || []).join(', '))}">אושרה אצל ${esc(p.approved_clients)} ${p.approved_clients === 1 ? 'לקוח' : 'לקוחות'}</span>` : (p.approved ? '<span class="badge ok">אושרה בפוסט</span>' : '<span class="badge warn">אף לקוח עוד לא אישר</span>')}${p.transparent ? '<span class="badge">שקופה</span>' : '<span class="badge">סצנה</span>'}
         ${p.client_id ? `<span class="badge">לקוח ${esc(p.client_id)}</span>` : ""}<br>
         <bdi dir="auto">${esc((p.description || "").slice(0, 60))}</bdi>${p.outfit ? ` · ${esc(p.outfit)}` : ""}${p.framing ? ` · ${esc(p.framing)}` : ""}
         <br>${esc(p.uses)} שימושים</div></div>`).join("");
   return `<h3>מאגר התנוחות</h3>
-    <div class="muted">${esc(c.approved || 0)} מאושרות · ${esc(c.pending || 0)} ממתינות · ${esc(c.transparent || 0)} שקופות (לשקופיות) · ${esc(c.total || 0)} בסך הכול.
-      פוסטים משתמשים רק במאושרות, ולא באותה תנוחה פעמיים ברצף.</div>
+    <div class="muted">מאגר הבסיס: ${esc(c.total || 0)} תנוחות · ${esc(c.approved || 0)} אושרו אצל לקוח אחד לפחות · ${esc(c.pending || 0)} שאף לקוח עוד לא אישר · ${esc(c.transparent || 0)} שקופות (לשקופיות).
+      האישור הוא של כל לקוח בנפרד (עמוד "אווטרים" שלו) — על כל תנוחה מופיע אצל כמה לקוחות היא אושרה. פוסט משתמש רק במה שאותו לקוח אישר.
+      ${a.client_bank ? `<br>${esc(a.client_bank)} תנוחות שלקוחות ביקשו שמורות בבנק של כל לקוח ואינן מוצגות כאן.` : ""}</div>
     ${tiles ? `<div class="grid">${tiles}</div>` : '<div class="muted">עוד אין תנוחות.</div>'}`;
 }
 
@@ -202,7 +203,7 @@ function render(d) {
   });
   $("agents").innerHTML = (d.agents || []).map(a => `<div class="card" data-agent="${esc(a.agent)}">
       <div class="head"><h2>${esc(AGENT[a.agent] || a.name)} <code>${esc(a.agent)}</code></h2>
-        <span class="muted">${a.images.length} תמונות ייחוס · ${esc((a.pose_counts || {}).approved || 0)} תנוחות מאושרות</span></div>
+        <span class="muted">${a.images.length} תמונות ייחוס · ${esc((a.pose_counts || {}).total || 0)} תנוחות בסיס · ${esc((a.pose_counts || {}).approved || 0)} אושרו אצל לקוחות</span></div>
       ${refsHtml(a, d)}${testHtml(a, d)}${libraryHtml(a)}
       <div class="msg muted" data-f="msg"></div></div>`).join("");
   Object.entries(typed).forEach(([k, v]) => {

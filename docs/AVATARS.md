@@ -74,3 +74,12 @@ Routes: `POST /api/client/avatars/business` (create), `…/{avatar_id}/poses`, `
 own session (`_avatars_write`). `tests/test_business_avatars.py`.
 
 Nothing on this page has run against the live vendor.
+
+## Scope: the seed library and each client's bank (2026-11-26)
+
+- **The admin page `/admin/characters/` is a SEED library**: base poses per uallak agent, made by the admin. Nothing a client asked for is shown there.
+- **A pose a client asks for is that client's** (`owner` on the pose record, `agent_characters.client_request_poses` → `make_pose(owner=)`): it is stored in their bank (`bank(client_id)`), marked "ביקשתם" on their Avatars page, and is in NO other client's queue (`visible_to`). The earlier behaviour (pending for every client) is reversed.
+- **Reused, not pushed**: `bank_search(agent, query)` searches every client's requested cut-outs by what they show. It is used in ONE place: a post of another client needs a pose of that agent and that client has none approved (`poses_for` → `offer_from_bank`). The best match is then offered to THAT client (`offered_to`) and waits for their approval like any pose; the slide still fails by name until they approve (`character_needs_approval`). A client who did not need it never sees it.
+- **The admin's counts are per client**: every pose shows at how many clients it is approved (`approval_counts`: each client's `pose_approvals:<id>` row + a pose their approved post carried). The old "0 מאושרות" read a library flag that a client's approval never set.
+- Poses requested BEFORE this change carry no owner and stay in the seed library (nothing recorded who asked).
+- `tests/test_pose_scope.py`.

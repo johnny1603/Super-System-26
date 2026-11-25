@@ -527,19 +527,23 @@ def view(data: dict = None) -> dict:
     cands = _candidates()
     lib = _library()
     sent = gen.max_references()
+    by_clients = approval_counts(lib)
     rows = []
     for agent in AGENTS:
         e = _normal((data.get("agents") or {}).get(agent))
         images = [{**{k: i.get(k, "") for k in ("ref_id", "url", "media_id", "source", "added_at", "width", "height")},
                    "durable": bool(i.get("file_id"))} for i in e["images"]]
-        poses = [p for p in lib["poses"] if p.get("agent") == agent]
+        # The SEED library only: a pose a client asked for is theirs (their bank), never shown here
+        banked = sum(1 for p in lib["poses"] if p.get("agent") == agent and not is_seed(p))
+        poses = [p for p in lib["poses"] if p.get("agent") == agent and is_seed(p)]
         rows.append({"agent": agent, "name": AGENT_NAMES[agent], "set": bool(images), "images": images,
                      "notes": e["notes"], "updated_at": e["updated_at"], "sent": min(len(images), sent or len(images)),
                      "candidates": (cands["agents"].get(agent) or [])[-MAX_CANDIDATES:],
                      "job": cands["jobs"].get(agent) or {},
-                     "poses": [_pose_row(p) for p in sorted(poses, key=lambda p: p.get("created_at", ""), reverse=True)[:60]],
-                     "pose_counts": {"approved": sum(1 for p in poses if p.get("approved")),
-                                     "pending": sum(1 for p in poses if not p.get("approved")),
+                     "poses": [_pose_row(p, by_clients) for p in sorted(poses, key=lambda p: p.get("created_at", ""), reverse=True)[:60]],
+                     "client_bank": banked,
+                     "pose_counts": {"approved": sum(1 for p in poses if _approved_anywhere(p, by_clients)),
+                                     "pending": sum(1 for p in poses if not _approved_anywhere(p, by_clients)),
                                      "transparent": sum(1 for p in poses if p.get("transparent")),
                                      "total": len(poses)}})
     return {"agents": rows, "configured": configured(), "model": gen.CHARACTER_IMAGE_PATH,
@@ -548,8 +552,15 @@ def view(data: dict = None) -> dict:
             "reports": (data.get("reports") or [])[-20:], "poses": pose_counts()}
 
 
-def _pose_row(p: dict) -> dict:
-    return {"pose_id": p.get("pose_id"), "approved": bool(p.get("approved")), "transparent": bool(p.get("transparent")),
+def _approved_anywhere(p: dict, by_clients: dict) -> bool:
+    return bool(p.get("approved")) or bool((by_clients or {}).get(p.get("pose_id")))
+
+
+def _pose_row(p: dict, by_clients: dict = None) -> dict:
+    clients = sorted((by_clients or {}).get(p.get("pose_id")) or [])
+    return {"pose_id": p.get("pose_id"), "approved": _approved_anywhere(p, by_clients), "transparent": bool(p.get("transparent")),
+            # how many clients approved THIS pose on their own Avatars page (or in a post of theirs)
+            "approved_clients": len(clients), "approved_client_ids": clients[:30],
             "client_id": p.get("client_id", 0), "description": p.get("description", ""), "outfit": p.get("outfit", ""),
             "framing": p.get("framing", ""), "setting": p.get("setting", ""), "source": p.get("source", ""),
             "uses": (p.get("uses") or {}).get("count", 0), "created_at": p.get("created_at", "")}
@@ -735,13 +746,14 @@ def _short(text, n: int = 160) -> str:
 @_library_locked
 def add_pose(agent: str, file_id: str, transparent: bool, client_id: int = 0, outfit: str = "",
              setting: str = "", framing: str = "", description: str = "", tags: list = None,
-             source: str = "generated", prompt: str = "") -> dict:
+             source: str = "generated", prompt: str = "", owner: int = 0) -> dict:
     """A character image into the library (approved False until a post that
     used it is approved). client_id 0 = a global cut-out; an in-scene image
-    belongs to the client whose scene it is."""
+    belongs to the client whose scene it is. `owner` = the client who ASKED
+    for this pose (their bank); 0 = the seed library the admin builds."""
     agent = clean_agent(agent)
     record = {"pose_id": secrets.token_hex(6), "agent": agent, "file_id": str(file_id or "")[:200],
-              "transparent": bool(transparent), "client_id": int(client_id or 0),
+              "transparent": bool(transparent), "client_id": int(client_id or 0), "owner": int(owner or 0),
               "outfit": _short(outfit, 80), "setting": _short(setting, 120), "framing": _short(framing, 40),
               "description": _short(description, 300),
               "tags": [_short(t, 40) for t in (tags or []) if _short(t, 40)][:12],
@@ -799,7 +811,7 @@ def find_poses(agent: str, query: str = "", transparent=None, client_id: int = N
         if p.get("agent") != agent or not p.get("file_id"):
             continue
         if state is not None:
-            if p.get("client_id") not in (0, int(approved_for)) or pose_status(p, approved_for, state) != "approved":
+            if not visible_to(p, approved_for) or pose_status(p, approved_for, state) != "approved":
                 continue
         elif not p.get("approved"):
             continue
@@ -830,6 +842,118 @@ APPROVALS_PREFIX = "pose_approvals:"
 VERDICTS = ("approved", "rejected", "pending")
 
 
+# ─── Scope (2026-11-26): the seed library vs. each client's bank ─────────────
+#
+# The admin's characters page is a SEED library: base poses per uallak agent.
+# A pose a CLIENT asked for (the Avatars page) is stored with `owner` = that
+# client: it is theirs, it lives in their bank, it never appears on the admin
+# page and never enters another client's pending queue. The system MAY reuse
+# a banked pose for another client — only when that client's own post needs a
+# pose of that agent and they have none approved: the best match is then
+# OFFERED to them (`offered_to`), and waits for their approval like any pose.
+# It is never shown to a client who did not need it.
+
+def is_seed(pose: dict) -> bool:
+    return not int((pose or {}).get("owner") or 0)
+
+
+def visible_to(pose: dict, client_id: int) -> bool:
+    """May this client see / decide on / use this pose?"""
+    cid = int(client_id)
+    if pose.get("client_id") not in (0, cid):
+        return False                                  # another client's in-scene image
+    owner = int(pose.get("owner") or 0)
+    return owner in (0, cid) or cid in (pose.get("offered_to") or [])
+
+
+def bank(client_id: int, agent: str = "", data: dict = None) -> list:
+    """The poses THIS client asked for, newest first."""
+    data = data if data is not None else _library()
+    rows = [p for p in data["poses"] if int(p.get("owner") or 0) == int(client_id) and (not agent or p.get("agent") == agent)]
+    return sorted(rows, key=lambda p: p.get("created_at", ""), reverse=True)
+
+
+def bank_search(agent: str, query: str, limit: int = 5, data: dict = None, exclude_owner: int = None) -> list:
+    """Client-requested cut-outs of one agent, every client's, best match
+    first (the scorer the pose library and the asset index share). Only a
+    real match is returned (score > 0): the bank is searched, never dumped."""
+    from core import drive_assets
+    agent = clean_agent(agent)
+    data = data if data is not None else _library()
+    qwords = drive_assets._query_words(query)
+    out = []
+    for p in data["poses"]:
+        if is_seed(p) or p.get("agent") != agent or not p.get("file_id") or not p.get("transparent"):
+            continue
+        if exclude_owner is not None and int(p.get("owner") or 0) == int(exclude_owner):
+            continue
+        item = {"tags": list(p.get("tags") or []) + [p.get(k, "") for k in TAG_FIELDS],
+                "description": p.get("description", ""), "name": p.get("prompt", "")}
+        score = drive_assets._match_score(item, "", qwords) if qwords else 0.0
+        if score > 0:
+            out.append({**p, "score": round(score, 4)})
+    out.sort(key=lambda p: (-p["score"], p.get("created_at", "")))
+    return out[:max(1, int(limit))]
+
+
+def offer_from_bank(client_id: int, agent: str, query: str) -> dict:
+    """The system draws a stored pose for ANOTHER client's post: the best
+    banked match is offered to that client (it then waits on their Avatars
+    page). {} when the bank has no match. Never raises."""
+    try:
+        with _LIBRARY_LOCK:
+            data = _library()
+            cid = int(client_id)
+            found = [p for p in bank_search(agent, query, limit=3, data=data, exclude_owner=cid)
+                     if not visible_to(p, cid)]
+            if not found:
+                return {}
+            pose = get_pose(found[0]["pose_id"], data)
+            pose["offered_to"] = sorted(set((pose.get("offered_to") or []) + [cid]))[-200:]
+            _write(POSES_KEY, data)
+            print(f"[{SERVICE_NAME}] client {cid}: banked pose {pose['pose_id']} of {agent} offered (asked for by client {pose.get('owner')})")
+            return dict(pose)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: bank not searched ({type(e).__name__})")
+        return {}
+
+
+def _approval_rows() -> list:
+    """Every client's pose decisions: [(client_id, {"approved": {...}})]."""
+    rows = (_db().table("app_settings").select("key,value").like("key", f"{APPROVALS_PREFIX}%").limit(5000)
+            .execute().data) or []
+    out = []
+    for r in rows:
+        tail = str(r.get("key") or "")[len(APPROVALS_PREFIX):]
+        if tail.isdigit() and isinstance(r.get("value"), dict):
+            out.append((int(tail), r["value"]))
+    return out
+
+
+def approval_counts(data: dict = None) -> dict:
+    """{pose_id: [client ids that approved it]} — from each client's own
+    decisions, plus a pose their approved post carried. {} when unreadable
+    (the page then shows no count rather than a false zero is NOT acceptable:
+    the caller gets `None`-free data, and the failure is logged)."""
+    data = data if data is not None else _library()
+    out = {}
+    try:
+        rows = _approval_rows()
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] pose approval counts unreadable ({type(e).__name__})")
+        rows = []
+    rejected = {}
+    for cid, value in rows:
+        for pid in (value.get("approved") or {}):
+            out.setdefault(pid, set()).add(cid)
+        rejected[cid] = set(value.get("rejected") or {})
+    for p in data["poses"]:
+        head = str(p.get("approved_item") or "").split(":", 1)[0]
+        if head.isdigit() and int(head) and p.get("pose_id") not in rejected.get(int(head), set()):
+            out.setdefault(p["pose_id"], set()).add(int(head))
+    return {pid: sorted(c) for pid, c in out.items()}
+
+
 def approvals(client_id: int) -> dict:
     try:
         data = _read(f"{APPROVALS_PREFIX}{int(client_id)}")
@@ -857,11 +981,12 @@ def client_library(client_id: int, agent: str = "", data: dict = None, state: di
     state = state if state is not None else approvals(client_id)
     rows = []
     for p in data["poses"]:
-        if not p.get("file_id") or p.get("client_id") not in (0, int(client_id)):
+        if not p.get("file_id") or not visible_to(p, client_id):
             continue
         if agent and p.get("agent") != agent:
             continue
         rows.append({"pose_id": p["pose_id"], "agent": p.get("agent", ""), "status": pose_status(p, client_id, state),
+                     "mine": int(p.get("owner") or 0) == int(client_id),      # asked for by this client (their bank)
                      "transparent": bool(p.get("transparent")), "description": p.get("description", ""),
                      "created_at": p.get("created_at", ""), "uses": int((p.get("uses") or {}).get("count") or 0)})
     rows.sort(key=lambda r: r["created_at"], reverse=True)
@@ -886,7 +1011,7 @@ def decide_poses(client_id: int, pose_ids: list, verdict: str) -> dict:
         raise ValueError(f"verdict must be one of {VERDICTS}")
     client_id = int(client_id)
     data = _library()
-    visible = {p["pose_id"]: p for p in data["poses"] if p.get("file_id") and p.get("client_id") in (0, client_id)}
+    visible = {p["pose_id"]: p for p in data["poses"] if p.get("file_id") and visible_to(p, client_id)}
     ids = [str(i) for i in dict.fromkeys(pose_ids or []) if str(i) in visible]
     state = approvals(client_id)
     now = _now().isoformat()
@@ -905,7 +1030,7 @@ def decide_poses(client_id: int, pose_ids: list, verdict: str) -> dict:
 def client_pose_image(client_id: int, pose_id: str) -> bytes:
     """A pose's PNG for that client's page — only a pose they can see."""
     pose = get_pose(pose_id)
-    if not pose or pose.get("client_id") not in (0, int(client_id)):
+    if not pose or not visible_to(pose, client_id):
         raise LookupError(f"no pose {pose_id}")
     return pose_bytes(pose_id)
 
@@ -915,6 +1040,8 @@ def client_request_poses(client_id: int, agent: str, poses: list, _make=None, _e
     to MAX_REQUEST_POSES, made together on the real pose path (make_pose —
     the reference set, the cut-out, the library). They arrive PENDING, like
     every pose: the client approves what they like. Runs on uallak's key.
+    They are THIS client's (`owner`): stored in their bank, not on the admin's
+    seed page, not in any other client's queue.
     Returns {"made": [pose_id], "failed": n, "reason": first failure's code}."""
     from core import parallel
     agent = clean_agent(agent)
@@ -924,9 +1051,13 @@ def client_request_poses(client_id: int, agent: str, poses: list, _make=None, _e
     if _english is None:
         from core import business_avatars
         _english = business_avatars.to_english                 # the client's own words → what the model reads
-    got = parallel.gather({i: (lambda p=p: (_make or make_pose)(agent, _english(p, client_id)))
-                           for i, p in enumerate(wanted)})
+    def one(p):
+        if _make is None:
+            return make_pose(agent, _english(p, client_id), owner=client_id)
+        return _make(agent, _english(p, client_id))
+    got = parallel.gather({i: (lambda p=p: one(p)) for i, p in enumerate(wanted)})
     made = [value["pose_id"] for _i, (ok, value) in sorted(got.items()) if ok]
+    claim_poses(made, client_id)
     errors = [value for _i, (ok, value) in sorted(got.items()) if not ok]
     if errors:
         _alert([f"client {client_id}: {len(errors)} requested pose(s) of {agent} not made "
@@ -937,6 +1068,24 @@ def client_request_poses(client_id: int, agent: str, poses: list, _make=None, _e
     return {"made": made, "failed": len(errors), "reason": reason}
 
 
+@_library_locked
+def claim_poses(pose_ids: list, client_id: int) -> list:
+    """Mark poses as asked for by this client (idempotent; never takes a pose
+    another client owns)."""
+    ids = set(pose_ids or [])
+    if not ids:
+        return []
+    data = _library()
+    changed = []
+    for p in data["poses"]:
+        if p.get("pose_id") in ids and not int(p.get("owner") or 0):
+            p["owner"] = int(client_id)
+            changed.append(p["pose_id"])
+    if changed:
+        _write(POSES_KEY, data)
+    return changed
+
+
 THUMB_PX = 420
 _THUMBS = {}                       # pose_id → PNG bytes (a pose's file never changes)
 _THUMBS_MAX = 400
@@ -945,7 +1094,7 @@ _THUMBS_MAX = 400
 def client_pose_thumb(client_id: int, pose_id: str) -> bytes:
     """The pose at grid size (transparency kept), cached in memory."""
     pose = get_pose(pose_id)
-    if not pose or pose.get("client_id") not in (0, int(client_id)):
+    if not pose or not visible_to(pose, client_id):
         raise LookupError(f"no pose {pose_id}")
     hit = _THUMBS.get(pose_id)
     if hit:
@@ -982,9 +1131,12 @@ def pose_counts() -> dict:
     except Exception:
         return {}
     out = {}
+    by_clients = approval_counts(data)
     for p in data["poses"]:
+        if not is_seed(p):
+            continue                                   # a client's bank is not the seed library
         c = out.setdefault(p.get("agent", "?"), {"approved": 0, "pending": 0, "transparent": 0})
-        c["approved" if p.get("approved") else "pending"] += 1
+        c["approved" if _approved_anywhere(p, by_clients) else "pending"] += 1
         c["transparent"] += 1 if p.get("transparent") else 0
     return out
 
@@ -1068,7 +1220,8 @@ def pose_bytes(pose_id: str) -> bytes:
 
 
 def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body", setting: str = "",
-              aspect_ratio: str = "", _gen=None, _remove=None, _upload=None, _refs=None, _step=None) -> dict:
+              aspect_ratio: str = "", _gen=None, _remove=None, _upload=None, _refs=None, _step=None,
+              owner: int = 0) -> dict:
     """COMPOSITE step a: the pose from the agent's reference image on a plain
     background → background removal → a VERIFIED transparent PNG → the
     library. Runs on uallak's key. Raises MissingReference /
@@ -1100,7 +1253,7 @@ def make_pose(agent: str, pose: str, outfit: str = "", framing: str = "full body
     uploaded = (_upload or upload_pose_png)(agent, png)
     record = add_pose(agent, uploaded.get("id", ""), True, 0, outfit=outfit, setting=setting or "plain cut-out",
                       framing=framing, description=pose, tags=[w for w in re.findall(r"[a-z]{4,}", pose.lower())][:8],
-                      source="generated", prompt=prompt)
+                      source="generated", prompt=prompt, owner=owner)
     return {**record, "credits": (made.get("credits") or 0), "png": png, "cropped": fitted["cropped"],
             "warning": fitted["warning"]}
 
@@ -1163,6 +1316,8 @@ def poses_for(requests: list, stopped=None, steps: list = None, client_id: int =
                 settle(i, skipped=True)               # a stored cut-out: nothing to make
                 continue
             if client_id is not None:
+                # nothing of theirs approved: a pose another client asked for may serve — OFFERED, never used unapproved
+                offer_from_bank(client_id, agent, pose)
                 pending = sum(1 for r in client_library(client_id, agent) if r["status"] == "pending" and r["transparent"])
                 raise NeedsApproval(agent, pending)
         except Exception as e:
