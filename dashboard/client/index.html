@@ -3663,6 +3663,17 @@ const DASH_I18N = {
   action_d_tags: { he:'תגיות', en:'Tags', fr:'Tags', ar:'الكلمات المفتاحية', ru:'Теги' },
   action_d_link: { he:'קישור', en:'Link', fr:'Lien', ar:'رابط', ru:'Ссылка' },
   action_d_images: { he:'התמונות שלכם בדף', en:'Your photos on the page', fr:'Vos photos sur la page', ar:'صوركم في الصفحة', ru:'Ваши фото на странице' },
+  pose_cost_before: { he:'עלות משוערת: כ-{n} קרדיטים', en:'Estimated cost: about {n} credits', fr:'Coût estimé : environ {n} crédits', ar:'التكلفة التقديرية: نحو {n} رصيد', ru:'Примерная стоимость: около {n} кредитов' },
+  pose_cost_after: { he:'עלות בפועל: {n} קרדיטים', en:'Actual cost: {n} credits', fr:'Coût réel : {n} crédits', ar:'التكلفة الفعلية: {n} رصيد', ru:'Фактическая стоимость: {n} кредитов' },
+  pose_credits: { he:'{n} קרדיטים', en:'{n} credits', fr:'{n} crédits', ar:'{n} رصيد', ru:'{n} кредитов' },
+  pose_state_waiting: { he:'בהכנה…', en:'In progress…', fr:'En cours…', ar:'قيد الإعداد…', ru:'Готовится…' },
+  pose_state_pending: { he:'ממתינה להחלטה', en:'Waiting for your decision', fr:'En attente de votre décision', ar:'بانتظار قراركم', ru:'Ждёт вашего решения' },
+  pose_state_kept: { he:'נשמרה במאגר ✓', en:'Kept in the library ✓', fr:'Gardée dans la bibliothèque ✓', ar:'حُفظت في المكتبة ✓', ru:'Сохранена в библиотеке ✓' },
+  pose_state_discarded: { he:'נמחקה', en:'Discarded', fr:'Supprimée', ar:'حُذفت', ru:'Удалена' },
+  pose_state_failed: { he:'לא נוצרה', en:'Not made', fr:'Non créée', ar:'لم تُنشأ', ru:'Не создана' },
+  pose_keep: { he:'שמירה למאגר', en:'Keep', fr:'Garder', ar:'احتفاظ', ru:'Оставить' },
+  pose_discard: { he:'מחיקה', en:'Discard', fr:'Supprimer', ar:'حذف', ru:'Удалить' },
+  pose_decide_failed: { he:'לא הצלחתי לשמור את ההחלטה. נסו שוב.', en:"Couldn't save that decision. Try again.", fr:"Impossible d'enregistrer ce choix. Réessayez.", ar:'تعذّر حفظ القرار. حاولوا مجددًا.', ru:'Не удалось сохранить решение. Попробуйте ещё раз.' },
   seo_box_title: { he:'דוח קידום אורגני', en:'Organic SEO report', fr:'Rapport de référencement naturel', ar:'تقرير تحسين محركات البحث', ru:'Отчёт по органическому продвижению' },
   seo_box_sub_none: { he:'דוח מקצועי: מצב האתר, הזדמנויות במילות מפתח והזדמנויות לקישורים עם טיוטות פנייה מוכנות. חלק מהשירות שלכם, בלי תשלום נוסף.', en:'A professional report: the site\'s state, keyword opportunities and backlink opportunities with ready outreach drafts. Part of your service, at no extra charge.', fr:'Un rapport professionnel : état du site, opportunités de mots-clés et de liens avec des brouillons de messages. Inclus dans votre service, sans supplément.', ar:'تقرير مهني: حالة الموقع، فرص الكلمات المفتاحية وفرص الروابط مع مسودات رسائل جاهزة. جزء من خدمتكم دون رسوم إضافية.', ru:'Профессиональный отчёт: состояние сайта, возможности по ключевым словам и ссылкам с готовыми черновиками писем. Входит в вашу услугу, без доплаты.' },
   seo_box_sub_ready: { he:'הדוח שלכם מ-{date} מוכן, עם {n} הזדמנויות לקישורים. שום פנייה לא נשלחת בלי אישור שלכם.', en:'Your report from {date} is ready, with {n} backlink opportunities. No message is sent without your approval.', fr:'Votre rapport du {date} est prêt, avec {n} opportunités de liens. Aucun message n\'est envoyé sans votre accord.', ar:'تقريركم بتاريخ {date} جاهز، مع {n} فرص للروابط. لا تُرسل أي رسالة دون موافقتكم.', ru:'Ваш отчёт от {date} готов: возможностей для ссылок — {n}. Ни одно письмо не уходит без вашего одобрения.' },
@@ -7644,6 +7655,7 @@ function watchActionCard(el, id) {
       if (res.ok && body.success) {
         const c = body.data || {};
         if (c.decided_at) { el._action = { ...(el._action || {}), ...c }; paintActionWhen(el, el._action); }
+        refreshActionDetails(el, c.details);
         if (c.status !== 'running') {
           finishActionCard(el, c);
           if (c.next_card) appendActionCard(el.closest('.chat-window') ? el.closest('.chat-window').dataset.persona : 'general', c.next_card);
@@ -7718,6 +7730,7 @@ function actionDetails(d) {
     });
     box.appendChild(grid);
   }
+  if (Array.isArray(d.poses) && d.poses.length) box.appendChild(poseResults(d));
   // A landing page's preview: our own session-gated path only, never a link the model wrote
   if (typeof d.preview_url === 'string' && d.preview_url.indexOf('/api/client/landing-pages/') === 0) {
     const a = document.createElement('a');
@@ -7739,6 +7752,92 @@ function actionDetails(d) {
     box.appendChild(a);
   }
   return box;
+}
+
+// Agent-character poses asked for in the chat (generate_character_poses): each
+// result with its credits, from OUR session-gated image path only, and the same
+// keep / discard as the characters page. The cost before (the measured estimate)
+// and after (the real total).
+const POSE_IMG_RE = /^\/api\/client\/characters\/poses\/q[a-f0-9]{10}\/c[a-f0-9]{10}$/;
+const POSE_REQ_RE = /^q[a-f0-9]{10}$/;
+const POSE_CAND_RE = /^c[a-f0-9]{10}$/;
+function poseResults(d) {
+  const t = uallakI18n.t;
+  const wrap = document.createElement('div');
+  wrap.className = 'pose-results';
+  const cost = document.createElement('div');
+  const est = typeof d.pose_estimate === 'number' ? Math.round(d.pose_estimate * d.poses.length * 100) / 100 : null;
+  const parts = [];
+  if (est !== null) parts.push(t('pose_cost_before', { n: String(est) }));
+  if (d.pose_made > 0) parts.push(t('pose_cost_after', { n: String(d.pose_credits || 0) }));
+  cost.textContent = parts.join(' · ');
+  if (parts.length) wrap.appendChild(cost);
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:6px 0';
+  d.poses.forEach(p => {
+    const fig = document.createElement('figure');
+    fig.style.cssText = 'margin:0;font-size:12px;text-align:center';
+    if (typeof p.image_url === 'string' && POSE_IMG_RE.test(p.image_url)) {
+      const a = document.createElement('a');
+      a.href = p.image_url; a.target = '_blank'; a.rel = 'noopener';
+      const img = document.createElement('img');
+      img.src = p.image_url;
+      img.alt = String(p.pose || '');
+      img.loading = 'lazy';
+      img.style.cssText = 'width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;display:block';
+      img.onerror = () => img.remove();
+      a.appendChild(img);
+      fig.appendChild(a);
+    }
+    const cap = document.createElement('figcaption');
+    cap.textContent = String(p.pose || '');
+    fig.appendChild(cap);
+    const state = document.createElement('div');
+    const credits = typeof p.credits === 'number' ? ' · ' + t('pose_credits', { n: String(p.credits) }) : '';
+    state.textContent = t('pose_state_' + (['waiting', 'pending', 'kept', 'discarded', 'failed'].includes(p.state) ? p.state : 'waiting')) + credits;
+    fig.appendChild(state);
+    if (p.state === 'pending' && POSE_REQ_RE.test(String(d.pose_request || '')) && POSE_CAND_RE.test(String(p.cand_id || ''))) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      ['keep', 'discard'].forEach(verb => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = verb === 'keep' ? 'ok' : 'no';
+        b.textContent = t('pose_' + verb);
+        b.onclick = () => decidePose(d.pose_request, p.cand_id, verb, row, state);
+        row.appendChild(b);
+      });
+      fig.appendChild(row);
+    }
+    grid.appendChild(fig);
+  });
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+async function decidePose(requestId, candId, verb, row, stateEl) {
+  row.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const res = await fetch(`/api/client/characters/poses/${requestId}/${candId}/${verb}`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.code || 'refused');
+    row.remove();
+    stateEl.textContent = uallakI18n.t(verb === 'keep' ? 'pose_state_kept' : 'pose_state_discarded');
+  } catch (e) {
+    console.error('pose decision failed', e);
+    stateEl.textContent = uallakI18n.t('pose_decide_failed');
+    row.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
+}
+
+// A card's details drawn again from a fresh read (the poses card fills in as
+// results arrive, and ends with them)
+function refreshActionDetails(el, d) {
+  if (!d || !Array.isArray(d.poses)) return;
+  const old = el.querySelector('.details');
+  const fresh = actionDetails(d);
+  if (old) old.replaceWith(fresh); else el.insertBefore(fresh, el.querySelector('.note'));
 }
 
 // Admin view: the buttons stay disabled until the staff box is ticked, and

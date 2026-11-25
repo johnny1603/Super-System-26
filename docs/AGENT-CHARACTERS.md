@@ -86,6 +86,48 @@ Routes, all behind the admin session:
 - `POST /api/admin/characters/candidate/save` `{agent, cand_id, pose, outfit, framing}` · `/candidate/discard` · `/candidate/promote` `{…, confirm: true}`
 - `POST /api/admin/characters/pose/remove` `{pose_id}` · `GET /api/admin/characters/pose/{pose_id}` (the thumbnail)
 
+## Poses on request, from the chat (2026-11-25)
+
+The manager can ask the media agent (ליאור) for poses outside a post ("three
+poses of Maya to compare"). Before this he answered that he couldn't, and
+that refusal raised capability_gap alerts 234 and 235.
+
+- **The action** is `generate_character_poses` `{agent, poses: [one short
+  instruction per pose]}`. Its personas are `("media",)`, so the social agent
+  (מאיה) can't propose it. It is internal (billing_exempt) accounts only,
+  because it spends uallak's own key and fills the team's shared library.
+- **The same run as the button.** `agent_characters.begin_request` goes
+  through `_begin`, which the button's `start_test` also uses: the reference
+  check, the key, the verified model, one run per agent. Then `run_test`
+  runs, the same function the button runs, with the same `pose_prompt`,
+  reference set, model and 3:4. There is no second generation path.
+  Generating reads the reference set and never writes it, which is why this is
+  not the guardrail below.
+- **No approve step** (`runs_on_ask`): the manager asked, so `propose` stores
+  the row as running, decided by the client, and starts it in a request of its
+  own (`DRIVE_IN_REQUEST`).
+- **Cap:** `MAX_REQUEST_POSES` (4). Asking for more gets one question: "up to
+  4, which 4?". The stored row is held to the cap.
+- **Cost.** Before the run, the card shows the measured estimate:
+  `estimate_credits()`, the average credits per pose over past runs, or "not
+  measured yet". After the run, each result shows its own credits, and the
+  card and the chat line show the total.
+- **Results.** The card shows each pose's image through our own path,
+  `GET /api/client/characters/poses/{request}/{cand}`. That path checks the
+  session and the account, then redirects to the stored result. The card also
+  shows each pose's credits and state. A chat line lists each pose with its
+  credits and a link.
+- **Pending, then decided.** Each result is a candidate, exactly like the
+  button's, so it also waits on /admin/characters/. **Keep**
+  (`POST …/keep`) calls the same `save_candidate`: the background is removed,
+  then the pose goes into the library approved. **Discard** calls the same
+  `discard_candidate`. A request record (`agent_pose_candidates.requests`)
+  keeps the card's state in step with decisions made on either screen.
+- **Stop.** It is in `STOP_DISCARD`. The stop is checked before each pose, and
+  poses already made stay pending.
+- **The alerts.** The first run that makes a pose closes alerts 234 and 235,
+  if they are still open capability_gap alerts (`_close_pose_gap_alerts`).
+
 **No reference = a loud failure.** `MissingReference` carries
 "לא מוגדרת תמונת ייחוס עבור <agent>" (e.g. "… עבור ליאור (lior)"). In scene,
 the asset fails with `character_missing_reference`; on a composite slide, the

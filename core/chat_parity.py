@@ -52,6 +52,9 @@ PARITY = {
     "GET /api/client/actions": (NOT_CHAT, _PLUMBING),
     "GET /api/client/actions/{proposal_id}": (NOT_CHAT, _PLUMBING),
     "POST /api/client/actions/{proposal_id}/decide": (NOT_CHAT, _PLUMBING),
+    # The poses card's own image and keep / discard buttons (generate_character_poses)
+    "GET /api/client/characters/poses/{request_id}/{cand_id}": (NOT_CHAT, _PLUMBING),
+    "POST /api/client/characters/poses/{request_id}/{cand_id}/{verb}": (NOT_CHAT, _PLUMBING),
     # ── Package, upgrade, billing ────────────────────────────────────────────
     "GET /api/client/upgrade-options": (FIELD, "upgrade_request"),
     "POST /api/client/upgrade": (NOT_CHAT, "the purchase itself is confirmed on the billing screen with the payment "

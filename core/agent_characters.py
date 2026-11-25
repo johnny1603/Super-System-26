@@ -1033,6 +1033,7 @@ def _candidates() -> dict:
         data = {}
     data.setdefault("agents", {})
     data.setdefault("jobs", {})
+    data.setdefault("requests", {})
     return data
 
 
@@ -1046,35 +1047,46 @@ def _running(job: dict) -> bool:
     return _now() - then < timedelta(minutes=JOB_STALE_MIN)
 
 
-def start_test(agent: str, instruction: str = "", count: int = 3, by: str = ADMIN) -> dict:
-    """Checks and records a test run; returns {"poses"} for run_test (the
-    route runs it in the background). Refuses plainly: no reference, no key,
-    a test already running."""
-    _admin_only(agent, by)
-    agent = clean_agent(agent)
+def _begin(agent: str, poses: list, by: str, request: str = "") -> dict:
+    """The checks and the job record every test run goes through — the
+    workspace's button and a request from the chat alike. Refuses plainly:
+    no reference, no key, an unverified model, a test already running."""
     reference_for(agent)                                          # MissingReference: the explicit line
     if not configured():
         raise CharacterUnavailable(agent, "not_configured", f"{KEY_ENV} is not set")
     from core import media_gen_service as gen
     gen.character_model()                                         # an unverified model path is refused
-    instruction = _strip_placeholders(re.sub(r"\s+", " ", str(instruction or ""))).strip()[:200]
-    count = min(max(int(count or 3), 1), 3)
-    poses = [instruction] * count if instruction else list(DEFAULT_TEST_POSES[:count])
     data = _candidates()
     if _running(data["jobs"].get(agent)):
         raise ValueError("a test for this agent is already running")
     data["jobs"][agent] = {"state": "running", "started_at": _now().isoformat(), "poses": poses, "made": 0,
-                           "credits": 0, "errors": [], "by": by}
+                           "credits": 0, "errors": [], "by": by, **({"request": request} if request else {})}
     _write(CANDS_KEY, data)
     return {"poses": poses}
 
 
-def run_test(agent: str, poses: list, _gen=None) -> dict:
+def start_test(agent: str, instruction: str = "", count: int = 3, by: str = ADMIN) -> dict:
+    """The workspace's button: checks and records a test run; returns
+    {"poses"} for run_test (the route runs it in the background)."""
+    _admin_only(agent, by)
+    agent = clean_agent(agent)
+    instruction = _strip_placeholders(re.sub(r"\s+", " ", str(instruction or ""))).strip()[:200]
+    count = min(max(int(count or 3), 1), 3)
+    poses = [instruction] * count if instruction else list(DEFAULT_TEST_POSES[:count])
+    return _begin(agent, poses, by)
+
+
+def run_test(agent: str, poses: list, _gen=None, request: str = "", stopped=None) -> dict:
     """The test itself (background): one generation per pose, each result a
-    candidate. Never raises; the job record says what happened."""
+    candidate. Never raises; the job record says what happened. `request`: a
+    chat request's id — its record gets each result too. `stopped`: checked
+    BEFORE each pose; once True, nothing more is generated."""
     from core import media_gen_service as gen
-    made, credits, errors = 0, 0.0, []
-    for pose in poses:
+    made, credits, errors, halted = 0, 0.0, [], False
+    for index, pose in enumerate(poses):
+        if stopped is not None and stopped():
+            halted = True
+            break
         try:
             prompt = pose_prompt(agent, pose, framing="full body")
             refs = reference_urls([agent])
@@ -1084,6 +1096,8 @@ def run_test(agent: str, poses: list, _gen=None) -> dict:
                     "credits": out.get("credits") or 0, "aspect_sent": out.get("aspect_ratio") or POSE_ASPECT,
                     "model": out.get("model", ""), "refs": len(refs), "request_id": str(out.get("request_id") or ""),
                     "created_at": _now().isoformat(), "promoted": False}
+            if request:
+                cand["request"] = request
             data = _candidates()
             data["agents"][agent] = ((data["agents"].get(agent) or []) + [cand])[-MAX_CANDIDATES:]
             made += 1
@@ -1091,18 +1105,180 @@ def run_test(agent: str, poses: list, _gen=None) -> dict:
             job = data["jobs"].get(agent) or {}
             job.update(made=made, credits=round(credits, 2))
             data["jobs"][agent] = job
+            if request:
+                _request_result(data, request, index, {"cand_id": cand["cand_id"], "url": cand["url"],
+                                                       "credits": cand["credits"], "state": "pending"})
             _write(CANDS_KEY, data)
         except Exception as e:
             errors.append(getattr(e, "message", "") or f"{type(e).__name__}: {str(e)[:200]}")
+            if request:
+                data = _candidates()
+                _request_result(data, request, index, {"state": "failed"})
+                _write(CANDS_KEY, data)
     data = _candidates()
     job = data["jobs"].get(agent) or {}
-    job.update(state="done" if made else "failed", finished_at=_now().isoformat(), made=made,
-               credits=round(credits, 2), errors=errors[:5])
+    job.update(state="stopped" if halted else "done" if made else "failed", finished_at=_now().isoformat(),
+               made=made, credits=round(credits, 2), errors=errors[:5])
     data["jobs"][agent] = job
+    if request and request in data["requests"]:
+        data["requests"][request].update(state=job["state"], made=made, credits=round(credits, 2),
+                                         finished_at=job["finished_at"])
     _write(CANDS_KEY, data)
     if errors:
         _alert([f"character test for {agent}: {len(errors)} of {len(poses)} failed — {errors[0]}"])
     return job
+
+
+# ─── Poses on request, from the chat (2026-11-25) ────────────────────────────
+#
+# The manager asks the media agent (ליאור) for poses of an agent character
+# outside a post ("three poses of Maya to compare"). It is the SAME run as the
+# workspace's button — _begin + run_test: the reference set, the style clause,
+# the plain background, the configured model, POSE_ASPECT — never a second
+# path. Generating from the manager's reference set writes no character (the
+# set is read, never changed). Each result waits as a candidate, exactly like
+# the button's: kept (שמירה למאגר) or discarded by the manager, in the chat or
+# on /admin/characters/. A request record ties the results to the chat card:
+# CANDS_KEY "requests": {request_id: {agent, client_id, proposal_id, poses,
+# estimate, results[i]: {cand_id, url, credits, state}, state, made, credits}}.
+
+MAX_REQUEST_POSES = 4              # per request: a mistyped "40" never makes 40 (and fits one request's time)
+MAX_REQUESTS = 40
+REQUEST_RE = re.compile(r"^q[a-f0-9]{10}$")
+RESULT_STATES = ("waiting", "pending", "kept", "discarded", "failed")
+
+
+def new_request_id() -> str:
+    return "q" + secrets.token_hex(5)
+
+
+def clean_pose(text) -> str:
+    return _strip_placeholders(re.sub(r"\s+", " ", str(text or ""))).strip()[:200]
+
+
+def _request_result(data: dict, request: str, index: int, changes: dict):
+    entry = data["requests"].get(request)
+    if not entry:
+        return
+    results = entry.setdefault("results", [])
+    while len(results) <= index:
+        results.append({"state": "waiting"})
+    results[index].update(changes)
+
+
+def estimate_credits() -> dict:
+    """The cost BEFORE a run, from what past runs really cost: {"each",
+    "runs"} — each = the average credits of one pose over the stored runs
+    (jobs and requests); None when nothing was measured yet."""
+    data = _candidates()
+    made, spent = 0, 0.0
+    for job in list(data["jobs"].values()) + list(data["requests"].values()):
+        if int(job.get("made") or 0) > 0 and job.get("state") != "running":
+            made += int(job["made"])
+            spent += float(job.get("credits") or 0)
+    if not made:
+        return {"each": None, "runs": 0}
+    return {"each": round(spent / made, 2), "runs": made}
+
+
+def begin_request(agent: str, poses: list, request: str, client_id: int, proposal_id=None,
+                  estimate=None) -> dict:
+    """A chat request's run: checked and recorded through _begin (the same
+    checks as the button), plus its request record."""
+    agent = clean_agent(agent)
+    poses = [clean_pose(p) for p in poses or [] if clean_pose(p)]
+    if not 1 <= len(poses) <= MAX_REQUEST_POSES:
+        raise ValueError(f"1-{MAX_REQUEST_POSES} poses per request")
+    if not REQUEST_RE.match(str(request or "")):
+        raise ValueError("bad request id")
+    out = _begin(agent, poses, "media_agent", request)
+    data = _candidates()
+    data["requests"][request] = {"agent": agent, "client_id": int(client_id or 0), "proposal_id": proposal_id,
+                                 "poses": poses, "estimate": estimate, "state": "running",
+                                 "started_at": _now().isoformat(), "made": 0, "credits": 0,
+                                 "results": [{"state": "waiting"} for _ in poses]}
+    if len(data["requests"]) > MAX_REQUESTS:
+        for old in sorted(data["requests"], key=lambda k: data["requests"][k].get("started_at", ""))[:-MAX_REQUESTS]:
+            data["requests"].pop(old, None)
+    _write(CANDS_KEY, data)
+    return out
+
+
+def request_view(request: str) -> dict:
+    """What the chat card shows: per pose its instruction, state, credits and
+    our own image path (never the vendor's URL); {} when unknown."""
+    if not REQUEST_RE.match(str(request or "")):
+        return {}
+    entry = _candidates()["requests"].get(request)
+    if not entry:
+        return {}
+    poses = []
+    for i, text in enumerate(entry.get("poses") or []):
+        r = (entry.get("results") or [])[i] if i < len(entry.get("results") or []) else {}
+        state = r.get("state") if r.get("state") in RESULT_STATES else "waiting"
+        row = {"pose": text, "state": state, "credits": r.get("credits") if state != "waiting" else None}
+        if r.get("cand_id") and state in ("pending", "kept", "discarded"):
+            row["cand_id"] = r["cand_id"]
+            if state != "discarded":
+                row["image_url"] = f"/api/client/characters/poses/{request}/{r['cand_id']}"
+        poses.append(row)
+    return {"request": request, "agent": entry.get("agent", ""), "name": AGENT_NAMES.get(entry.get("agent"), ""),
+            "state": entry.get("state", ""), "made": int(entry.get("made") or 0),
+            "credits": round(float(entry.get("credits") or 0), 2), "estimate": entry.get("estimate"),
+            "client_id": int(entry.get("client_id") or 0), "poses": poses}
+
+
+def _request_entry(client_id: int, request: str, cand_id: str) -> tuple:
+    if not REQUEST_RE.match(str(request or "")) or not CAND_ID_RE.match(str(cand_id or "")):
+        raise ValueError("bad id")
+    entry = _candidates()["requests"].get(request) or {}
+    if int(entry.get("client_id") or -1) != int(client_id or 0):
+        raise ValueError("no such result")                       # another account's request = a missing one
+    result = next((r for r in entry.get("results") or [] if r.get("cand_id") == cand_id), None)
+    if not result:
+        raise ValueError("no such result")
+    return entry, result
+
+
+def request_image_url(client_id: int, request: str, cand_id: str) -> str:
+    """The stored result URL behind our own path, for THIS account only."""
+    _entry, result = _request_entry(client_id, request, cand_id)
+    if result.get("state") == "discarded" or not URL_RE.match(str(result.get("url") or "")):
+        raise ValueError("no such result")
+    return result["url"]
+
+
+def request_decide(client_id: int, request: str, cand_id: str, verb: str, **kw) -> dict:
+    """Keep / discard one result from the chat — the SAME save_candidate /
+    discard_candidate as the workspace's buttons. The route allows it on the
+    team's own (internal) accounts only, where the manager is the one person
+    who also runs /admin/characters/."""
+    entry, result = _request_entry(client_id, request, cand_id)
+    if result.get("state") != "pending":
+        raise ValueError("this result was already kept or discarded")
+    if verb == "keep":
+        save_candidate(entry["agent"], cand_id, by=ADMIN, **kw)
+    elif verb == "discard":
+        discard_candidate(entry["agent"], cand_id, by=ADMIN)
+    else:
+        raise ValueError("keep or discard")
+    return request_view(request)
+
+
+def _mark_result(cand_id: str, state: str, pose_id: str = ""):
+    """A candidate kept or discarded (here or on the workspace): its request
+    record says so, so the chat card shows it."""
+    data = _candidates()
+    changed = False
+    for entry in data["requests"].values():
+        for r in entry.get("results") or []:
+            if r.get("cand_id") == cand_id and r.get("state") == "pending":
+                r["state"] = state
+                if pose_id:
+                    r["pose_id"] = pose_id
+                changed = True
+    if changed:
+        _write(CANDS_KEY, data)
 
 
 def _candidate(agent: str, cand_id: str, data: dict) -> dict:
@@ -1140,6 +1316,7 @@ def save_candidate(agent: str, cand_id: str, pose: str = "", outfit: str = "", f
                       prompt=cand.get("prompt", ""))
     approve_poses([record["pose_id"]])
     _drop_candidate(agent, cand_id)
+    _mark_result(cand_id, "kept", record["pose_id"])
     out = view()
     out["saved"] = record["pose_id"]
     out["warning"] = fitted["warning"]
@@ -1151,6 +1328,7 @@ def discard_candidate(agent: str, cand_id: str, by: str = ADMIN) -> dict:
     agent = clean_agent(agent)
     _candidate(agent, cand_id, _candidates())
     _drop_candidate(agent, cand_id)
+    _mark_result(cand_id, "discarded")
     return view()
 
 

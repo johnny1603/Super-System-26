@@ -980,7 +980,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   each agent's REFERENCE SET (up to 14 images, each https url + media/job id; notes) set by the admin in the
   `/admin/characters/` workspace (paste or upload via the documented POST /files/generate-upload-url; the
   whole set sent within the model's max, shared between characters; test poses on the real path → save to
-  the library / discard / promote-with-warning; pose library with remove), STORED in app_settings
+  the library / discard / promote-with-warning; pose library with remove; the SAME test run on request from
+  the media agent's chat, `generate_character_poses`, runs on the ask, ≤4, internal only, results +
+  credits on the card, keep/discard there too — 2026-11-25), STORED in app_settings
   `agent_references` (+ `agent_pose_candidates`), with a durable copy in our Drive (uploads are temporary → re-uploaded after
   24 h). **No element list** — Higgsfield's REST API has none (the 052b1d6 call answered 405); nothing lists or
   re-reads. Brief fields `characters` + `character_mode` (composite = cut-out on a text slide under the text,

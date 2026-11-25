@@ -2904,6 +2904,235 @@ def _run_rerun_production(client_id: int, params: dict, background_tasks):
     return post_pipeline.rerun(client_id, params["item_id"])
 
 
+# ─── Agent-character poses on request (2026-11-25) ───────────────────────────
+# The manager asks the media agent for poses of an agent character outside a
+# post. It runs ON THE ASK (runs_on_ask: the request is the yes, no card to
+# approve first) on the SAME run as /admin/characters/'s test-poses button
+# (agent_characters._begin + run_test). The results come back on the card and
+# in a chat line, each with its credits, and wait as candidates: the manager
+# keeps or discards each one, in the chat or on the characters page. Internal
+# (team) accounts only: it spends uallak's own key and fills the team's shared
+# pose library. The media agent's action only — the social agent never
+# generates media.
+# Alerts 234 and 235 (capability_gap: "three poses of Maya" refused) are
+# closed by the first run that makes a pose.
+POSE_GAP_ALERTS = (234, 235)
+POSE_COUNT_SEEN_MAX = 50             # what a model may write; the cap itself is agent_characters.MAX_REQUEST_POSES
+
+_POSES_TOO_MANY = _txt(
+    "אפשר עד {max} תנוחות בבקשה אחת, וביקשתם {count}. אילו {max} להכין קודם?",
+    "Up to {max} poses per request, and you asked for {count}. Which {max} should I make first?",
+    "Jusqu'à {max} poses par demande, et vous en avez demandé {count}. Lesquelles faire d'abord ?",
+    "حتى {max} وضعيات في الطلب الواحد، وطلبتم {count}. أيّها أُعدّ أولًا؟",
+    "До {max} поз за один запрос, а вы попросили {count}. Какие {max} сделать сначала?")
+_POSES_BUSY = _txt(
+    "כבר נוצרות עכשיו תנוחות של {name}. כשהן יסתיימו אפשר לבקש עוד.",
+    "Poses of {name} are already being made. Once they're done you can ask for more.",
+    "Des poses de {name} sont déjà en cours. Une fois terminées, vous pourrez en demander d'autres.",
+    "تُنشأ الآن وضعيات لـ {name}. عندما تنتهي يمكن طلب المزيد.",
+    "Позы {name} уже создаются. Когда они будут готовы, можно попросить ещё.")
+_POSES_NOT_READY = _txt(
+    "חשבון יצירת הדמויות של הצוות לא מוכן כרגע, אז לא נוצר כלום. הצוות קיבל התראה.",
+    "The team's character account isn't ready right now, so nothing was made. The team was alerted.",
+    "Le compte de personnages de l'équipe n'est pas prêt pour l'instant, rien n'a été créé. L'équipe est prévenue.",
+    "حساب شخصيات الفريق غير جاهز حاليًا، لذا لم يُنشأ شيء. تم تنبيه الفريق.",
+    "Аккаунт персонажей команды сейчас не готов, поэтому ничего не создано. Команда уведомлена.")
+_POSES_COST_KNOWN = _txt(
+    "עלות משוערת: כ-{total} קרדיטים ({each} לתנוחה, לפי הריצות הקודמות).",
+    "Estimated cost: about {total} credits ({each} per pose, from past runs).",
+    "Coût estimé : environ {total} crédits ({each} par pose, d'après les précédents).",
+    "التكلفة التقديرية: نحو {total} رصيد ({each} لكل وضعية، حسب المرات السابقة).",
+    "Примерная стоимость: около {total} кредитов ({each} за позу, по прошлым запускам).")
+_POSES_COST_UNKNOWN = _txt(
+    "העלות עוד לא נמדדה בריצות קודמות. העלות המדויקת תופיע ליד כל תוצאה.",
+    "The cost hasn't been measured on past runs yet. The exact cost shows next to each result.",
+    "Le coût n'a pas encore été mesuré. Le coût exact s'affiche à côté de chaque résultat.",
+    "لم تُقَس التكلفة في مرات سابقة بعد. التكلفة الدقيقة تظهر بجانب كل نتيجة.",
+    "Стоимость по прошлым запускам ещё не измерена. Точная цена появится рядом с каждым результатом.")
+_POSES_LINE = _txt("{i}. {pose} — {credits} קרדיטים", "{i}. {pose} — {credits} credits",
+                   "{i}. {pose} — {credits} crédits", "{i}. {pose} — {credits} رصيد",
+                   "{i}. {pose} — {credits} кредитов")
+_POSES_LINE_FAILED = _txt("{i}. {pose} — לא נוצרה", "{i}. {pose} — not made", "{i}. {pose} — non créée",
+                          "{i}. {pose} — لم تُنشأ", "{i}. {pose} — не создана")
+_POSES_LINE_SKIPPED = _txt("{i}. {pose} — לא נוצרה (נעצר)", "{i}. {pose} — not made (stopped)",
+                           "{i}. {pose} — non créée (arrêté)", "{i}. {pose} — لم تُنشأ (أُوقف)",
+                           "{i}. {pose} — не создана (остановлено)")
+
+
+def _poses_count_seen(value) -> int:
+    if isinstance(value, (list, tuple)):
+        return len(value)
+    return 1 if str(value or "").strip() else 0
+
+
+def _v_pose_agent(value, client_id: int) -> str:
+    from core import agent_characters
+    return agent_characters.clean_agent(value)
+
+
+def _v_pose_list(value, client_id: int) -> list:
+    """What the model wrote: one short instruction per pose. More than the cap
+    is let through HERE so prepare can say the limit plainly; the stored row
+    is held to the cap (_validate_poses_stored)."""
+    from core import agent_characters
+    raw = value if isinstance(value, (list, tuple)) else [value]
+    poses = [agent_characters.clean_pose(p) for p in raw]
+    poses = [p for p in poses if len(p) >= 3]
+    if not 1 <= len(poses) <= POSE_COUNT_SEEN_MAX or len(poses) != len(raw):
+        raise ValueError("poses: a list of short pose instructions (3-200 characters each)")
+    return poses
+
+
+def _validate_poses_stored(client_id: int, params: dict) -> dict:
+    from core import agent_characters
+    params = dict(params or {})
+    if set(params) - {"agent", "poses", "request", "estimate"}:
+        raise ValueError("unknown params")
+    clean = {"agent": _v_pose_agent(params.get("agent"), client_id),
+             "poses": _v_pose_list(params.get("poses"), client_id)}
+    if len(clean["poses"]) > agent_characters.MAX_REQUEST_POSES:
+        raise ValueError(f"at most {agent_characters.MAX_REQUEST_POSES} poses per request")
+    if not agent_characters.REQUEST_RE.match(str(params.get("request") or "")):
+        raise ValueError("bad request id")
+    clean["request"] = params["request"]
+    estimate = params.get("estimate")
+    if estimate is not None:
+        if not isinstance(estimate, (int, float)) or isinstance(estimate, bool) or not 0 <= estimate <= 10000:
+            raise ValueError("bad estimate")
+        clean["estimate"] = estimate
+    return clean
+
+
+def _poses_possible(state: dict, client: dict) -> bool:
+    try:
+        from core import agent_characters
+        return agent_characters.configured()
+    except Exception:
+        return False
+
+
+def _prepare_poses(client_id: int, params: dict, context: dict, rows: list) -> dict:
+    """Says the cap, a missing reference, the key or a run in progress plainly
+    (no card); otherwise the stored params: + the request id and the measured
+    cost per pose (the card shows the total BEFORE anything runs)."""
+    from core import agent_characters as ac
+    lang = (context or {}).get("language") or "he"
+    agent, poses = params["agent"], params["poses"]
+    name = ac.AGENT_NAMES.get(agent, agent) if lang == "he" else agent
+    if len(poses) > ac.MAX_REQUEST_POSES:
+        return {"clarify": _pick(_POSES_TOO_MANY, lang).replace("{max}", str(ac.MAX_REQUEST_POSES))
+                .replace("{count}", str(len(poses)))}
+    try:
+        ac.reference_for(agent)
+    except ac.MissingReference:
+        return {"refuse": ac.missing_text(agent, lang)}
+    if not ac.configured():
+        _alert(f"client {client_id}: poses of {agent} asked in chat, but {ac.KEY_ENV} is not set")
+        return {"refuse": _pick(_POSES_NOT_READY, lang)}
+    if ac._running(ac._candidates()["jobs"].get(agent)):
+        return {"refuse": _pick(_POSES_BUSY, lang).replace("{name}", name)}
+    each = ac.estimate_credits()["each"]
+    out = {"agent": agent, "poses": poses, "request": ac.new_request_id()}
+    if each is not None:
+        out["estimate"] = each
+    return {"params": out}
+
+
+def _poses_cost_before(params: dict, lang: str) -> str:
+    each = params.get("estimate")
+    if each is None:
+        return _pick(_POSES_COST_UNKNOWN, lang)
+    total = round(float(each) * len(params.get("poses") or []), 2)
+    return _pick(_POSES_COST_KNOWN, lang).replace("{total}", f"{total:g}").replace("{each}", f"{float(each):g}")
+
+
+def _poses_display(client_id: int, params: dict) -> dict:
+    from core import agent_characters as ac
+    lang = _lang(client_id)
+    agent = params.get("agent", "")
+    view = ac.request_view(params.get("request", "")) or {}
+    return {"name": ac.AGENT_NAMES.get(agent, agent) if lang == "he" else agent,
+            "count": len(params.get("poses") or []), "cost_before": _poses_cost_before(params, lang),
+            "made": view.get("made", 0), "credits": f"{float(view.get('credits') or 0):g}"}
+
+
+def _poses_details(client_id: int, params: dict) -> dict:
+    """The card's results: each pose with its state, credits and OUR image
+    path — the dashboard shows them and the keep / discard buttons."""
+    from core import agent_characters as ac
+    view = ac.request_view(params.get("request", ""))
+    if not view:
+        view = {"request": params.get("request", ""), "made": 0, "credits": 0, "estimate": params.get("estimate"),
+                "poses": [{"pose": p, "state": "waiting", "credits": None} for p in params.get("poses") or []]}
+    return {"poses": view["poses"], "pose_request": view["request"], "pose_credits": view["credits"],
+            "pose_estimate": params.get("estimate"), "pose_made": view["made"]}
+
+
+def _close_pose_gap_alerts() -> list:
+    """Closes alerts 234 and 235 (only those, only while open, only if they
+    are the capability_gap alerts) — the first run that works answers them."""
+    try:
+        rows = (_db().table("alerts").select("id,source,status").in_("id", list(POSE_GAP_ALERTS))
+                .execute().data or [])
+        ids = [r["id"] for r in rows if r.get("source") == "capability_gap" and r.get("status") == "open"]
+        if ids:
+            _db().table("alerts").update({"status": "resolved", "resolved_at": _now().isoformat()}) \
+                .in_("id", ids).eq("status", "open").execute()
+            _log(f"capability_gap alerts {ids} closed: poses on request ran")
+        return ids
+    except Exception as e:
+        _log(f"pose gap alerts not closed ({type(e).__name__})", severity="WARNING")
+        return []
+
+
+def _run_character_poses(client_id: int, params: dict, background_tasks, row: dict = None) -> dict:
+    from core import agent_characters as ac
+    from core import media_gen_service as gen
+    try:
+        ac.begin_request(params["agent"], params["poses"], params["request"], client_id,
+                         (row or {}).get("id"), params.get("estimate"))
+    except ac.MissingReference:
+        raise ActionFailed("no_reference")
+    except (ac.CharacterUnavailable, gen.UnverifiedModelPath) as e:
+        _alert(f"client {client_id}: poses of {params['agent']} on request not started — the agents' key or the "
+               f"character model is not set ({type(e).__name__})")
+        raise ActionFailed("not_configured", "the agents' key or the character model is not set")
+    except ValueError as e:
+        raise ActionFailed("busy", str(e))
+    proposal_id = (row or {}).get("id")
+    job = ac.run_test(params["agent"], params["poses"], request=params["request"],
+                      stopped=lambda: stop_requested(proposal_id))
+    if not job.get("made"):
+        raise ActionFailed("not_made", "; ".join(job.get("errors") or [])[:300])
+    _close_pose_gap_alerts()
+    return {"made": job["made"], "credits": job.get("credits", 0), "asked": len(params["poses"]),
+            "request": params["request"], "agent": params["agent"], "state": job.get("state")}
+
+
+def _poses_done_message(result: dict, lang: str) -> str:
+    """The chat line: each pose with its credits, the total, where to decide.
+    Each image is linked by OUR session-gated path."""
+    from core import agent_characters as ac
+    view = ac.request_view(result.get("request", "")) or {}
+    agent = result.get("agent", "")
+    name = ac.AGENT_NAMES.get(agent, agent) if lang == "he" else agent
+    head = (_pick(ACTIONS["generate_character_poses"]["done"], lang).replace("{name}", name)
+            .replace("{made}", str(result.get("made", 0))).replace("{count}", str(result.get("asked", 0)))
+            .replace("{credits}", f"{float(result.get('credits') or 0):g}"))
+    lines = []
+    for i, p in enumerate(view.get("poses") or [], 1):
+        if p["state"] in ("pending", "kept"):
+            line = (_pick(_POSES_LINE, lang).replace("{credits}", f"{float(p.get('credits') or 0):g}"))
+            if p.get("image_url"):
+                line += f"\n{_self_url()}{p['image_url']}"
+        elif p["state"] == "failed":
+            line = _pick(_POSES_LINE_FAILED, lang)
+        else:
+            line = _pick(_POSES_LINE_SKIPPED, lang)
+        lines.append(line.replace("{i}", str(i)).replace("{pose}", p["pose"]))
+    return "\n".join([head] + lines)
+
+
 def start_system_run(client_id: int, action: str, params: dict, persona: str = "general") -> bool:
     """A slow action the SYSTEM starts on a yes the manager already gave
     elsewhere (a post's copy approved in the Social tab → its production):
@@ -4657,6 +4886,66 @@ ACTIONS = {
         # The honest line: done only when nothing failed (post_pipeline.summary)
         "done_message": lambda result, lang: result.get("text") or _pick(ACTIONS["rerun_post_production"]["done"], lang),
     },
+    "generate_character_poses": {
+        # Poses of an agent character ON REQUEST, outside a post (2026-11-25):
+        # the SAME run as /admin/characters/'s test-poses button. Runs on the
+        # ask — the manager asked for it, so there is no approve step.
+        "approver": "client", "client_requestable": True, "internal_only": True, "kind": "execute",
+        "personas": ("media",), "runs_on_ask": True, "needs_row": True,
+        "does": "Makes poses of one of the team's agent characters (maya, lior, yoav, johnny, elinor, nissim, uri) "
+                "when the manager asks for them OUTSIDE a post — e.g. \"three poses of Maya to compare\". Same "
+                "generation as a post's character (the manager's reference images, the same style and model). It "
+                "runs at once, on the ask: the results come back in this chat, each with its credits, and wait as "
+                "pending results the manager keeps or discards (here or on the characters page). Nothing is "
+                "published. One short instruction per pose; at most 4 per request.",
+        "params": {"agent": {"required": True, "validate": _v_pose_agent,
+                             "hint": "maya|lior|yoav|johnny|elinor|nissim|uri — the agent whose poses they asked for"},
+                   "poses": {"required": True, "validate": _v_pose_list,
+                             "hint": "a list with ONE short English pose instruction per pose they asked for (e.g. "
+                                     "[\"standing, waving hello\", \"sitting at a desk, typing\"]). If they gave a count "
+                                     "and no poses, write that many clearly different poses. At most 4: if they asked "
+                                     "for more, list them all — the system asks which 4."}},
+        "available": _poses_possible,
+        "prepare": _prepare_poses,
+        "validate_stored": _validate_poses_stored,
+        "run": _run_character_poses,
+        "display": _poses_display,
+        "details": _poses_details,
+        "slow": {"minutes": 10, "eta": _txt(
+            "כל תנוחה לוקחת בדרך כלל פחות מדקה.", "Each pose usually takes under a minute.",
+            "Chaque pose prend généralement moins d'une minute.", "تستغرق كل وضعية عادة أقل من دقيقة.",
+            "Каждая поза обычно занимает меньше минуты.")},
+        "title": _txt("תנוחות של דמות", "Character poses", "Poses d'un personnage", "وضعيات شخصية", "Позы персонажа"),
+        "what": _txt("נוצרות {count} תנוחות של {name}, באותה דרך שבה הדמות נוצרת לפוסט (תמונות הייחוס, אותו סגנון ואותו מודל). {cost_before} התוצאות יחזרו לכאן ויחכו כממתינות במאגר של {name}: שומרים את מה שטוב ומוחקים את השאר.",
+                     "Making {count} poses of {name}, the same way the character is made for a post (the reference images, the same style and model). {cost_before} The results come back here and wait as pending in {name}'s library: keep what's good, discard the rest.",
+                     "Création de {count} poses de {name}, comme pour un post (les images de référence, le même style et le même modèle). {cost_before} Les résultats reviennent ici et attendent dans la bibliothèque de {name} : gardez ce qui est bien, supprimez le reste.",
+                     "تُنشأ {count} وضعيات لـ {name}، بالطريقة نفسها التي تُنشأ بها الشخصية لمنشور (صور المرجع، الأسلوب والنموذج نفسيهما). {cost_before} تعود النتائج إلى هنا وتنتظر في مكتبة {name}: احتفظوا بالجيد واحذفوا الباقي.",
+                     "Создаётся {count} поз персонажа {name} — так же, как для поста (эталонные изображения, тот же стиль и модель). {cost_before} Результаты вернутся сюда и будут ждать в библиотеке {name}: оставьте удачные, удалите остальные."),
+        "done": _txt("מוכן ✓ {made} מתוך {count} תנוחות של {name}. סה״כ {credits} קרדיטים. שמרו או מחקו כל אחת בכרטיס או בעמוד הדמויות.",
+                     "Ready ✓ {made} of {count} poses of {name}. Total {credits} credits. Keep or discard each one on the card or on the characters page.",
+                     "Prêt ✓ {made} poses sur {count} de {name}. Total {credits} crédits. Gardez ou supprimez chacune sur la carte ou la page des personnages.",
+                     "جاهز ✓ {made} من {count} وضعيات لـ {name}. المجموع {credits} رصيد. احتفظوا أو احذفوا كلًّا منها في البطاقة أو في صفحة الشخصيات.",
+                     "Готово ✓ {made} из {count} поз {name}. Всего {credits} кредитов. Оставьте или удалите каждую на карточке или на странице персонажей."),
+        "done_message": lambda result, lang: _poses_done_message(result, lang),
+        "refusals": {
+            "no_reference": _txt("לא נוצרה אף תנוחה: לדמות הזו לא מוגדרות תמונות ייחוס. אפשר להוסיף אותן בעמוד הדמויות.",
+                                 "No pose was made: this character has no reference images. They can be added on the characters page.",
+                                 "Aucune pose créée : ce personnage n'a pas d'images de référence. Ajoutez-les sur la page des personnages.",
+                                 "لم تُنشأ أي وضعية: لا توجد صور مرجعية لهذه الشخصية. يمكن إضافتها في صفحة الشخصيات.",
+                                 "Ни одной позы не создано: у персонажа нет эталонных изображений. Их можно добавить на странице персонажей."),
+            "not_configured": _POSES_NOT_READY,
+            "busy": _txt("לא התחלתי: כבר נוצרות תנוחות לדמות הזו. כשהן יסתיימו אפשר לבקש שוב.",
+                         "I didn't start: poses of this character are already being made. Ask again once they're done.",
+                         "Je n'ai pas commencé : des poses de ce personnage sont déjà en cours. Redemandez une fois terminées.",
+                         "لم أبدأ: تُنشأ الآن وضعيات لهذه الشخصية. اطلبوا مجددًا عندما تنتهي.",
+                         "Не начал: позы этого персонажа уже создаются. Попросите снова, когда они будут готовы."),
+            "not_made": _txt("אף תנוחה לא נוצרה: ספק היצירה החזיר שגיאה. הצוות קיבל התראה, ואפשר לבקש שוב בעוד כמה דקות.",
+                             "No pose was made: the generation service returned an error. The team was alerted; you can ask again in a few minutes.",
+                             "Aucune pose créée : le service de génération a renvoyé une erreur. L'équipe est prévenue ; vous pouvez redemander dans quelques minutes.",
+                             "لم تُنشأ أي وضعية: أعادت خدمة التوليد خطأ. تم تنبيه الفريق، ويمكن الطلب مجددًا بعد دقائق.",
+                             "Ни одной позы не создано: сервис генерации вернул ошибку. Команда уведомлена, попросите снова через несколько минут."),
+        },
+    },
     "approve_social_items": {
         # The Social tab's batch approval as a chat card (core/social_queue):
         # the SAME approve() the tab's approval card calls. Approved ≠ published.
@@ -6172,6 +6461,9 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
 
     approver = _approver_for(spec, actor)
     status = "proposed" if approver == actor else "awaiting_staff"
+    # runs_on_ask (generate_character_poses): the client's own request IS the
+    # yes — stored as running, decided by the client, and started now
+    on_ask = bool(spec.get("runs_on_ask")) and actor == "client" and approver == "client"
     lang = _lang(client_id) if actor == "client" else "he"
     open_rows = [r for r in _open_rows(client_id) if r.get("action") == name and not _expired(r)]
     supersedes, prepared_notice = None, ""
@@ -6226,11 +6518,12 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
             # Same action + params already open: show that card, don't stack a second
             if (row.get("params") or {}) == params:
                 return {"card": card(row, actor, lang), "status": row.get("status")}
+    record = {"client_id": int(client_id), "action": name, "params": params, "origin": origin,
+              "persona": persona or "general", "approver": approver, "status": status}
+    if on_ask:
+        record.update(status="running", decided_at=_now().isoformat(), decided_by="client")
     try:
-        rows = _db().table(TABLE).insert({
-            "client_id": int(client_id), "action": name, "params": params, "origin": origin,
-            "persona": persona or "general", "approver": approver, "status": status,
-        }).execute().data or []
+        rows = _db().table(TABLE).insert(record).execute().data or []
     except Exception as e:
         _log(f"client {client_id}: proposal {name} not stored: {type(e).__name__}: {e}",
              severity="WARNING", client_id=client_id)
@@ -6238,6 +6531,14 @@ def propose(client_id: int, origin: str, persona: str, raw, state: dict = None,
     if not rows:
         return {"error": "storage_unavailable"}
     row = rows[0]
+    if on_ask:
+        _log(f"client {client_id}: {name} runs on the ask from {origin}/{persona}", client_id=client_id,
+             proposal=row.get("id"), action=name, status="running")
+        if not run_in_own_request(row, "client"):
+            import threading
+            threading.Thread(target=_execute_in_background, args=(row, spec, params, "client", client, lang),
+                             name="action-on-ask", daemon=True).start()
+        return {"card": card(row, actor, lang), "status": "running"}
     if supersedes:
         # The client's change produced a new card; the old one can no longer be clicked
         _claim(supersedes, OPEN_STATUSES, {"status": "cancelled", "finished_at": _now().isoformat(),
@@ -6483,7 +6784,7 @@ def stop_run(row: dict) -> bool:
 # is kept as a draft in the Social tab, waiting for approval — never thrown away.
 STOP_DISCARD = {"advance_organic_plan", "approve_organic_keywords", "build_seo_report", "competitor_digest",
                 "create_brand_mockups", "create_landing_page", "edit_landing_page", "upgrade_to_branding",
-                "upgrade_to_organic", "rerun_post_production"}
+                "upgrade_to_organic", "rerun_post_production", "generate_character_poses"}
 STOP_JOB = {"send_tiktok_to_inbox"}
 STOP_FINISH = {"configure_conversion", "revert_conversion", "publish_youtube_from_media", "update_site_items",
                "update_site_items_without_backup", "clone_voice", "make_presenter_video",
@@ -6640,7 +6941,7 @@ def _execute_in_background(row: dict, spec: dict, params: dict, actor: str, clie
 # The bound: one request lasts at most ~290 s (the proxy's read timeout; the
 # deploy sets no --timeout, so Cloud Run's 300 s). A pass longer than that
 # carries on with throttled CPU and its deadline still ends the row.
-DRIVE_IN_REQUEST = {"rerun_post_production"}
+DRIVE_IN_REQUEST = {"rerun_post_production", "generate_character_poses"}
 DRIVE_PREFIX = "action_drive:"
 DRIVE_WAIT_PREFIX = "action_drive_wait:"
 DRIVE_PICKUP_S = 45

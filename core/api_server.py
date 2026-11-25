@@ -8925,6 +8925,45 @@ def client_action_status(proposal_id: int, request: Request):
         raise HTTPException(status_code=404, detail={"code": "not_found"})
     return {"success": True, "data": view}
 
+# Agent-character poses asked for in the chat (agent_actions
+# generate_character_poses): the result's image behind OUR path (this
+# account's request only), and keep / discard — the SAME save_candidate /
+# discard_candidate as /admin/characters/. The team's own (internal) accounts
+# only, as the action itself.
+def _pose_request_internal(client_id: int):
+    if (get_client(client_id) or {}).get("billing_exempt") is not True:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+
+@app.get("/api/client/characters/poses/{request_id}/{cand_id}")
+def client_pose_image(request_id: str, cand_id: str, request: Request):
+    client_id = _require_session(request)
+    _pose_request_internal(client_id)
+    from core import agent_characters
+    try:
+        url = agent_characters.request_image_url(client_id, request_id, cand_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    return RedirectResponse(url=url, status_code=302)
+
+@app.post("/api/client/characters/poses/{request_id}/{cand_id}/{verb}")
+def client_pose_decide(request_id: str, cand_id: str, verb: str, request: Request):
+    client_id = _require_session(request)
+    _pose_request_internal(client_id)
+    if verb not in ("keep", "discard"):
+        raise HTTPException(status_code=400, detail={"code": "bad_decision"})
+    from core import agent_characters
+    try:
+        view = agent_characters.request_decide(client_id, request_id, cand_id, verb)
+    except agent_characters.BackgroundNotRemoved:
+        return {"success": False, "code": "background", "data": agent_characters.request_view(request_id)}
+    except (ValueError, agent_characters.CharacterUnavailable) as e:
+        return {"success": False, "code": "refused", "message": str(e)[:200]}
+    except Exception as e:
+        print(f"[characters] pose {verb} from the chat failed: {type(e).__name__}: {str(e)[:200]}")
+        return {"success": False, "code": "failed"}
+    view.pop("client_id", None)
+    return {"success": True, "data": view}
+
 @app.post("/api/client/actions/{proposal_id}/decide")
 def client_decide_action(proposal_id: int, req: ActionDecisionRequest, request: Request,
                          background_tasks: BackgroundTasks):
