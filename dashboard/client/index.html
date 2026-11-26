@@ -3357,7 +3357,6 @@ const DASH_I18N = {
   br_role_muted: { he:'משני', en:'Secondary', fr:'Secondaire', ar:'ثانوي', ru:'Вторичный' },
   br_role_unset: { he:'לא הוגדר', en:'Not set', fr:'Non défini', ar:'غير محدد', ru:'Не задан' },
   br_default_variant: { he:'צבעי המותג', en:'Brand colours', fr:'Couleurs de marque', ar:'ألوان العلامة', ru:'Цвета бренда' },
-  br_preview_head: { he:'כך זה נראה יחד', en:'How it looks together', fr:'Le rendu ensemble', ar:'هكذا تبدو معًا', ru:'Как это выглядит вместе' },
   br_save_colors: { he:'שמירת הצבעים', en:'Save colours', fr:'Enregistrer les couleurs', ar:'حفظ الألوان', ru:'Сохранить цвета' },
   br_type_title: { he:'גופנים', en:'Typefaces', fr:'Polices', ar:'الخطوط', ru:'Шрифты' },
   br_type_headline: { he:'כותרות', en:'Headlines', fr:'Titres', ar:'العناوين', ru:'Заголовки' },
@@ -3391,10 +3390,6 @@ const DASH_I18N = {
   br_font_not_installed: { he:'לא זמין כרגע', en:'Not available now', fr:'Indisponible', ar:'غير متاح الآن', ru:'Сейчас недоступен' },
   br_font_pair_needed: { he:'בגופן הזה אין עברית — בחרו כאן את הגופן העברי שיופיע לצידו.', en:'This font has no Hebrew — choose here the Hebrew font that goes with it.', fr:'Cette police n’a pas d’hébreu — choisissez ici la police hébraïque qui l’accompagne.', ar:'هذا الخط بلا عبرية — اختاروا هنا الخط العبري الذي يرافقه.', ru:'В этом шрифте нет иврита — выберите здесь парный ивритский шрифт.' },
   br_font_unsaved: { he:'הבחירה עוד לא נשמרה', en:'The choice is not saved yet', fr:'Choix non enregistré', ar:'الاختيار لم يُحفظ بعد', ru:'Выбор ещё не сохранён' },
-  br_render_by: { he:'שקופית אמיתית ממערכת הפוסטים. צויר בגופנים: {fonts}', en:'A real slide from the post renderer. Drawn in: {fonts}', fr:'Une vraie diapositive du moteur de posts. Polices utilisées : {fonts}', ar:'شريحة حقيقية من نظام المنشورات. رُسمت بالخطوط: {fonts}', ru:'Настоящий слайд из рендера постов. Шрифты: {fonts}' },
-  br_render_loading: { he:'מציירים…', en:'Rendering…', fr:'Rendu…', ar:'جارٍ الرسم…', ru:'Рисуем…' },
-  br_render_failed: { he:'כך פוסט לא יצויר:', en:'A post would not render like this:', fr:'Un post ne serait pas rendu ainsi :', ar:'هكذا لن يُرسم المنشور:', ru:'Так пост не отрисуется:' },
-  br_render_unavailable: { he:'התצוגה המקדימה לא זמינה כרגע.', en:'The preview is unavailable right now.', fr:'Aperçu indisponible pour l’instant.', ar:'المعاينة غير متاحة الآن.', ru:'Предпросмотр сейчас недоступен.' },
   br_save_type: { he:'שמירת הגופנים', en:'Save typefaces', fr:'Enregistrer les polices', ar:'حفظ الخطوط', ru:'Сохранить шрифты' },
   br_tone_title: { he:'הטון של המותג', en:'Brand tone', fr:'Ton de la marque', ar:'نبرة العلامة', ru:'Тон бренда' },
   br_tone_sub: { he:'מילים שמתארות איך המותג מדבר, ומה הוא לא אומר אף פעם.', en:'Words for how the brand speaks, and what it never says.', fr:'Les mots qui décrivent la voix de la marque, et ce qu’elle ne dit jamais.', ar:'كلمات تصف كيف تتحدث العلامة، وما لا تقوله أبدًا.', ru:'Слова о том, как говорит бренд, и чего он не говорит никогда.' },
@@ -13544,8 +13539,6 @@ function brColorsHtml() {
           <input type="color" value="${esc(shown(r))}" data-br-color="${esc(r)}" ${ADMIN_VIEW ? 'disabled' : ''} aria-label="${esc(title + ' — ' + t('br_role_' + r))}">
           <input type="text" value="${esc(roles[r] || '')}" placeholder="#RRGGBB" maxlength="7" data-br-hex="${esc(r)}" ${ADMIN_VIEW ? 'disabled' : ''} aria-label="${esc(title + ' — ' + t('br_role_' + r) + ' HEX')}">
         </label>`).join('')}</div>
-      <div class="br-render" data-br-render="${esc(v.label)}"><img alt="${esc(t('br_preview_head'))}" hidden>
-        <div class="br-render-note" role="status">${esc(t('br_render_loading'))}</div></div>
     </div>`;
   }).join('');
   const hint = d.provisional ? t('br_colors_provisional') : !(d.variants || []).length ? t('br_colors_empty') : '';
@@ -13645,53 +13638,6 @@ function brFontsHtml() {
       <div class="br-row" style="margin-top:10px"><label class="sugg-btn approve br-upload">${esc(t('br_font_upload'))}
         <input type="file" data-br-font-file accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"></label></div>`}</div>`;
 }
-// The preview of each colour variant: ONE real slide from the post renderer, with
-// the colours and fonts as they stand on the page right now (saved or not).
-function brPreviewUrl(label) {
-  const q = new URLSearchParams();
-  if (label && label !== 'default') q.set('variant', label);
-  const roles = brUI.colors[label] || {};
-  ['bg', 'fg', 'accent', 'muted'].forEach(r => { if (/^#[0-9a-fA-F]{6}$/.test(roles[r] || '')) q.set(r, roles[r]); });
-  ['headline', 'body', 'hebrew'].forEach(k => q.set(k, brUI.fonts[k] || ''));
-  return '/api/client/brand-identity/preview?' + q.toString();
-}
-function brShowPreview(box, got) {
-  const t = uallakI18n.t, img = box.querySelector('img'), note = box.querySelector('.br-render-note');
-  if (!img || !note) return;
-  if (got.src) {
-    img.src = got.src; img.hidden = false;
-    note.innerHTML = esc(t('br_render_by', { fonts: (got.fonts || []).join(' · ') }))
-      + (got.lines || []).map(l => `<div class="warn"><bdi dir="auto">${esc(l)}</bdi></div>`).join('');
-  } else {
-    img.hidden = true;
-    note.innerHTML = got.message ? `<span class="warn">${esc(t('br_render_failed'))}</span> ${esc(got.message)}` : esc(t('br_render_unavailable'));
-  }
-}
-async function brRefreshPreviews() {
-  const boxes = Array.from(document.querySelectorAll('#brRoot [data-br-render]'));
-  for (const box of boxes) {
-    const url = brPreviewUrl(box.getAttribute('data-br-render'));
-    box.setAttribute('data-br-url', url);
-    if (brUI.previews[url]) { brShowPreview(box, brUI.previews[url]); continue; }
-    let got = {};
-    try {
-      const res = await fetch(url, { credentials: 'same-origin' });
-      if (res.ok) {
-        let info = {};
-        try { info = JSON.parse(decodeURIComponent(res.headers.get('X-Render-Fonts') || '%7B%7D')); } catch (e) { info = {}; }
-        got = { src: URL.createObjectURL(await res.blob()), fonts: info.fonts || [], lines: info.lines || [] };
-      } else {
-        const j = await res.json().catch(() => ({}));
-        got = { message: res.status === 422 ? ((j.detail || {}).message || '') : '' };
-      }
-    } catch (e) { console.error('brand preview failed', e); got = {}; }
-    const keys = Object.keys(brUI.previews);
-    if (keys.length > 16) keys.slice(0, 8).forEach(k => { if (brUI.previews[k].src) URL.revokeObjectURL(brUI.previews[k].src); delete brUI.previews[k]; });
-    brUI.previews[url] = got;
-    const live = document.querySelector('#brRoot [data-br-url="' + CSS.escape(url) + '"]');   // the page may have been redrawn meanwhile
-    if (live) brShowPreview(live, got);
-  }
-}
 function brChips(list, kind) {
   const t = uallakI18n.t;
   return list.map((w, i) => `<span class="br-chip ${kind === 'nots' ? 'no' : ''}">${esc(w)}${ADMIN_VIEW ? '' :
@@ -13714,6 +13660,7 @@ function renderBrandPage() {
       <ul>${(a.points || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul><p>${esc(a.closes || '')}</p>
       ${ADMIN_VIEW ? '' : `<div class="br-row"><button class="media-chip" data-br-dismiss>${esc(t('br_note_dismiss'))}</button><button class="media-chip" data-br-studio>${esc(t('br_note_talk'))}</button></div>`}</div>`);
   }
+  parts.push(brWorkHtml());
   const logos = d.logos || {};
   parts.push(`<div class="br-card wide"><h3>${esc(t('br_logo_title'))}</h3><div class="br-sub">${esc(t('br_logo_sub'))}${d.files_ok === false ? '<br>' + esc(t('br_files_down')) : ''}</div>
     <div class="br-logos">${(d.logo_versions || []).map(v => { const f = logos[v]; return `<div class="br-slot">
@@ -13737,7 +13684,6 @@ function renderBrandPage() {
   root.innerHTML = `<div class="br-grid">${parts.join('')}</div>`;
   const panel = root.querySelector('.br-fontpanel');
   if (panel) panel.scrollTop = scroll;
-  brRefreshPreviews();
 }
 function brReadColors() {
   document.querySelectorAll('#brRoot [data-br-variant]').forEach(box => {
@@ -13771,7 +13717,7 @@ function brReadColors() {
         .then(ok => {
           if (!ok || !brUI.last || !brUI.last.font_report) return;
           brUI.fontReport = brUI.last.font_report;               // the plain-words report, shown on the font's own row
-          brUI.previews = {};
+          
           renderBrandPage();
           const row = document.querySelector('#brRoot .br-ownfont.fresh');
           if (row) row.scrollIntoView({ block: 'nearest' });
@@ -13833,7 +13779,7 @@ function brReadColors() {
       brUI.fontReport = null;
       brJson('/api/client/brand-identity/font/' + encodeURIComponent(btn.getAttribute('data-br-font-rights')) + '/rights', {});
     } else if (btn.hasAttribute('data-br-font-del')) {
-      brUI.fontReport = null; brUI.previews = {};
+      brUI.fontReport = null; 
       brJson('/api/client/brand-identity/font/' + encodeURIComponent(btn.getAttribute('data-br-font-del')) + '/delete', {});
     } else if (btn.hasAttribute('data-br-studio')) {
       openBrandStudio(btn);

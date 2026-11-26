@@ -76,6 +76,87 @@ class Base(unittest.TestCase):
         return {"id": fid, "name": name}
 
 
+class WhatAGapCosts(Base):
+    """Every empty part of the page says what it costs in practice — never "missing"."""
+
+    def test_an_empty_logo_slot_states_its_consequence(self):
+        bp.upload(27, "full", "logo.png", _png())
+        gaps = bp.view(27, "he")["gaps"]
+        self.assertNotIn("logo_full", gaps)                              # what is there has no line
+        self.assertIn("סטורי בהיר", gaps["logo_on_light"])
+        self.assertIn("תמונת מוצר", gaps["logo_on_light"])
+        for key in ("logo_mark", "logo_on_dark", "fonts", "assets"):
+            self.assertIn(key, gaps)
+
+    def test_every_line_is_a_consequence_in_five_languages(self):
+        bare = ("חסר", "לא הועלה", "ריק")                                 # absence words alone are not a consequence
+        for key, table in bp.GAPS.items():
+            for lang in ("he", "en", "fr", "ar", "ru"):
+                self.assertGreater(len(table[lang]), 60, key)
+            self.assertFalse(any(table["he"].strip() == w for w in bare))
+        gaps = bp.gaps({}, [], False, False, {}, {}, [], True, "en")
+        self.assertEqual(set(gaps), {"logo_full", "logo_mark", "logo_on_light", "logo_on_dark", "assets", "colors",
+                                     "fonts", "tone_says", "tone_not"})
+        self.assertEqual(bp.gaps({}, [], False, False, {}, {}, [], False, "en").get("logo_full"), None)   # unknown is not missing
+        full = bp.gaps({v: {} for v in bp.LOGO_VERSIONS}, [{}], True, True, {"headline": "Rubik"},
+                       {"says": ["a"], "not_says": ["b"]}, [{}], True, "he")
+        self.assertEqual(full, {})
+
+    def test_the_page_draws_the_lines(self):
+        html = _src("dashboard", "client", "index.html")
+        for use in ("brGap('logo_' + v)", "brGap('colors')", "brGap('fonts')", "brGap('assets')", "'tone_says' : 'tone_not'"):
+            self.assertIn(use, html)
+
+
+class TheBrandOnRealWork(Base):
+    def setUp(self):
+        super().setUp()
+        from core import social_queue
+        self.queue = []
+        saved = social_queue._load
+        social_queue._load = lambda client_id: copy.deepcopy(self.queue)
+        self.addCleanup(setattr, social_queue, "_load", saved)
+
+    def item(self, n, post="p1", status="approved", of=3, at="2026-11-26T10:00:00", **more):
+        roles = {"bg": "#0B0B0B", "fg": "#FFFFFF", "accent": "#E3262F", "muted": "#A6A6A6"}
+        return {"id": f"{post}-{n}", "file_id": f"drive-file-{post}-{n}", "kind": "image", "status": status,
+                "title": f"Launch · {n}/{of}", "created_at": at,
+                "post_ref": {"post_id": post, "set_id": "s", "asset_id": f"s{n}", "n": n, "of": of},
+                "manifest": {"layers": [], "palette": {"roles": roles, "variant": "black + red",
+                                                       "background": {"kind": "solid"}},
+                             "fonts": {}}, **more}
+
+    def test_nothing_produced_shows_nothing(self):
+        self.assertEqual(bp.view(27, "he")["work"], [])
+        self.queue = [{"id": "c1", "kind": "post", "status": "waiting", "created_at": "2026-11-26T09:00:00"},
+                      {"id": "d1", "kind": "design", "status": "waiting", "created_at": "2026-11-26T09:00:00"},
+                      self.item(1, status="rejected")]
+        self.assertEqual(bp.recent_work(27, "he"), [])                   # copy, a design under review, a rejected file
+        html = _src("dashboard", "client", "index.html")
+        self.assertIn("if (!work.length) return '';", html)
+        self.assertNotIn("כך המותג שלכם נראה בפוסט אמיתי אצלנו", html + _src("core", "brand_fonts.py"))
+
+    def test_the_last_four_real_posts_newest_first(self):
+        for i, day in enumerate(("20", "21", "22", "23", "24"), 1):
+            self.queue += [self.item(n, post=f"p{i}", at=f"2026-11-{day}T10:00:0{n}") for n in (2, 1, 3)]
+        work = bp.recent_work(27, "he")
+        self.assertEqual([w["id"] for w in work], ["p5-1", "p4-1", "p3-1", "p2-1"])     # newest first, the cover slide
+        self.assertEqual((work[0]["files"], work[0]["title"], work[0]["made_at"]), (3, "Launch", "2026-11-24"))
+        self.assertEqual((work[0]["colours"], work[0]["off_palette"]), ("black + red", False))
+
+    def test_a_post_drawn_outside_the_palette_says_so(self):
+        off = self.item(1, of=1)
+        off["manifest"]["palette"].update(variant="", roles={"bg": "#0E3B43", "fg": "#FFFFFF", "accent": "#E3262F",
+                                                              "muted": "#A6A6A6"})
+        old = self.item(1, post="p0", of=1, at="2026-11-01T10:00:00")
+        del old["manifest"]["palette"]                                   # made before colours were recorded
+        self.queue = [off, old]
+        work = bp.recent_work(27, "he")
+        self.assertTrue(work[0]["off_palette"])
+        self.assertIn("#0E3B43", work[0]["colours"])
+        self.assertEqual(work[1]["colours"], "")                         # nothing recorded = nothing claimed
+
+
 class ItIsTheBrief(Base):
     def test_client_27_keeps_its_two_audience_variants(self):
         v = bp.view(27, "he")["colors"]

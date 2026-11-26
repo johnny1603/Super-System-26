@@ -540,6 +540,10 @@ def view(client_id: int, lang: str = "he") -> dict:
     except Exception:
         kit = {}
     state = brand_brief.page_state(client_id)
+    fonts = brand_fonts.view(client_id, body, lang)
+    tone = {"says": _split(read_field(body, "voice", "tone_attributes").replace("—", "")),
+            "not_says": _split(read_field(body, "voice", "avoid").replace("—", ""))}
+    assets = [r for r in rows if r["version"] == ASSET]
     return {
         "brief_status": cur.get("status") or "missing",
         "colors": {"variants": variants, "roles": list(brand_brief.COLOR_ROLES), "stated": stated,
@@ -550,7 +554,7 @@ def view(client_id: int, lang: str = "he") -> dict:
         "tone": {"says": _split(read_field(body, "voice", "tone_attributes").replace("—", "")),
                  "not_says": _split(read_field(body, "voice", "avoid").replace("—", ""))},
         "logo_versions": list(LOGO_VERSIONS), "logos": logos,
-        "assets": [r for r in rows if r["version"] == ASSET],
+        "assets": assets,
         "earlier": [r for r in rows if r["version"] in LOGO_VERSIONS and logos.get(r["version"], {}).get("id") != r["id"]],
         "files_ok": files_ok, "studio_kit": bool(kit),
         # nothing of their own and nothing approved in the studio: the system leads

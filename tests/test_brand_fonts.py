@@ -596,32 +596,23 @@ class Page(Base):
 
     def test_every_picture_on_the_page_is_made_by_the_post_renderer(self):
         src = _src("core", "brand_fonts.py")
-        self.assertIn("slide_renderer.render_slide(spec, roles, head, body", src)
         self.assertIn("slide_renderer.render_sample(", src)
         html = _src("dashboard", "client", "index.html")
-        self.assertIn("/api/client/brand-identity/preview?", html)
         self.assertIn("/api/client/brand-identity/font-sample?", html)
+        # the invented sample slide is gone (2026-11-27): the page shows the client's REAL posts instead
+        self.assertNotIn("PREVIEW_HEAD", src)
+        self.assertNotIn("brand-identity/preview", html + _src("core", "api_server.py"))
         self.assertNotIn('class="br-preview"', html)                    # the CSS imitation is gone
         self.assertNotIn(".br-preview {", html)
         self.assertNotIn("@font-face", html[html.index("BRANDING PAGE"):html.index("AVATARS: pose libraries")])
         api = _src("core", "api_server.py")
         for route in ("/api/client/brand-identity/font/upload", "/api/client/brand-identity/font-sample",
-                      "/api/client/brand-identity/preview", "/api/client/brand-identity/font/{font_id}/rights",
+                      "/api/client/brand-identity/font/{font_id}/rights",
                       "/api/client/brand-identity/font/{font_id}/delete"):
             self.assertIn(f'"{route}"', api)
 
     @NEEDS_RAQM
-    def test_the_preview_is_a_real_slide_in_the_chosen_fonts(self):
-        variant = bp.view(27, "he")["colors"]["variants"][0]["label"]    # client 27: one palette per audience
-        stored = copy.deepcopy(self.rows)                               # the brief as the page found it
-        got = bf.preview_png(27, variant, {"headline": "Assistant", "body": "Assistant"}, {"bg": "#101010", "fg": "#FAFAFA"})
-        self.assertEqual(got["png"][:8], b"\x89PNG\r\n\x1a\n")
-        self.assertEqual(got["fonts"], ["Assistant"])
-        self.assertEqual(got["lines"], [])
-        missing = bf.preview_png(27, variant, {"headline": "Totally Unknown Font"}, {}, "he")
-        self.assertTrue(missing["lines"])
-        self.assertEqual(self.rows, stored)                             # a preview saves nothing: not the fonts, not the colours
-        self.assertEqual(bf.wanted(27), {"headline": "", "body": "", "hebrew": ""})
+    def test_a_font_sample_is_drawn_in_that_font(self):
         sample = bf.sample_png(27, "Rubik", 700)
         self.assertEqual(sample[:8], b"\x89PNG\r\n\x1a\n")
         with self.assertRaises(bf.FontError):

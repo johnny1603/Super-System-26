@@ -34,8 +34,8 @@ by the branding page — core/brand_page) resolve to real font files:
                        rights log) is kept on the brand brief's own row
                        (brand_brief.page_state), like the rest of that page.
 
-  sample_png() / preview_png()   the branding page's pictures, drawn by the
-                       SAME renderer that draws posts — never CSS.
+  sample_png()         a font shown as itself on the branding page, drawn by
+                       the SAME renderer that draws posts — never CSS.
 """
 import hashlib
 import io
@@ -56,9 +56,6 @@ SNIFF = {b"\x00\x01\x00\x00": "ttf", b"true": "ttf", b"OTTO": "otf", b"wOFF": "w
 MIME = {"ttf": "font/ttf", "otf": "font/otf"}
 KIND = "brand_font"
 SAMPLE = {"hebrew": "המותג שלכם, באותיות שלכם", "latin": "Your brand, in your letters"}
-PREVIEW_HEAD = "כך המותג שלכם נראה בפוסט אמיתי אצלנו"
-PREVIEW_BODY = ("זו שקופית אמיתית, מצוירת באותה מערכת שמציירת את הפוסטים שלכם: "
-                "הגופנים, הצבעים והמידות כאן הם בדיוק מה שיעלה לרשת. Brand 2026.")
 
 
 def _five(he, en, fr, ar, ru):
@@ -767,53 +764,6 @@ def sample_png(client_id: int, family: str, weight: int = 400) -> bytes:
     except (slide_renderer.RenderError, slide_renderer.RendererUnavailable, font_library.FontUnavailable) as e:
         _log(f"client {client_id}: no sample of {family} ({type(e).__name__})")
         raise FontError("not_found")
-
-
-def preview_copy(spec: dict, fonts: dict) -> tuple:
-    """Our own sample copy cut to what this template holds in these fonts —
-    the preview shows the brand, it must not fail on OUR words."""
-    from core import copy_budget
-    budget = copy_budget.spec_budget(spec, fonts=fonts)
-
-    def cut(text: str, field: str) -> str:
-        b = budget.get(field)
-        if not b:
-            return text
-        words, out = text.split(), []
-        limit = min(int(b["max_chars"] * 0.8), len(text))
-        for w in words[:b.get("max_words") or len(words)]:
-            if len(" ".join(out + [w])) > limit:
-                break
-            out.append(w)
-        return " ".join(out)
-    return cut(PREVIEW_HEAD, "copy_headline"), cut(PREVIEW_BODY, "copy_body")
-
-
-def preview_png(client_id: int, variant: str = "", override: dict = None, colors: dict = None,
-                lang: str = "he") -> dict:
-    """ONE real slide — the client's active template, palette variant and
-    fonts — rendered by the renderer that renders posts.
-    {"png", "manifest", "fonts": families drawn, "lines": fallback lines}.
-    slide_renderer.RenderError when the brand as set cannot be drawn (the page
-    says why: that is what a post would do too)."""
-    from core import post_brief, render_manifest, slide_design, slide_renderer, slide_spec
-    facts = post_brief.parse_brand(brand_brief.current(client_id).get("text", ""))
-    declared = {v["label"]: v for v in facts.get("palette_variants") or []}
-    palette = dict(declared.get(variant) or ({"label": variant} if variant else {}))
-    fonts = resolve(client_id, override)
-    spec, _name, _based = slide_design.base_spec(client_id, palette)
-    spec = slide_design.placement_only(spec)
-    roles = slide_spec.palette_roles(client_id, slide_spec.variant_for(palette))
-    for role, value in (colors or {}).items():
-        if role in roles and brand_brief.HEX_RE.match(str(value or "")):
-            roles[role] = str(value).upper()
-    head, body = preview_copy(spec, fonts)
-    drawn = {}
-    with render_manifest.tracing(client_id, "", "brand_preview"):
-        png = slide_renderer.render_slide(spec, roles, head, body, 1, 1, "", slide_design.loader_for(client_id),
-                                          manifest=drawn, fonts=fonts)
-    return {"png": png, "manifest": drawn, "fonts": render_manifest.drawn_fonts(drawn),
-            "lines": render_manifest.font_lines(drawn, lang)}
 
 
 def error_text(code: str, lang: str) -> str:
