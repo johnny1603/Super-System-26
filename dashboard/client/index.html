@@ -13543,7 +13543,7 @@ function brColorsHtml() {
   }).join('');
   const hint = d.provisional ? t('br_colors_provisional') : !(d.variants || []).length ? t('br_colors_empty') : '';
   return `<div class="br-card wide"><h3>${esc(t('br_colors_title'))}</h3><div class="br-sub">${esc(t('br_colors_sub'))}${hint ? '<br>' + esc(hint) : ''}</div>
-    ${blocks}${ADMIN_VIEW ? '' : `<button class="sugg-btn approve" data-br-save="colors">${esc(t('br_save_colors'))}</button>`}</div>`;
+    ${brGap('colors')}${blocks}${ADMIN_VIEW ? '' : `<button class="sugg-btn approve" data-br-save="colors">${esc(t('br_save_colors'))}</button>`}</div>`;
 }
 // ─── Fonts: the library picker, the client's own fonts, what the page must say ──
 // Every picture here (a font's sample, the preview above) is drawn by the slide
@@ -13632,8 +13632,9 @@ function brFontsHtml() {
   }).join('');
   return `<div class="br-card wide" id="brFontsCard"><h3>${esc(t('br_type_title'))}</h3>
     <div class="br-sub">${esc(t('br_fonts_sub'))}${tf.note ? '<br>' + esc(t('br_type_observed')) + ' ' + esc(tf.note) : ''}</div>
-    ${notes}<div class="br-fontslots">${slotHtml}</div>
-    ${brUI.fontOpen && !ADMIN_VIEW ? brFontPanel(brUI.fontOpen) : ''}
+    ${brGap('fonts')}${notes}<div class="br-fontslots">${slotHtml}</div>
+    <div class="br-fontfor" role="status">${esc(t('br_font_library', { n: count }))} · ${esc(t('br_font_for', { slot: open === 'hebrew' ? t('br_font_hebrew_slot') : t('br_type_' + open) }))}</div>
+    ${brFontPanel(open)}
     ${ADMIN_VIEW ? '' : `<div class="br-row" style="margin-bottom:16px"><button class="sugg-btn approve" data-br-save="typefaces">${esc(t('br_save_type'))}</button>
       ${brFontsDirty() ? `<span class="br-file-meta">${esc(t('br_font_unsaved'))}</span>` : ''}</div>`}
     <h3>${esc(t('br_font_own_title'))}</h3><div class="br-sub">${esc(t('br_font_own_sub'))}</div>
@@ -13669,11 +13670,11 @@ function renderBrandPage() {
   parts.push(`<div class="br-card wide"><h3>${esc(t('br_logo_title'))}</h3><div class="br-sub">${esc(t('br_logo_sub'))}${d.files_ok === false ? '<br>' + esc(t('br_files_down')) : ''}</div>
     <div class="br-logos">${(d.logo_versions || []).map(v => { const f = logos[v]; return `<div class="br-slot">
       <div class="br-slot-name">${esc(t('br_v_' + v))}</div>${brThumb(f, v === 'on_dark' ? 'dark' : v === 'on_light' ? 'light' : '')}
-      ${f ? brFileMeta(f) : ''}<div class="br-row">${brUploadBtn(v, f ? 'br_replace' : 'br_upload')}
+      ${f ? brFileMeta(f) : brGap('logo_' + v)}<div class="br-row">${brUploadBtn(v, f ? 'br_replace' : 'br_upload')}
       ${f && !ADMIN_VIEW ? `<button class="media-chip" data-br-del="${esc(f.id)}">${esc(t('br_delete'))}</button>` : ''}</div></div>`; }).join('')}</div></div>`);
   parts.push(brColorsHtml());
   parts.push(brFontsHtml());
-  const toneBox = (kind, titleKey) => `<div class="br-field"><span>${esc(t(titleKey))}</span><div class="br-chips">${brChips(brUI[kind], kind)}</div>
+  const toneBox = (kind, titleKey) => `<div class="br-field"><span>${esc(t(titleKey))}</span>${brUI[kind].length ? '' : brGap(kind === 'says' ? 'tone_says' : 'tone_not')}<div class="br-chips">${brChips(brUI[kind], kind)}</div>
     ${ADMIN_VIEW ? '' : `<input type="text" maxlength="60" data-br-chip-add="${kind}" placeholder="${esc(t('br_tone_add'))}" aria-label="${esc(t(titleKey))}">`}</div>`;
   parts.push(`<div class="br-card"><h3>${esc(t('br_tone_title'))}</h3><div class="br-sub">${esc(t('br_tone_sub'))}</div>
     ${toneBox('says', 'br_tone_says')}${toneBox('nots', 'br_tone_not')}
@@ -13682,7 +13683,7 @@ function renderBrandPage() {
   parts.push(`<div class="br-card wide"><h3>${esc(t('br_assets_title'))}</h3><div class="br-sub">${esc(t('br_assets_sub'))}</div>
     ${assets.length ? `<div class="br-logos">${assets.map(f => `<div class="br-slot">${brThumb(f)}${brFileMeta(f)}
       ${ADMIN_VIEW ? '' : `<div class="br-row"><button class="media-chip" data-br-del="${esc(f.id)}">${esc(t('br_delete'))}</button></div>`}</div>`).join('')}</div>`
-      : `<div class="br-file-meta">${esc(t('br_assets_empty'))}</div>`}
+      : brGap('assets') || `<div class="br-file-meta">${esc(t('br_assets_empty'))}</div>`}
     <div class="br-row" style="margin-top:12px">${brUploadBtn('asset', 'br_assets_add', 'sugg-btn approve')}</div></div>`);
   const scroll = (root.querySelector('.br-fontpanel') || {}).scrollTop || 0;
   root.innerHTML = `<div class="br-grid">${parts.join('')}</div>`;
