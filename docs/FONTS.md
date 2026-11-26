@@ -122,19 +122,20 @@ raises the headline's `max_chars`).
 part only when chosen). A name we have no file for is saved as the client
 states it — the page and every post then say it is not available.
 
-- the picker: the client's own fonts, then the library grouped by category;
-  each row is a picture of the font drawn by the renderer
-  (`GET /api/client/brand-identity/font-sample`);
-- the preview under each colour variant is ONE real slide — the client's
-  template, palette variant and fonts, saved or not yet
-  (`GET /api/client/brand-identity/preview`; the fonts that drew it travel in
-  `X-Render-Fonts`; a brand that cannot be drawn answers 422 with the reason a
-  post would fail on). Nothing on the page is CSS imitation;
+- the picker is ALWAYS open on the page (2026-11-27): the client's own fonts,
+  then the library grouped by category; each row is a picture of the font
+  drawn by the renderer (`GET /api/client/brand-identity/font-sample`). The
+  slot buttons (headline / body / Hebrew pairing) only choose which slot a
+  click on a font sets;
+- there is NO sample slide any more (2026-11-27 — it carried copy we invented).
+  The page shows the client's last real posts instead (`brand_page.recent_work`),
+  each with the fonts and colours its file was drawn with. Nothing on the page
+  is CSS imitation;
 - notes: no bold (+ switch to the nearest family that has one), a font without
   Hebrew (the pairing slot opens at once), an unknown name, files not installed.
 
 Routes: `POST …/font/upload` (raw body, `X-File-Name`, `?rights=1`),
-`POST …/font/{id}/rights`, `POST …/font/{id}/delete`, the two GETs above.
+`POST …/font/{id}/rights`, `POST …/font/{id}/delete`, the GET above.
 Staff view is read-only (the GETs are in `admin_view.READ_ENDPOINTS`).
 
 ## Not done

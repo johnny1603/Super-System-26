@@ -13594,11 +13594,15 @@ function brFontsHtml() {
   const t = uallakI18n.t, d = brUI.data, f = d.fonts || {}, tf = d.typefaces || {};
   const needPair = ['headline', 'body'].some(s => { const i = brFontInfo(brUI.fonts[s]); return i && i.own && i.latin_only; });
   const slots = ['headline', 'body'].concat(needPair || brUI.fonts.hebrew ? ['hebrew'] : []);
+  // the library is ALWAYS on the page: the slot buttons only choose which slot a click on a font sets
+  const open = slots.indexOf(brUI.fontOpen) !== -1 ? brUI.fontOpen : 'headline';
+  brUI.fontOpen = open;
+  const count = (f.groups || []).reduce((n, g) => n + g.families.length, 0);
   const slotHtml = slots.map(slot => {
     const family = brUI.fonts[slot] || '', info = brFontInfo(family);
     const label = slot === 'hebrew' ? t('br_font_hebrew_slot') : t('br_type_' + slot);
     return `<div class="br-fontslot"><span>${esc(label)}</span>
-      <button type="button" class="br-fontpick" data-br-font-open="${slot}" aria-expanded="${brUI.fontOpen === slot}" ${ADMIN_VIEW ? 'disabled' : ''}>
+      <button type="button" class="br-fontpick${open === slot ? ' sel' : ''}" data-br-font-open="${slot}" aria-pressed="${open === slot}" ${ADMIN_VIEW ? 'disabled' : ''}>
         ${family && info && info.installed !== false ? `<img src="${esc(brSampleUrl(family))}" alt="" onerror="this.remove()">` : ''}
         <span dir="${family ? 'ltr' : 'auto'}">${esc(family || t('br_font_default'))}</span></button>
       ${family && !ADMIN_VIEW ? `<button type="button" class="media-chip" data-br-font-clear="${slot}">${esc(t('br_font_clear'))}</button>` : ''}</div>`;
@@ -13758,7 +13762,7 @@ function brReadColors() {
       renderBrandPage();
     } else if (btn.hasAttribute('data-br-font-open')) {
       const slot = btn.getAttribute('data-br-font-open');
-      brUI.fontOpen = brUI.fontOpen === slot ? '' : slot;
+      brUI.fontOpen = slot;                                        // the library stays open: this only picks the slot
       renderBrandPage();
     } else if (btn.hasAttribute('data-br-font-choose') || btn.hasAttribute('data-br-font-use') || btn.hasAttribute('data-br-font-suggest')) {
       let slot = brUI.fontOpen, family = btn.getAttribute('data-br-font-choose');
@@ -13768,7 +13772,7 @@ function brReadColors() {
       brUI.fonts[slot] = family;
       const info = brFontInfo(family);
       // a font without Hebrew is never taken silently: the Hebrew pairing is asked for at once
-      brUI.fontOpen = slot !== 'hebrew' && info && info.own && info.latin_only && !brUI.fonts.hebrew ? 'hebrew' : '';
+      brUI.fontOpen = slot !== 'hebrew' && info && info.own && info.latin_only && !brUI.fonts.hebrew ? 'hebrew' : slot;
       renderBrandPage();
       const card = document.getElementById('brFontsCard');
       if (pair && card) card.scrollIntoView({ block: 'nearest' });
