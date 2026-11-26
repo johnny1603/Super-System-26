@@ -11,6 +11,10 @@ google-auth==2.43.0
 requests==2.32.5
 pydantic==2.13.4
 pillow==11.3.0
+# A client's own font (core/brand_fonts): reading it, WOFF/WOFF2 -> TTF (brotli
+# is WOFF2's compression), instancing a variable font to real static weights
+fonttools==4.69.1
+brotli==1.2.1
 # AES-256-GCM for per-client secrets at rest (core/secrets_vault.py)
 cryptography==44.0.2
 # Local background removal, u2netp (core/background_removal.py)

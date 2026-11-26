@@ -21,9 +21,10 @@ jobs:
           python-version: "3.12"
       # Pillow (the pinned version) + FriBidi, so the image tests RUN here
       # instead of skipping: core/avatar_photos and the Hebrew slide renderer.
-      - name: Image libraries for the Pillow tests
+      # fonttools + brotli (pinned): the client font upload tests (core/brand_fonts).
+      - name: Image and font libraries for the Pillow and font tests
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfribidi0
-          pip install "$(grep -i '^pillow==' requirements.txt)"
+          pip install "$(grep -i '^pillow==' requirements.txt)" "$(grep -i '^fonttools==' requirements.txt)" "$(grep -i '^brotli==' requirements.txt)"
       - name: Run the test suite
         run: python -I -B scripts/run_tests.py

@@ -69,6 +69,15 @@ PARITY = {
     "POST /api/client/brand-identity/typefaces": (GAP, "P3: set the brand typefaces from the chat"),
     "POST /api/client/brand-identity/tone": (GAP, "P3: set the tone words from the chat"),
     "POST /api/client/brand-identity/assessment/dismiss": (NOT_CHAT, "closing a note on the page it is shown on"),
+    # ── Brand fonts (core/brand_fonts) ───────────────────────────────────────
+    "GET /api/client/brand-identity/font-sample": (NOT_CHAT, "a picture of one font for the picker on the page"),
+    "GET /api/client/brand-identity/preview": (NOT_CHAT, "the page's rendered preview image; in the chat the client "
+                                                         "sees real slides on the design card"),
+    "POST /api/client/brand-identity/font/upload": (NOT_CHAT, "a font file is uploaded on the page that reports on it "
+                                                              "(Hebrew coverage, weights, the rights confirmation)"),
+    "POST /api/client/brand-identity/font/{font_id}/rights": (NOT_CHAT, "the client's own confirmation, ticked where "
+                                                                        "the font is shown"),
+    "POST /api/client/brand-identity/font/{font_id}/delete": (NOT_CHAT, "removing a font is done where it is shown"),
     # ── Avatars page (docs/AVATARS.md) ───────────────────────────────────────
     "GET /api/client/avatars": (NOT_CHAT, "a picture gallery: poses are judged by looking at them"),
     "GET /api/client/avatars/pose/{pose_id}/thumb": (NOT_CHAT, _PLUMBING),

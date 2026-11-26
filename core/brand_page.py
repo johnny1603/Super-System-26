@@ -9,7 +9,12 @@ the agents already read (core/brand_brief — one new VERSION per save, by
               segment variants (client 27: black + red for private customers,
               black + gold for business) is shown and edited PER VARIANT — it
               is never flattened to one palette.
-- typefaces → `visual_identity.typefaces` in the brief's text, marked [stated].
+- typefaces → `visual_identity.typefaces` in the brief's text, marked [stated]
+              (`headline: X; body: Y; hebrew: Z`). They are REAL fonts now
+              (core/brand_fonts): the names resolve to a family of the bundled
+              Hebrew library or to a font the client uploaded, the slide
+              renderer draws with them, and the page's preview and samples
+              are pictures made by that same renderer — never CSS.
 - tone      → `voice.tone_attributes` (says) and `voice.avoid` (does not say).
 - logos and existing assets → files in the client's own media folder
               (sub-folder "brand", appProperties carry the version), listed
@@ -27,7 +32,7 @@ system leads (`lead`: the branding studio starts).
 import re
 from datetime import datetime, timezone
 
-from core import brand_brief, drive_storage
+from core import brand_brief, brand_fonts, drive_storage
 
 SERVICE_NAME = "brand_page"
 FOLDER = "brand"
@@ -276,11 +281,28 @@ def _text(cur: dict, client_id: int) -> str:
     return cur.get("text") if str(cur.get("text") or "").strip() else _starter(client_id)
 
 
-def save_typefaces(client_id: int, headline: str, body: str) -> dict:
+def save_typefaces(client_id: int, headline: str, body: str, hebrew: str = "") -> dict:
+    """The brand's fonts, by family name. `hebrew` = the Hebrew font that
+    goes with a brand font that has no Hebrew (its Hebrew runs are drawn in
+    it). A font without Hebrew is never saved as the brand font without that
+    pairing ("needs_pairing"); a name we have no file for is saved as the
+    client states it — the page and every post then say it is not available.
+    Every budget measured with the old fonts is dropped."""
     cur = brand_brief.current(client_id)
-    h, b = (_words([headline]) or [""])[0], (_words([body]) or [""])[0]
-    block = [f"- typefaces: headline: {h or '—'}; body: {b or '—'} {_mark()}"]
-    return _save(client_id, cur, new_text=set_field(_text(cur, client_id), "visual_identity", "typefaces", block))
+    names = []
+    for value in (headline, body, hebrew):
+        name = (_words([value]) or [""])[0].replace(";", " ").strip()
+        found, _issue = brand_fonts.find(client_id, name) if name else (None, "")
+        names.append(found.family if found is not None else name)
+    h, b, he = names
+    try:
+        brand_fonts.check_choice(client_id, h, b, he)
+    except brand_fonts.FontError as e:
+        raise BrandPageError(e.code)
+    block = [f"- typefaces: headline: {h or '—'}; body: {b or '—'}" + (f"; hebrew: {he}" if he else "") + f" {_mark()}"]
+    out = _save(client_id, cur, new_text=set_field(_text(cur, client_id), "visual_identity", "typefaces", block))
+    brand_fonts.invalidate(client_id)
+    return out
 
 
 def save_tone(client_id: int, says: list, not_says: list) -> dict:
@@ -292,10 +314,7 @@ def save_tone(client_id: int, says: list, not_says: list) -> dict:
 
 
 def _typefaces(body: str) -> dict:
-    raw = read_field(body, "visual_identity", "typefaces")
-    m = re.match(r"^headline:\s*(.*?);\s*body:\s*(.*)$", raw)
-    clean = lambda s: "" if s.strip() in ("—", "-") else s.strip()
-    return {"headline": clean(m.group(1)), "body": clean(m.group(2)), "note": ""} if m else {"headline": "", "body": "", "note": raw}
+    return brand_fonts.parse_typefaces(read_field(body, "visual_identity", "typefaces"))
 
 
 # ─── Logos and existing assets: the client's own folder ──────────────────────
@@ -526,6 +545,8 @@ def view(client_id: int, lang: str = "he") -> dict:
         "colors": {"variants": variants, "roles": list(brand_brief.COLOR_ROLES), "stated": stated,
                    "provisional": bool(variants) and not stated, "segmented": len(variants) > 1},
         "typefaces": _typefaces(body),
+        # the font library, the client's own fonts, what the names resolve to and what the page must say
+        "fonts": brand_fonts.view(client_id, body, lang),
         "tone": {"says": _split(read_field(body, "voice", "tone_attributes").replace("—", "")),
                  "not_says": _split(read_field(body, "voice", "avoid").replace("—", ""))},
         "logo_versions": list(LOGO_VERSIONS), "logos": logos,
@@ -539,4 +560,4 @@ def view(client_id: int, lang: str = "he") -> dict:
 
 
 def error_text(code: str, lang: str) -> str:
-    return pick(ERRORS.get(code) or ERRORS["storage"], lang)
+    return pick(ERRORS.get(code) or brand_fonts.ERRORS.get(code) or ERRORS["storage"], lang)

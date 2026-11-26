@@ -9140,6 +9140,7 @@ def client_brand_identity_colors(req: BrandColorsRequest, request: Request):
 class BrandTypefacesRequest(BaseModel):
     headline: str = ""
     body: str = ""
+    hebrew: str = ""
 
 @app.post("/api/client/brand-identity/typefaces")
 def client_brand_identity_typefaces(req: BrandTypefacesRequest, request: Request):
@@ -9147,7 +9148,7 @@ def client_brand_identity_typefaces(req: BrandTypefacesRequest, request: Request
     from core import brand_page
     lang = _client_lang(client_id)
     try:
-        brand_page.save_typefaces(client_id, req.headline, req.body)
+        brand_page.save_typefaces(client_id, req.headline, req.body, req.hebrew)
     except brand_page.BrandPageError as e:
         _brand_fail(e, lang)
     log_activity(client_id, "client", "brand_typefaces_set", "The client set the brand typefaces on the branding page")
@@ -9214,6 +9215,99 @@ def client_brand_identity_file(file_id: str, request: Request):
     elif mime == "application/pdf":
         headers["Content-Disposition"] = "attachment"
     return Response(content=content, media_type=mime, headers=headers)
+
+# ─── Brand fonts (core/brand_fonts): the client's own typeface, and the page's pictures ───
+def _font_fail(e, lang: str):
+    from core import brand_page
+    status = 413 if e.code == "too_big" else 404 if e.code == "not_found" else 503 if e.code in ("storage", "font_tools") else 400
+    raise HTTPException(status_code=status, detail={"code": e.code, "message": brand_page.error_text(e.code, lang)})
+
+@app.post("/api/client/brand-identity/font/upload")
+async def client_brand_identity_font_upload(request: Request, rights: int = 0):
+    # Raw body (no python-multipart in the image). The file is checked, converted
+    # and stored; the answer carries the plain-words report (Hebrew coverage,
+    # weights, variable instancing, the rights log). rights=1 = the client ticked
+    # the confirmation — recorded with its date; it is a log, never a gate.
+    from urllib.parse import unquote
+    from starlette.concurrency import run_in_threadpool
+    from core import brand_fonts, brand_page
+    client_id = _require_session(request)
+    lang = _client_lang(client_id)
+    body = await request.body()
+    name = unquote(request.headers.get("x-file-name") or "")
+    try:
+        got = await run_in_threadpool(brand_fonts.add_upload, client_id, name, body, bool(rights), lang)
+    except brand_fonts.FontError as e:
+        _font_fail(e, lang)
+    log_activity(client_id, "client", "brand_font_uploaded",
+                 f"The client uploaded a brand font ({got['font']['family']}; Hebrew: {'yes' if got['font']['hebrew'] else 'no'}; "
+                 f"rights confirmed: {'yes' if got['font']['rights_confirmed'] else 'not yet'})")
+    return {"success": True, "data": brand_page.view(client_id, lang), "font_report": got}
+
+@app.post("/api/client/brand-identity/font/{font_id}/rights")
+def client_brand_identity_font_rights(font_id: str, request: Request):
+    client_id = _require_session(request)
+    from core import brand_fonts, brand_page
+    lang = _client_lang(client_id)
+    try:
+        rec = brand_fonts.confirm_rights(client_id, font_id)
+    except brand_fonts.FontError as e:
+        _font_fail(e, lang)
+    log_activity(client_id, "client", "brand_font_rights_confirmed",
+                 f"The client confirmed the right to use the font {rec.get('family')} in published material")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+@app.post("/api/client/brand-identity/font/{font_id}/delete")
+def client_brand_identity_font_delete(font_id: str, request: Request):
+    client_id = _require_session(request)
+    from core import brand_fonts, brand_page
+    lang = _client_lang(client_id)
+    try:
+        brand_fonts.delete_upload(client_id, font_id)
+    except brand_fonts.FontError as e:
+        _font_fail(e, lang)
+    log_activity(client_id, "client", "brand_font_deleted", "The client deleted a brand font")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+@app.get("/api/client/brand-identity/font-sample")
+def client_brand_identity_font_sample(request: Request, family: str = "", weight: int = 400):
+    # A font shown as itself: a Hebrew line drawn by the slide renderer with
+    # THAT face only (404 when we cannot draw with it — never another font's letters)
+    client_id = _require_session(request)
+    from core import brand_fonts
+    try:
+        png = brand_fonts.sample_png(client_id, family[:80], max(100, min(900, int(weight))))
+    except brand_fonts.FontError:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+@app.get("/api/client/brand-identity/preview")
+def client_brand_identity_preview(request: Request, variant: str = "", headline: str = None, body: str = None,
+                                  hebrew: str = None, bg: str = "", fg: str = "", accent: str = "", muted: str = ""):
+    # The page's preview = ONE real slide from the renderer that renders posts
+    # (the client's template, palette variant and fonts; a choice not saved yet
+    # comes in the query). What drew it travels in X-Render-Fonts. A brand that
+    # cannot be drawn as set answers 422 with the reason — a post would fail the same way.
+    import json as _json
+    from urllib.parse import quote
+    client_id = _require_session(request)
+    from core import brand_fonts, slide_design, slide_renderer, slide_spec
+    lang = _client_lang(client_id)
+    override = {k: v[:80] for k, v in (("headline", headline), ("body", body), ("hebrew", hebrew)) if v is not None}
+    try:
+        got = brand_fonts.preview_png(client_id, variant[:60], override,
+                                      {"bg": bg, "fg": fg, "accent": accent, "muted": muted}, lang)
+    except slide_renderer.RenderError as e:
+        raise HTTPException(status_code=422, detail={"code": "render_failed",
+                                                     "message": slide_design.problem_text(e.problems, lang)})
+    except (slide_renderer.RendererUnavailable, slide_spec.PaletteMissing, slide_spec.SpecInvalid) as e:
+        print(f"[brand_fonts] client {client_id}: preview not rendered ({type(e).__name__}: {str(e)[:120]})")
+        raise HTTPException(status_code=503, detail={"code": "preview_unavailable"})
+    info = quote(_json.dumps({"fonts": got["fonts"], "lines": got["lines"]}, ensure_ascii=False))
+    return Response(content=got["png"], media_type="image/png",
+                    headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+                             "X-Render-Fonts": info})
 
 @app.post("/api/client/brand-identity/assessment/dismiss")
 def client_brand_identity_assessment_dismiss(request: Request):
