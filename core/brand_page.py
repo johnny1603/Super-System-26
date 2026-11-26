@@ -518,6 +518,146 @@ def dismiss_assessment(client_id: int) -> bool:
     return brand_brief.set_page_state(client_id, assessment_dismissed_at=_now())
 
 
+# ─── What a gap COSTS (never "missing": what happens in practice) ─────────────
+#
+# One line per empty part of the page, in consequence terms. Each line says
+# only what the system really does without that part (the agents place a logo
+# from `assets.logo_files`; a client with no palette is drawn in neutral
+# colours; no brand font = the bundled Rubik / Assistant; the copywriters read
+# the tone fields of the brief). Nothing here judges quality — that is the
+# one friendly note above (§7).
+
+GAPS = {
+    "logo_full": _five("בלי לוגו מלא, הפוסטים והדפים שאנחנו מפיקים יוצאים בלי שם העסק עליהם — מי שרואה אותם לא יודע של מי הם.",
+                       "Without a full logo, the posts and pages we produce go out without the business's name on them — whoever sees them cannot tell whose they are.",
+                       "Sans logo complet, les posts et pages que nous produisons sortent sans le nom de l'entreprise — on ne sait pas à qui ils sont.",
+                       "بلا شعار كامل، تخرج المنشورات والصفحات التي ننتجها بلا اسم النشاط — ومن يراها لا يعرف لمن هي.",
+                       "Без полного логотипа посты и страницы выходят без названия бизнеса — зритель не поймёт, чьи они."),
+    "logo_mark": _five("בלי סמל, אין מה לשים בפינת שקופית או בתמונת פרופיל: לוגו מלא בגודל כזה הופך לכתם שאי אפשר לקרוא.",
+                       "Without a mark, there is nothing for a slide's corner or a profile picture: a full logo at that size turns into a smudge nobody can read.",
+                       "Sans symbole, rien pour le coin d'une diapositive ou une photo de profil : un logo complet à cette taille devient une tache illisible.",
+                       "بلا رمز، لا شيء لزاوية الشريحة أو لصورة الملف الشخصي: الشعار الكامل بهذا الحجم يصير بقعة لا تُقرأ.",
+                       "Без знака нечего поставить в угол слайда или на аватар: полный логотип в таком размере превращается в нечитаемое пятно."),
+    "logo_on_light": _five("בלי גרסה לרקע בהיר, אין לנו לוגו שמתאים לסטורי בהיר או לתמונת מוצר — הם ייצאו בלי לוגו, או עם לוגו שנבלע ברקע.",
+                           "Without a version for light backgrounds, we have no logo that suits a light story or a product photo — they go out with no logo, or with one that sinks into the background.",
+                           "Sans version pour fond clair, aucun logo ne convient à une story claire ou une photo produit — elles sortent sans logo, ou avec un logo qui se fond dans le fond.",
+                           "بلا نسخة للخلفية الفاتحة، لا شعار يناسب ستوري فاتحًا أو صورة منتج — فتخرج بلا شعار، أو بشعار يذوب في الخلفية.",
+                           "Без версии для светлого фона у нас нет логотипа для светлой сторис или фото товара — они выйдут без логотипа или с логотипом, который теряется на фоне."),
+    "logo_on_dark": _five("בלי גרסה לרקע כהה, אין לנו לוגו שמתאים לשקופית כהה או לסרטון — הם ייצאו בלי לוגו, או עם לוגו שנבלע ברקע.",
+                          "Without a version for dark backgrounds, we have no logo that suits a dark slide or a video — they go out with no logo, or with one that sinks into the background.",
+                          "Sans version pour fond sombre, aucun logo ne convient à une diapositive sombre ou une vidéo — elles sortent sans logo, ou avec un logo qui se fond dans le fond.",
+                          "بلا نسخة للخلفية الداكنة، لا شعار يناسب شريحة داكنة أو فيديو — فتخرج بلا شعار، أو بشعار يذوب في الخلفية.",
+                          "Без версии для тёмного фона у нас нет логотипа для тёмного слайда или видео — они выйдут без логотипа или с логотипом, который теряется на фоне."),
+    "colors_none": _five("עוד לא הוגדרו צבעים: הפוסטים מצוירים בשחור, לבן ואפור — הם לא נראים כמו העסק שלכם, והלקוחות לא מזהים אותם בפיד.",
+                         "No colours are set yet: posts are drawn in black, white and grey — they do not look like your business, and customers do not recognise them in the feed.",
+                         "Aucune couleur définie : les posts sont en noir, blanc et gris — ils ne ressemblent pas à votre entreprise et vos clients ne les reconnaissent pas.",
+                         "لم تُحدَّد ألوان بعد: المنشورات تُرسم بالأسود والأبيض والرمادي — لا تشبه نشاطكم ولا يتعرّف عليها العملاء.",
+                         "Цвета ещё не заданы: посты рисуются чёрным, белым и серым — они не похожи на ваш бизнес, и клиенты не узнают их в ленте."),
+    "colors_provisional": _five("הצבעים כאן הם הערכה שלנו ולא אישור שלכם: עד שתשמרו אותם, כל פוסט מצויר בגוון שאולי אינו הגוון המדויק של העסק.",
+                                "The colours here are our estimate, not your confirmation: until you save them, every post is drawn in a shade that may not be your exact one.",
+                                "Ces couleurs sont notre estimation, pas votre validation : tant qu'elles ne sont pas enregistrées, chaque post utilise une teinte peut-être inexacte.",
+                                "هذه الألوان تقديرنا لا تأكيدكم: إلى أن تحفظوها يُرسم كل منشور بدرجة قد لا تكون درجتكم الدقيقة.",
+                                "Эти цвета — наша оценка, а не ваше подтверждение: пока вы их не сохраните, каждый пост рисуется оттенком, который может быть не вашим."),
+    "fonts": _five("לא נבחר גופן: הפוסטים מצוירים בגופן ברירת המחדל שלנו, אותו גופן שמקבל כל עסק אחר — הטקסט לא ייראה כמו השלט, האתר או האריזה שלכם.",
+                   "No font is chosen: posts are drawn in our default font, the same one every other business gets — the text will not look like your sign, site or packaging.",
+                   "Aucune police choisie : les posts utilisent notre police par défaut, la même que pour toute autre entreprise — le texte ne ressemblera pas à votre enseigne, site ou emballage.",
+                   "لم يُختر خط: المنشورات تُرسم بخطنا الافتراضي، نفسه الذي يحصل عليه أي نشاط آخر — فلن يشبه النص لافتتكم أو موقعكم أو عبوتكم.",
+                   "Шрифт не выбран: посты рисуются нашим шрифтом по умолчанию, тем же, что у любого другого бизнеса — текст не будет похож на вашу вывеску, сайт или упаковку."),
+    "tone_says": _five("בלי מילים שמתארות את הטון, הכותבים שלנו מנחשים איך העסק מדבר — והטקסטים יכולים להישמע כמו כל עסק אחר בתחום.",
+                       "Without words for the tone, our writers guess how the business speaks — and the copy can sound like any other business in the field.",
+                       "Sans mots pour le ton, nos rédacteurs devinent comment l'entreprise parle — et les textes peuvent ressembler à ceux de n'importe quel concurrent.",
+                       "بلا كلمات تصف النبرة، يخمّن كتّابنا كيف يتحدث النشاط — وقد تبدو النصوص كأي نشاط آخر في المجال.",
+                       "Без слов о тоне наши авторы угадывают, как говорит бизнес — и тексты могут звучать как у любого другого в отрасли."),
+    "tone_not": _five("בלי רשימה של מה שלא אומרים, שום דבר לא עוצר ניסוח שאתם לא סובלים מלהיכנס לפוסט — עד שתראו אותו ותדחו אותו.",
+                      "Without a list of what is never said, nothing stops a phrasing you cannot stand from getting into a post — until you see it and reject it.",
+                      "Sans liste de ce qu'on ne dit jamais, rien n'empêche une formulation que vous détestez d'entrer dans un post — jusqu'à ce que vous la refusiez.",
+                      "بلا قائمة بما لا يُقال، لا شيء يمنع صياغة لا تطيقونها من دخول منشور — إلى أن تروه وترفضوه.",
+                      "Без списка того, что не говорится, ничто не мешает неприятной вам формулировке попасть в пост — пока вы её не увидите и не отклоните."),
+    "assets": _five("בלי חומרים קיימים (שלט, אריזה, כרטיס ביקור), אנחנו לא רואים איך המותג נראה בעולם — ועיצובים חדשים עלולים לא להתאים למה שהלקוחות שלכם כבר מכירים.",
+                    "Without existing materials (a sign, packaging, a business card), we cannot see how the brand looks in the world — and new designs may not match what your customers already know.",
+                    "Sans supports existants (enseigne, emballage, carte de visite), nous ne voyons pas la marque dans la réalité — et les nouveaux designs peuvent ne pas correspondre à ce que vos clients connaissent.",
+                    "بلا مواد موجودة (لافتة، عبوة، بطاقة عمل)، لا نرى كيف تبدو العلامة في الواقع — وقد لا تطابق التصاميم الجديدة ما يعرفه عملاؤكم.",
+                    "Без существующих материалов (вывеска, упаковка, визитка) мы не видим, как бренд выглядит в жизни — и новые макеты могут не совпасть с тем, что уже знают ваши клиенты."),
+}
+
+
+def gaps(logos: dict, variants: list, stated: bool, has_colors: bool, chosen: dict, tone: dict, assets: list,
+         files_ok: bool, lang: str) -> dict:
+    """{part: the line} for every EMPTY part of the page — what it costs the
+    business in practice. A part that is there has no line. Files that could
+    not be listed say nothing (we do not know they are missing)."""
+    out = {}
+    if files_ok:
+        out.update({f"logo_{v}": pick(GAPS[f"logo_{v}"], lang) for v in LOGO_VERSIONS if v not in logos})
+        if not assets:
+            out["assets"] = pick(GAPS["assets"], lang)
+    if not has_colors:
+        out["colors"] = pick(GAPS["colors_none"], lang)
+    elif not stated:
+        out["colors"] = pick(GAPS["colors_provisional"], lang)
+    if not (chosen.get("headline") or chosen.get("body")):
+        out["fonts"] = pick(GAPS["fonts"], lang)
+    if not tone.get("says"):
+        out["tone_says"] = pick(GAPS["tone_says"], lang)
+    if not tone.get("not_says"):
+        out["tone_not"] = pick(GAPS["tone_not"], lang)
+    return out
+
+
+# ─── The brand on REAL work ──────────────────────────────────────────────────
+
+WORK_MAX = 4
+
+
+def recent_work(client_id: int, lang: str = "he") -> list:
+    """The last posts actually PRODUCED for this client, newest first (at most
+    WORK_MAX): every file of the Social tab that we made and the owner did not turn down,
+    grouped into its post. Each carries what its render manifest says was
+    drawn — the colours (and whether they are the brand palette) and the
+    fonts — so a brand that is not reaching the design shows in the client's
+    own work. [] when nothing has been produced yet (the page then shows
+    nothing — never a sample). Never raises."""
+    try:
+        from core import render_manifest, social_queue
+        items = [i for i in social_queue._load(client_id)
+                 if i.get("kind") in social_queue.KINDS and i.get("file_id") and i.get("status") in ("waiting", "approved", "published")
+                 and not i.get("real_asset")]
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: recent work unreadable ({type(e).__name__})")
+        return []
+    groups = {}
+    for item in items:
+        ref = item.get("post_ref") or {}
+        key = ref.get("post_id") or ref.get("set_id") or item["id"]
+        groups.setdefault(key, []).append(item)
+    out = []
+    for rows in sorted(groups.values(), key=lambda g: max(i.get("created_at", "") for i in g), reverse=True)[:WORK_MAX]:
+        rows.sort(key=lambda i: (int((i.get("post_ref") or {}).get("n") or 0), i.get("created_at", "")))
+        cover = rows[0]
+        manifests = [i["manifest"] for i in rows if isinstance(i.get("manifest"), dict)]
+        colours = render_manifest.palette_view(manifests, lang)
+        out.append({"id": cover["id"], "file_id": cover["file_id"], "kind": cover["kind"], "files": len(rows),
+                    "title": re.sub(r"\s*·\s*\d+/\d+\s*$", "", cover.get("title") or ""),
+                    "made_at": max(i.get("created_at", "") for i in rows)[:10],
+                    "status": "published" if all(i.get("status") == "published" for i in rows) else
+                              "approved" if all(i.get("status") in ("approved", "published") for i in rows) else "waiting",
+                    # from the manifests only: "" = nothing was recorded about this file's colours
+                    "colours": colours["label"] if colours["drawn"] else "", "swatches": colours["swatches"],
+                    "off_palette": bool(colours["custom"]),
+                    "fonts": render_manifest.drawn_fonts(manifests),
+                    "font_lines": render_manifest.font_lines(manifests, lang)})
+    return out
+
+
+def _package(client_id: int, lang: str) -> dict:
+    try:
+        from core import brand_package
+        return brand_package.view(client_id, lang)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: package sections unreadable ({type(e).__name__})")
+        return {}
+
+
 # ─── The page ────────────────────────────────────────────────────────────────
 
 def view(client_id: int, lang: str = "he") -> dict:
@@ -550,9 +690,14 @@ def view(client_id: int, lang: str = "he") -> dict:
                    "provisional": bool(variants) and not stated, "segmented": len(variants) > 1},
         "typefaces": _typefaces(body),
         # the font library, the client's own fonts, what the names resolve to and what the page must say
-        "fonts": brand_fonts.view(client_id, body, lang),
-        "tone": {"says": _split(read_field(body, "voice", "tone_attributes").replace("—", "")),
-                 "not_says": _split(read_field(body, "voice", "avoid").replace("—", ""))},
+        "fonts": fonts,
+        "tone": tone,
+        # every EMPTY part of the page, in consequence terms (what it costs — never just "missing")
+        "gaps": gaps(logos, variants, stated, has_colors, fonts.get("chosen") or {}, tone, assets, files_ok, lang),
+        # the brand on the client's own REAL posts, newest first ([] = nothing produced yet: nothing shown)
+        "work": recent_work(client_id, lang),
+        # what a branding package would add, as part of the brand (core/brand_package)
+        "package": _package(client_id, lang),
         "logo_versions": list(LOGO_VERSIONS), "logos": logos,
         "assets": assets,
         "earlier": [r for r in rows if r["version"] in LOGO_VERSIONS and logos.get(r["version"], {}).get("id") != r["id"]],

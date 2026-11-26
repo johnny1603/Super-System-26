@@ -1702,11 +1702,50 @@ body.bs-open { overflow: hidden; }
   background: rgba(0,0,0,.25); color: inherit; padding: 6px 10px; font: inherit; font-size: 14px; }
 .br-swatch input[type=text] { direction: ltr; text-align: start; font-family: ui-monospace, monospace; font-size: 13px; }
 .br-swatch .unset { color: var(--gray); }
-/* the preview is a REAL slide from the post renderer (GET …/brand-identity/preview), never CSS */
-.br-render { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
-.br-render img { width: min(100%, 300px); height: auto; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.15)); display: block; }
-.br-render-note { flex: 1 1 200px; font-size: 12.5px; color: var(--gray); line-height: 1.6; }
-.br-render-note .warn { color: #FFB020; font-weight: 700; }
+/* the page's hero: the brand as it stands, on its own colours */
+.br-eyebrow { font-size: 11.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.br-hero { display: grid; grid-template-columns: minmax(180px, 280px) 1fr; gap: 0; padding: 0; overflow: hidden; }
+.br-hero-mark { background: var(--brh-bg, #111); color: var(--brh-fg, #bbb); display: flex; align-items: center; justify-content: center; padding: 28px; min-height: 200px;
+  border-inline-end: 4px solid var(--brh-accent, var(--accent)); font-size: 13px; }
+.br-hero-mark img { max-width: 100%; max-height: 160px; object-fit: contain; display: block; }
+.br-hero-body { padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.br-hero-body h2 { font-size: 22px; font-weight: 800; margin: 0; line-height: 1.3; }
+.br-hero-pal { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.br-hero-pal .soc-swatch i { width: 22px; height: 22px; }
+.br-hero-font { height: 40px; width: auto; max-width: 100%; border-radius: 8px; }
+.br-hero-state { font-size: 13px; color: var(--gray); }
+.br-hero-state.open { color: #FFB020; font-weight: 700; }
+@media (max-width: 640px) { .br-hero { grid-template-columns: 1fr; } .br-hero-mark { min-height: 140px; border-inline-end: 0; border-block-end: 4px solid var(--brh-accent, var(--accent)); } }
+/* what a branding package would add: parts of the brand, not blocked tiles */
+.br-package { border-style: dashed; border-color: var(--accent); }
+.br-pkgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; align-items: start; }
+.br-pkg { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 14px; overflow: hidden; }
+.br-pkg.open { border-color: var(--accent); grid-column: 1 / -1; }
+.br-pkg-head { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; width: 100%; text-align: start; background: none; border: 0; color: inherit; font: inherit; padding: 14px 16px; cursor: pointer; }
+.br-pkg-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.br-pkg-title { font-size: 15.5px; font-weight: 800; }
+.br-pkg-line { grid-column: 1; font-size: 13px; line-height: 1.6; color: var(--gray); }
+.br-pkg-more { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-size: 22px; color: var(--accent); width: 28px; text-align: center; }
+.br-pkg-body { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 1.6; }
+.br-pkg-body ul { margin: 0; padding-inline-start: 18px; }
+.br-pkg-confirm { border: 1px solid #FFB020; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: rgba(255,176,32,.07); }
+.br-pkg-sample { margin: 0; }
+.br-pkg-sample img { width: 100%; max-width: 760px; height: auto; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.15)); display: block; }
+.br-pkg-sample figcaption { font-size: 12.5px; color: var(--gray); margin-top: 8px; line-height: 1.6; }
+/* what an empty part of the page costs in practice (core/brand_page.gaps) */
+.br-gap { font-size: 12.5px; line-height: 1.6; color: #FFB020; border-inline-start: 3px solid #FFB020; padding: 4px 10px; margin: 0 0 10px; background: rgba(255,176,32,.07); border-radius: 6px; }
+/* the brand on the client's own real posts */
+.br-works { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+.br-work { display: flex; flex-direction: column; gap: 6px; text-align: start; background: none; border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 14px; padding: 8px; color: inherit; font: inherit; cursor: pointer; }
+.br-work:hover, .br-work:focus-visible { border-color: var(--accent); outline: none; }
+.br-work-pic { position: relative; display: block; aspect-ratio: 4 / 5; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,.05); }
+.br-work-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.br-work-count { position: absolute; inset-block-end: 6px; inset-inline-end: 6px; background: rgba(0,0,0,.7); color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 999px; }
+.br-work-title { display: block; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.br-work-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--gray); line-height: 1.5; }
+.br-work-line.off { color: #FFB020; font-weight: 700; }
+.br-fontfor { font-size: 12.5px; color: var(--gray); margin: 0 0 8px; }
+.br-fontpick.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .br-fontslots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin-bottom: 12px; }
 .br-fontslot { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .br-fontpick { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 10px;
@@ -3345,6 +3384,27 @@ const DASH_I18N = {
   br_upload: { he:'העלאה', en:'Upload', fr:'Ajouter', ar:'رفع', ru:'Загрузить' },
   br_replace: { he:'החלפה', en:'Replace', fr:'Remplacer', ar:'استبدال', ru:'Заменить' },
   br_delete: { he:'מחיקה', en:'Delete', fr:'Supprimer', ar:'حذف', ru:'Удалить' },
+  br_hero_eyebrow: { he:'המותג שלכם', en:'Your brand', fr:'Votre marque', ar:'علامتكم', ru:'Ваш бренд' },
+  br_hero_title: { he:'כך המותג שלכם מוגדר אצלנו היום', en:'This is how your brand is defined with us today', fr:'Voici comment votre marque est définie chez nous aujourd’hui', ar:'هكذا تُعرَّف علامتكم لدينا اليوم', ru:'Так ваш бренд определён у нас сегодня' },
+  br_hero_no_logo: { he:'עוד אין לוגו', en:'No logo yet', fr:'Pas encore de logo', ar:'لا شعار بعد', ru:'Логотипа пока нет' },
+  br_hero_open: { he:'{n} חלקים עדיין פתוחים. ליד כל אחד כתוב מה הוא משנה בפועל.', en:'{n} parts are still open. Beside each one it says what it changes in practice.', fr:'{n} parties restent ouvertes. À côté de chacune, ce qu’elle change en pratique.', ar:'{n} أجزاء ما زالت مفتوحة. بجانب كل منها ما يغيّره عمليًا.', ru:'Открытых частей: {n}. Рядом с каждой написано, что она меняет на практике.' },
+  br_hero_whole: { he:'כל חלקי היסוד של המותג מוגדרים.', en:'All the basic parts of the brand are defined.', fr:'Toutes les bases de la marque sont définies.', ar:'كل الأجزاء الأساسية للعلامة معرّفة.', ru:'Все базовые части бренда определены.' },
+  br_pkg_eyebrow: { he:'השלב הבא של המותג', en:'The brand’s next step', fr:'La prochaine étape de la marque', ar:'الخطوة التالية للعلامة', ru:'Следующий шаг бренда' },
+  br_pkg_includes: { he:'מה זה כולל', en:'What it includes', fr:'Ce que cela comprend', ar:'ماذا يشمل', ru:'Что входит' },
+  br_pkg_sample: { he:'לבקש דוגמה מהמותג שלי', en:'Ask for a sample from my brand', fr:'Demander un exemple à partir de ma marque', ar:'طلب عيّنة من علامتي', ru:'Попросить образец из моего бренда' },
+  br_pkg_once: { he:'יש דוגמה אחת לכל חלק. אחרי שהיא מופקת, החלק ננעל שוב.', en:'There is one sample per part. Once it is made, the part locks again.', fr:'Un seul exemple par partie. Une fois réalisé, la partie se verrouille à nouveau.', ar:'عيّنة واحدة لكل جزء. بعد إنتاجها يُقفل الجزء من جديد.', ru:'Один образец на часть. После создания часть снова закрывается.' },
+  br_pkg_confirm: { he:'מאשרים, להפיק את הדוגמה', en:'Confirm and make the sample', fr:'Confirmer et réaliser l’exemple', ar:'تأكيد وإنتاج العيّنة', ru:'Подтвердить и сделать образец' },
+  br_pkg_cancel: { he:'לא עכשיו', en:'Not now', fr:'Pas maintenant', ar:'ليس الآن', ru:'Не сейчас' },
+  br_pkg_making: { he:'מפיקים את הדוגמה…', en:'Making the sample…', fr:'Réalisation de l’exemple…', ar:'جارٍ إنتاج العيّنة…', ru:'Делаем образец…' },
+  br_work_title: { he:'המותג שלכם בפוסטים האחרונים', en:'Your brand in your latest posts', fr:'Votre marque dans vos derniers posts', ar:'علامتكم في أحدث منشوراتكم', ru:'Ваш бренд в последних постах' },
+  br_work_sub: { he:'הפוסטים האחרונים שהפקנו לכם, מהחדש לישן. הצבעים והגופנים שמתחת לכל אחד הם מה שצויר בקובץ עצמו.', en:'The latest posts we produced for you, newest first. The colours and fonts under each are what was drawn in the file itself.', fr:'Les derniers posts produits pour vous, du plus récent au plus ancien. Couleurs et polices indiquées : ce qui a été dessiné dans le fichier.', ar:'أحدث المنشورات التي أنتجناها لكم، من الأحدث إلى الأقدم. الألوان والخطوط تحت كل منشور هي ما رُسم في الملف نفسه.', ru:'Последние посты, которые мы для вас сделали, сначала новые. Цвета и шрифты под каждым — то, что нарисовано в самом файле.' },
+  br_work_files: { he:'{n} שקופיות', en:'{n} slides', fr:'{n} diapositives', ar:'{n} شرائح', ru:'{n} слайдов' },
+  br_work_fonts: { he:'גופנים: {fonts}', en:'Fonts: {fonts}', fr:'Polices : {fonts}', ar:'الخطوط: {fonts}', ru:'Шрифты: {fonts}' },
+  br_work_waiting: { he:'ממתין לאישור שלכם', en:'Waiting for your approval', fr:'En attente de votre validation', ar:'بانتظار موافقتكم', ru:'Ждёт вашего одобрения' },
+  br_work_approved: { he:'אושר', en:'Approved', fr:'Validé', ar:'تمت الموافقة', ru:'Одобрено' },
+  br_work_published: { he:'פורסם', en:'Published', fr:'Publié', ar:'نُشر', ru:'Опубликовано' },
+  br_font_library: { he:'{n} משפחות גופנים בעברית', en:'{n} Hebrew font families', fr:'{n} familles de polices hébraïques', ar:'{n} عائلة خطوط عبرية', ru:'{n} семейств шрифтов с ивритом' },
+  br_font_for: { he:'לחיצה על גופן בוחרת אותו עבור: {slot}', en:'Clicking a font chooses it for: {slot}', fr:'Un clic sur une police la choisit pour : {slot}', ar:'النقر على خط يختاره لـ: {slot}', ru:'Клик по шрифту выбирает его для: {slot}' },
   br_none_yet: { he:'עוד לא הועלה', en:'Not uploaded yet', fr:'Pas encore ajouté', ar:'لم يُرفع بعد', ru:'Ещё не загружено' },
   br_files_down: { he:'לא הצלחנו לקרוא את הקבצים כרגע. מה שהעליתם שמור.', en:'We couldn’t read the files right now. What you uploaded is saved.', fr:'Lecture des fichiers impossible pour l’instant. Vos fichiers sont conservés.', ar:'تعذّرت قراءة الملفات الآن. ما رفعتموه محفوظ.', ru:'Не удалось прочитать файлы. Загруженное сохранено.' },
   br_colors_title: { he:'צבעי המותג', en:'Brand colours', fr:'Couleurs de marque', ar:'ألوان العلامة', ru:'Цвета бренда' },
@@ -13455,7 +13515,7 @@ async function govPost(path, body) {
 // palette (per audience variant — never flattened), typefaces and tone = its
 // text, logos = files in the client's own folder. Nothing here is a draft.
 const brUI = { data: null, busy: false, says: [], nots: [], colors: {}, variants: [],
-  fonts: { headline: '', body: '', hebrew: '' }, fontOpen: '', fontReport: null, previews: {}, last: null };
+  fonts: { headline: '', body: '', hebrew: '' }, fontOpen: 'headline', fontReport: null, last: null, pkgOpen: '', pkgConfirm: '' };
 const BR_ROLES_DEFAULT = { bg: '#FFFFFF', fg: '#111111', accent: '#333333', muted: '#8A8A8A' };
 function brNote(text) { const el = document.getElementById('brNotice'); if (el) el.textContent = text || ''; }
 function brTake(data) {
@@ -13525,6 +13585,86 @@ function brUploadBtn(version, labelKey, cls) {
 function brFileMeta(f) {
   const dims = f.width && f.height ? ` · ${f.width}×${f.height}` : '';
   return `<div class="br-file-meta">${esc(f.name)}${esc(dims)}</div>`;
+}
+// What an EMPTY part of the page costs the business in practice — the server's line
+// (core/brand_page.gaps), never a bare "missing". Nothing when the part is there.
+function brGap(key) {
+  const line = ((brUI.data || {}).gaps || {})[key];
+  return line ? `<div class="br-gap" data-br-gap="${esc(key)}"><bdi dir="auto">${esc(line)}</bdi></div>` : '';
+}
+// The brand on the client's own REAL posts (core/brand_page.recent_work): the last few
+// produced, newest first, each with the colours and fonts its file was really drawn with.
+// No posts yet = no card at all — never a sample.
+function brWorkHtml() {
+  const t = uallakI18n.t, work = (brUI.data || {}).work || [];
+  if (!work.length) return '';
+  const tiles = work.map(w => {
+    const chips = (w.swatches || []).slice(0, 2).map(sw => `<span class="soc-swatch" aria-hidden="true">${['bg', 'fg', 'accent', 'muted']
+      .filter(r => /^#[0-9A-Fa-f]{6}$/.test(sw[r] || '')).map(r => `<i style="background:${esc(sw[r])}"></i>`).join('')}</span>`).join('');
+    return `<button type="button" class="br-work" data-br-work="${esc(w.id)}">
+      <span class="br-work-pic"><img src="/api/client/media-drive/thumb/${encodeURIComponent(w.file_id)}" alt="" loading="lazy" onerror="this.remove()">
+        ${w.files > 1 ? `<span class="br-work-count">${esc(t('br_work_files', { n: w.files }))}</span>` : ''}</span>
+      <span class="br-work-title"><bdi dir="auto">${esc(w.title || '')}</bdi></span>
+      <span class="br-file-meta">${esc(w.made_at || '')} · ${esc(t('br_work_' + w.status))}</span>
+      ${w.colours ? `<span class="br-work-line${w.off_palette ? ' off' : ''}">${chips}<bdi dir="auto">${esc(t('soc_post_palette', { name: w.colours }))}</bdi></span>` : ''}
+      ${(w.fonts || []).length ? `<span class="br-work-line"><bdi dir="auto">${esc(t('br_work_fonts', { fonts: w.fonts.join(' · ') }))}</bdi></span>` : ''}
+      ${(w.font_lines || []).map(l => `<span class="br-work-line off"><bdi dir="auto">${esc(l)}</bdi></span>`).join('')}</button>`;
+  }).join('');
+  return `<div class="br-card wide" id="brWorkCard"><h3>${esc(t('br_work_title'))}</h3><div class="br-sub">${esc(t('br_work_sub'))}</div>
+    <div class="br-works">${tiles}</div></div>`;
+}
+// The top of the page: the brand as it stands — logo on its own colour, every palette
+// variant, the fonts as pictures, the tone words — and how many parts are still open.
+function brHeroHtml() {
+  const t = uallakI18n.t, d = brUI.data, logos = d.logos || {}, f = d.fonts || {};
+  const first = (brUI.variants[0] || {}).label, roles = Object.assign({}, BR_ROLES_DEFAULT, brUI.colors[first] || {});
+  const ok = r => /^#[0-9A-Fa-f]{6}$/.test(roles[r] || '');
+  const logo = logos.on_dark || logos.full || logos.mark || logos.on_light;
+  const chips = brUI.variants.map(v => { const r = brUI.colors[v.label] || {};
+    const cells = ['bg', 'fg', 'accent', 'muted'].filter(k => /^#[0-9A-Fa-f]{6}$/.test(r[k] || '')).map(k => `<i style="background:${esc(r[k])}"></i>`).join('');
+    return cells ? `<span class="br-hero-pal"><span class="soc-swatch" aria-hidden="true">${cells}</span><bdi dir="auto">${esc(v.label === 'default' ? t('br_default_variant') : v.label)}</bdi></span>` : ''; }).join('');
+  const chosen = f.chosen || {};
+  const fonts = ['headline', 'body'].filter(s => chosen[s] && (brFontInfo(chosen[s]) || {}).installed !== false)
+    .map(s => `<img class="br-hero-font" src="${esc(brSampleUrl(chosen[s]))}" alt="${esc(chosen[s])}" loading="lazy" onerror="this.remove()">`).join('');
+  const open = Object.keys(d.gaps || {}).length;
+  return `<div class="br-card wide br-hero" style="${ok('bg') ? `--brh-bg:${esc(roles.bg)};` : ''}${ok('fg') ? `--brh-fg:${esc(roles.fg)};` : ''}${ok('accent') ? `--brh-accent:${esc(roles.accent)};` : ''}">
+    <div class="br-hero-mark">${logo && logo.format !== 'pdf' ? `<img src="${brFileUrl(logo.id)}" alt="${esc(logo.name)}" onerror="this.remove()">` : `<span>${esc(t('br_hero_no_logo'))}</span>`}</div>
+    <div class="br-hero-body"><div class="br-eyebrow">${esc(t('br_hero_eyebrow'))}</div>
+      <h2>${esc(t('br_hero_title'))}</h2>
+      ${chips ? `<div class="br-row">${chips}</div>` : ''}${fonts ? `<div class="br-row">${fonts}</div>` : ''}
+      ${brUI.says.length ? `<div class="br-chips">${brUI.says.slice(0, 6).map(w => `<span class="br-chip">${esc(w)}</span>`).join('')}</div>` : ''}
+      <div class="br-hero-state${open ? ' open' : ''}">${esc(open ? t('br_hero_open', { n: open }) : t('br_hero_whole'))}</div></div></div>`;
+}
+// What a branding package would add (core/brand_package): parts of the brand that are not
+// there yet — each opens to its explanation, a way to ask the owner, and ONE real sample
+// built from the client's own brand (cost shown first, confirmed, then locked again).
+function brPackageHtml() {
+  const t = uallakI18n.t, p = (brUI.data || {}).package || {};
+  if (!(p.sections || []).length) return '';
+  const rows = p.sections.map(s => {
+    const open = brUI.pkgOpen === s.id, smp = s.sample || {};
+    let sample = '';
+    if (smp.state === 'made') {
+      sample = `<figure class="br-pkg-sample"><img src="${esc(smp.url)}" alt="${esc(s.title)}" loading="lazy" onerror="this.remove()">
+        <figcaption><bdi dir="auto">${esc(smp.caption || '')}</bdi><br>${esc(smp.used_text || '')}</figcaption></figure>`;
+    } else if (!ADMIN_VIEW && brUI.pkgConfirm === s.id) {
+      sample = `<div class="br-pkg-confirm" role="group"><b>${esc(smp.cost_text || '')}</b><span>${esc(t('br_pkg_once'))}</span>
+        <div class="br-row"><button type="button" class="sugg-btn approve" data-br-pkg-make="${esc(s.id)}">${esc(t('br_pkg_confirm'))}</button>
+        <button type="button" class="media-chip" data-br-pkg-cancel>${esc(t('br_pkg_cancel'))}</button></div></div>`;
+    } else if (!ADMIN_VIEW) {
+      sample = `<div class="br-row"><button type="button" class="sugg-btn approve" data-br-pkg-sample="${esc(s.id)}">${esc(t('br_pkg_sample'))}</button>
+        <span class="br-file-meta">${esc(smp.cost_text || '')}</span></div>`;
+    }
+    return `<div class="br-pkg${open ? ' open' : ''}${smp.state === 'made' ? ' sampled' : ''}" data-br-pkg-row="${esc(s.id)}">
+      <button type="button" class="br-pkg-head" data-br-pkg="${esc(s.id)}" aria-expanded="${open}">
+        <span class="br-pkg-title">${esc(s.title)}</span><span class="br-pkg-line"><bdi dir="auto">${esc(s.line)}</bdi></span>
+        <span class="br-pkg-more" aria-hidden="true">${open ? '−' : '+'}</span></button>
+      ${open ? `<div class="br-pkg-body"><div class="br-file-meta">${esc(t('br_pkg_includes'))}</div>
+        <ul>${(s.includes || []).map(i => `<li><bdi dir="auto">${esc(i)}</bdi></li>`).join('')}</ul>${sample}
+        ${ADMIN_VIEW ? '' : `<div class="br-row"><button type="button" class="media-chip" data-br-pkg-ask="${esc(s.id)}" ${s.asked ? 'disabled' : ''}>${esc((s.asked ? p.asked_label : p.ask_label) || '')}</button></div>`}</div>` : ''}</div>`;
+  }).join('');
+  return `<div class="br-card wide br-package" id="brPackageCard"><div class="br-eyebrow">${esc(t('br_pkg_eyebrow'))}</div>
+    <h3>${esc(p.title || '')}</h3><div class="br-sub">${esc(p.sub || '')}</div><div class="br-pkgs">${rows}</div></div>`;
 }
 function brColorsHtml() {
   const t = uallakI18n.t, d = brUI.data.colors || {};
@@ -13653,6 +13793,7 @@ function renderBrandPage() {
   const d = brUI.data, t = uallakI18n.t;
   if (!root || !d) return;
   const parts = [];
+  if (!d.lead) parts.push(brHeroHtml());
   if (d.lead) {
     parts.push(`<div class="br-card wide br-lead"><h3>${esc(t('br_lead_title'))}</h3><p class="br-sub">${esc(t('br_lead_text'))}</p>
       <div class="br-row">${ADMIN_VIEW ? '' : `<button class="sugg-btn approve" data-br-studio>${esc(t('br_lead_btn'))}</button>`}<span class="br-file-meta">${esc(t('br_lead_own'))}</span></div></div>`);
@@ -13685,6 +13826,7 @@ function renderBrandPage() {
       ${ADMIN_VIEW ? '' : `<div class="br-row"><button class="media-chip" data-br-del="${esc(f.id)}">${esc(t('br_delete'))}</button></div>`}</div>`).join('')}</div>`
       : brGap('assets') || `<div class="br-file-meta">${esc(t('br_assets_empty'))}</div>`}
     <div class="br-row" style="margin-top:12px">${brUploadBtn('asset', 'br_assets_add', 'sugg-btn approve')}</div></div>`);
+  parts.push(brPackageHtml());
   const scroll = (root.querySelector('.br-fontpanel') || {}).scrollTop || 0;
   root.innerHTML = `<div class="br-grid">${parts.join('')}</div>`;
   const panel = root.querySelector('.br-fontpanel');
@@ -13786,6 +13928,24 @@ function brReadColors() {
     } else if (btn.hasAttribute('data-br-font-del')) {
       brUI.fontReport = null; 
       brJson('/api/client/brand-identity/font/' + encodeURIComponent(btn.getAttribute('data-br-font-del')) + '/delete', {});
+    } else if (btn.hasAttribute('data-br-pkg')) {
+      const id = btn.getAttribute('data-br-pkg');
+      brUI.pkgOpen = brUI.pkgOpen === id ? '' : id; brUI.pkgConfirm = '';
+      renderBrandPage();
+    } else if (btn.hasAttribute('data-br-pkg-sample')) {          // step 1: only shows the cost and asks — nothing is made
+      brUI.pkgConfirm = btn.getAttribute('data-br-pkg-sample');
+      renderBrandPage();
+    } else if (btn.hasAttribute('data-br-pkg-cancel')) {
+      brUI.pkgConfirm = '';
+      renderBrandPage();
+    } else if (btn.hasAttribute('data-br-pkg-make')) {            // step 2: the confirmed request — one sample, then locked
+      brUI.pkgConfirm = '';
+      brJson('/api/client/brand-identity/package/' + encodeURIComponent(btn.getAttribute('data-br-pkg-make')) + '/sample?confirm=1', {}, 'br_pkg_making');
+    } else if (btn.hasAttribute('data-br-pkg-ask')) {
+      brJson('/api/client/brand-identity/package/' + encodeURIComponent(btn.getAttribute('data-br-pkg-ask')) + '/ask', {})
+        .then(ok => { if (ok && brUI.last && brUI.last.message) brNote(brUI.last.message); });
+    } else if (btn.hasAttribute('data-br-work')) {
+      showView('social');                                          // the real post, where it is approved and sent
     } else if (btn.hasAttribute('data-br-studio')) {
       openBrandStudio(btn);
     } else if (btn.hasAttribute('data-br-dismiss')) {

@@ -9298,32 +9298,51 @@ def client_brand_identity_font_sample(request: Request, family: str = "", weight
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
 
-@app.get("/api/client/brand-identity/preview")
-def client_brand_identity_preview(request: Request, variant: str = "", headline: str = None, body: str = None,
-                                  hebrew: str = None, bg: str = "", fg: str = "", accent: str = "", muted: str = ""):
-    # The page's preview = ONE real slide from the renderer that renders posts
-    # (the client's template, palette variant and fonts; a choice not saved yet
-    # comes in the query). What drew it travels in X-Render-Fonts. A brand that
-    # cannot be drawn as set answers 422 with the reason — a post would fail the same way.
-    import json as _json
-    from urllib.parse import quote
+# ─── What a branding package would add (core/brand_package) ───
+def _package_fail(e, lang: str):
+    from core import brand_package
+    status = 404 if e.code in ("not_found", "bad_section") else 409 if e.code == "sample_used" else 503 if e.code == "sample_unavailable" else 400
+    raise HTTPException(status_code=status, detail={"code": e.code, "message": brand_package.error_text(e.code, lang)})
+
+@app.post("/api/client/brand-identity/package/{section}/sample")
+def client_brand_package_sample(section: str, request: Request, confirm: int = 0):
+    # ONE real sample of this section, drawn from the client's own brand — only on
+    # their explicit request, and only with confirm=1 (the page showed the credit
+    # cost first). A second request for the same section is refused. Every request
+    # is logged for the owner (a buying signal).
     client_id = _require_session(request)
-    from core import brand_fonts, slide_design, slide_renderer, slide_spec
+    from core import brand_package, brand_page
     lang = _client_lang(client_id)
-    override = {k: v[:80] for k, v in (("headline", headline), ("body", body), ("hebrew", hebrew)) if v is not None}
     try:
-        got = brand_fonts.preview_png(client_id, variant[:60], override,
-                                      {"bg": bg, "fg": fg, "accent": accent, "muted": muted}, lang)
-    except slide_renderer.RenderError as e:
-        raise HTTPException(status_code=422, detail={"code": "render_failed",
-                                                     "message": slide_design.problem_text(e.problems, lang)})
-    except (slide_renderer.RendererUnavailable, slide_spec.PaletteMissing, slide_spec.SpecInvalid) as e:
-        print(f"[brand_fonts] client {client_id}: preview not rendered ({type(e).__name__}: {str(e)[:120]})")
-        raise HTTPException(status_code=503, detail={"code": "preview_unavailable"})
-    info = quote(_json.dumps({"fonts": got["fonts"], "lines": got["lines"]}, ensure_ascii=False))
-    return Response(content=got["png"], media_type="image/png",
-                    headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
-                             "X-Render-Fonts": info})
+        made = brand_package.request_sample(client_id, section[:40], bool(confirm), lang)
+    except brand_package.PackageError as e:
+        _package_fail(e, lang)
+    log_activity(client_id, "client", "brand_package_sample_requested", f"The client requested a branding-package sample: {made['section']}")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
+
+@app.get("/api/client/brand-identity/package/{section}/sample")
+def client_brand_package_sample_image(section: str, request: Request):
+    client_id = _require_session(request)
+    from core import brand_package
+    try:
+        png = brand_package.sample_png(client_id, section[:40])
+    except brand_package.PackageError as e:
+        _package_fail(e, _client_lang(client_id))
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+@app.post("/api/client/brand-identity/package/{section}/ask")
+def client_brand_package_ask(section: str, request: Request):
+    # "Ask Johnny about it": a tracked team request a person answers — never a price from code
+    client_id = _require_session(request)
+    from core import brand_package, brand_page
+    lang = _client_lang(client_id)
+    try:
+        got = brand_package.ask(client_id, section[:40], lang)
+    except brand_package.PackageError as e:
+        _package_fail(e, lang)
+    log_activity(client_id, "client", "brand_package_question", f"The client asked about the branding package: {section[:40]}")
+    return {"success": True, "message": got["message"], "data": brand_page.view(client_id, lang)}
 
 @app.post("/api/client/brand-identity/assessment/dismiss")
 def client_brand_identity_assessment_dismiss(request: Request):
