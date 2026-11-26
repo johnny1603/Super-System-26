@@ -303,6 +303,17 @@ def for_agents(client_id: int) -> dict:
 
 # ─── Palette roles (slide_spec) ──────────────────────────────────────────────
 
+def palette_colors(client_id: int) -> set:
+    """Every colour the brand DEFINES: the values of all its palette variants
+    (upper-case #RRGGBB). A client with no palette = the neutral colours. A
+    post's colours come from this set; anything else is a deviation that must
+    carry a reason and the client's decision (core/slide_design)."""
+    variants = (palette(client_id) or {}).get("variants") or {}
+    found = {str(v).upper() for roles in variants.values() if isinstance(roles, dict)
+             for r, v in roles.items() if r in COLOR_ROLES and HEX_RE.match(str(v or ""))}
+    return found or set(NEUTRAL.values())
+
+
 def roles_for(client_id: int, variant_label: str) -> dict:
     """{"roles": {bg, fg, accent, muted}, "neutral": [roles that fell back],
     "known": bool (the client has a palette), "variant_found": bool}."""

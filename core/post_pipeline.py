@@ -109,6 +109,13 @@ TEXT = {
         "Comme demandé, les couleurs de ce post ne sont pas celles de la marque ({requested}).",
         "كما طلبتم، ألوان هذا المنشور ليست من ألوان العلامة ({requested}).",
         "По вашей просьбе цвета этого поста не из палитры бренда ({requested})."),
+    # The AGENT's own reason for leaving the palette: said as a proposal the client decides on the design card
+    "colors_agent": _five(
+        "הצעתי בפוסט הזה צבעים שאינם בפלטת המותג, והסיבה: {requested}. זה יופיע על כרטיס העיצוב כחריגה, ואתם מחליטים אם לאשר אותה או לצייר בצבעי המותג.",
+        "I proposed colours outside the brand palette for this post, because: {requested}. It will show on the design card as a deviation, and you decide whether to approve it or draw in the brand colours.",
+        "J'ai proposé pour ce post des couleurs hors palette de marque, car : {requested}. Cela apparaîtra sur la carte du design comme un écart, et vous décidez de le valider ou de revenir aux couleurs de la marque.",
+        "اقترحت لهذا المنشور ألوانًا خارج لوحة العلامة، والسبب: {requested}. سيظهر ذلك على بطاقة التصميم كخروج عن اللوحة، وأنتم تقررون اعتماده أو الرسم بألوان العلامة.",
+        "Для этого поста я предложил цвета вне палитры бренда, причина: {requested}. На карточке дизайна это будет показано как отступление, и вы решаете — одобрить или нарисовать в цветах бренда."),
     # Production, said in the chat as it happens (2026-11-25): started, then
     # finished — or what failed and why. Never "done" when something failed.
     "started": _five(
@@ -345,7 +352,8 @@ def submit(client_id: int, raw_post, request_text: str = "", lang: str = "he", p
     line = pick(TEXT["queued"], lang).replace("{n}", str(len(post["assets"])))
     if post.get("colors"):
         # The manager's explicit colours win over the brand palette — said, in one line
-        line += " " + pick(TEXT["colors"], lang).replace("{requested}", post["colors"]["requested"])
+        line += " " + pick(TEXT["colors_agent" if post["colors"].get("by") == "agent" else "colors"], lang) \
+            .replace("{requested}", post["colors"]["requested"])
     if escalations:
         line += " " + pick(TEXT["escalated"], lang)
     if fitted.get("over"):
@@ -643,7 +651,9 @@ def _produce(client_id: int, item: dict, tell: bool) -> dict:
             # variant) — never an image model. The design waits for approval.
             entry = {**slide, "n": n, "total": len(slides)}
             if len(colors) >= n:
-                entry["colors"] = colors[n - 1]             # the manager's explicit colours for this slide
+                entry["colors"] = colors[n - 1]             # colours stated for this slide
+                # why they may leave the brand palette — no reason = the design card FAILS (core/slide_design)
+                entry["colors_reason"] = (body.get("colors") or {}).get("reason") or (body.get("colors") or {}).get("requested", "")
             text_slides.append(entry)
             continue
         brief = post_brief.AssetBrief(

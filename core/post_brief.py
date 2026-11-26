@@ -461,10 +461,16 @@ def clean_colors(raw, n_slides: int) -> dict:
         return {}
     if not isinstance(raw, dict):
         raise ValueError("colors must be an object: {requested, slides}")
+    # Palette discipline (2026-11-27): a post's colours come from the brand's defined
+    # palette variants. Leaving them needs a REASON in the brief — the client's own
+    # instruction quoted in `requested`, or the agent's `reason` — and it reaches the
+    # design card as a named deviation the client approves or turns down. Never silent.
     requested = _clean_text(raw.get("requested"), 200)
-    if len(requested) < 3:
-        raise ValueError("colors.requested must quote the manager's explicit colour instruction — "
-                         "without it the brand palette stays")
+    reason = _clean_text(raw.get("reason"), 300) or requested
+    if len(reason) < 3:
+        raise ValueError("colors needs a reason: \"requested\" (the client's explicit colour instruction, quoted) or "
+                         "\"reason\" (why this post must leave the brand palette) — without one the brand palette "
+                         "stays. The client sees it on the card as a deviation and decides.")
     entries = raw.get("slides")
     if isinstance(entries, dict):
         entries = [entries]
@@ -483,7 +489,8 @@ def clean_colors(raw, n_slides: int) -> dict:
         slides.append(entry)
     if len(slides) == 1:
         slides = slides * n_slides
-    return {"requested": requested, "slides": slides}
+    # "requested" stays the one line every reader shows; "by" says whose words it is
+    return {"requested": requested or reason, "reason": reason, "by": "client" if requested else "agent", "slides": slides}
 
 
 def asset(entry: dict) -> AssetBrief:

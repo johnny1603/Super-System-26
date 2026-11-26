@@ -293,6 +293,9 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
         # source for what the card, the agents and the AI notice say about it
         item["manifest"] = {"canvas": list(manifest.get("canvas") or []), "encoded": bool(manifest.get("encoded")),
                             "layers": [l for l in manifest["layers"] if isinstance(l, dict)][:24]}
+        if isinstance(manifest.get("palette"), dict):
+            # the colours this file was drawn with, and which brand variant they are ("" = none)
+            item["manifest"]["palette"] = manifest["palette"]
         if isinstance(manifest.get("fonts"), dict):
             # the brand font the brief names and every run another font drew instead
             item["manifest"]["fonts"] = manifest["fonts"]
@@ -590,7 +593,19 @@ def design_blocked(item: dict) -> bool:
     it cannot be approved as it is — a post never goes out claiming what it lacks."""
     d = (item or {}).get("design") or {}
     return (item or {}).get("kind") == DESIGN_KIND and (
-        bool(d.get("missing")) or any(s.get("wants_character") for s in d.get("slides") or []))
+        bool(d.get("missing")) or any(s.get("wants_character") for s in d.get("slides") or [])
+        or deviation_undecided(item))
+
+
+def deviation_undecided(item: dict) -> bool:
+    """A design drawn in colours the brand does not define, which the client
+    has not decided on yet (core/slide_design.deviation): approve the named
+    deviation, or draw in the brand colours — never approved silently."""
+    if (item or {}).get("kind") != DESIGN_KIND:
+        return False
+    from core import slide_design
+    found = slide_design.deviation(item.get("design") or {})
+    return bool(found) and not found["accepted"]
 
 
 AI_CODES = ("ai_label", "ai_content")
@@ -720,7 +735,11 @@ def _post_view(item: dict, lang: str, client_id: int = None, drawn: dict = None)
                        "fit": (fit.get("slides") or {}).get(s["asset_id"]) or {}})
     return {"post_format": post.get("post_format", ""), "format_reason": post.get("format_reason", ""),
             "objective": post.get("objective", ""), "audience": post.get("audience", ""),
-            "palette": (post.get("palette") or {}).get("label", ""), "slides": slides,
+            # the copy stage: nothing is drawn yet, so the colours are the brief's PLAN and are said
+            # to be one — and a post carrying the manager's explicit colours never names the brand variant
+            "palette": render_manifest.palette_view([], lang, planned=(post.get("palette") or {}).get("label", ""),
+                                                    requested=(post.get("colors") or {}).get("requested", ""))["label"],
+            "slides": slides,
             "fit_summary": fit.get("summary", ""), "fit_over": fit.get("over", 0),
             "warnings": warning_lines(post.get("warnings"), lang), "stage_text": pick(COPY_TEXT["stage"], lang),
             "production": _production_view(item, lang, client_id)}
@@ -805,7 +824,9 @@ def approve(client_id: int, ids, by: str = "client") -> list:
         except Exception as e:
             print(f"[{SERVICE_NAME}] client {client_id}: backup not queued ({type(e).__name__})")
     if blocked and not done:
-        raise QueueError("element_missing")
+        only_colours = all(deviation_undecided(i) and not (i.get("design") or {}).get("missing")
+                           for i in queue if i["id"] in blocked)
+        raise QueueError("deviation_undecided" if only_colours else "element_missing")
     return done
 
 

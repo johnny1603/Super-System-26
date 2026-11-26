@@ -108,6 +108,10 @@ def font_trace(slide, role: str, used: list, fallbacks: list = None):
         pass
 
 
+def _five(he, en, fr, ar, ru):
+    return {"he": he, "en": en, "fr": fr, "ar": ar, "ru": ru}
+
+
 # ─── Building a manifest ─────────────────────────────────────────────────────
 
 def new(width: int, height: int) -> dict:
@@ -146,6 +150,45 @@ def fonts(manifest, wanted: dict = None, fallbacks: list = None):
             rows.append(dict(f))
     if wanted or rows:
         manifest["fonts"] = {"wanted": wanted, "fallbacks": rows}
+
+
+def palette(manifest, roles: dict, background: dict = None, mean: str = ""):
+    """Records the colours the slide was DRAWN with: the four role colours the
+    renderer used (after any per-slide override), which roles the background
+    took, and `mean` — the average colour of the canvas right after the
+    background layer, measured from the pixels."""
+    if manifest is None:
+        return
+    bg = background or {}
+    manifest["palette"] = {
+        "roles": {r: str(roles[r]).upper() for r in ("bg", "fg", "accent", "muted") if roles.get(r)},
+        "background": {"kind": bg.get("type") or "", "role": bg.get("color_role") or "bg",
+                       "second_role": bg.get("second_color_role") or "", "mean": str(mean or "").upper()}}
+
+
+def name_palette(manifest, variant: str, brand_roles: dict) -> str:
+    """Writes on the manifest WHICH brand variant its drawn colours are: the
+    variant's label when the four drawn role colours are that variant's, ""
+    when they are not (colours outside the brand palette). Returns it."""
+    drawn = ((manifest or {}).get("palette") or {}).get("roles")
+    if not isinstance(drawn, dict):
+        return ""
+    same = all(str(drawn.get(r) or "").upper() == str((brand_roles or {}).get(r) or "").upper()
+               for r in ("bg", "fg", "accent", "muted"))
+    manifest["palette"]["variant"] = str(variant or "") if same else ""
+    return manifest["palette"]["variant"]
+
+
+def mark_outside(manifest, allowed) -> dict:
+    """Writes on the manifest which of its drawn role colours the brand does
+    NOT define: `palette.outside` = {role: hex} ({} = every colour is the
+    brand's). Returns it."""
+    drawn = ((manifest or {}).get("palette") or {}).get("roles")
+    if not isinstance(drawn, dict):
+        return {}
+    known = {str(c).upper() for c in allowed or []}
+    manifest["palette"]["outside"] = {r: v for r, v in drawn.items() if str(v).upper() not in known}
+    return manifest["palette"]["outside"]
 
 
 def for_asset(kind: str, out: dict) -> dict:
@@ -224,7 +267,106 @@ def missing(wanted: list, manifest) -> list:
             if not any(_same_text(w["text"], t) or re.sub(r"\s+", " ", w["text"]).strip() in re.sub(r"\s+", " ", t)
                        for t in texts):
                 out.append({"type": "text", "id": w["id"]})
+        elif w["type"] == "palette":
+            # the brief's palette variant (with the manager's explicit colours for this slide, if any)
+            # against the colours the render used — and, on a plain background, against the PIXELS
+            got = (manifest or {}).get("palette") or {}
+            drawn = got.get("roles") or {}
+            off = [r for r in ("bg", "fg", "accent", "muted")
+                   if str(drawn.get(r) or "").upper() != str((w.get("roles") or {}).get(r) or "").upper()]
+            bg = got.get("background") or {}
+            if not off and bg.get("kind") == "solid" and bg.get("mean"):
+                if _far(bg["mean"], (w.get("roles") or {}).get(bg.get("role") or "bg")):
+                    off = ["bg"]
+            if off:
+                out.append({"type": "palette", "id": w["id"], "roles": off, "drawn": dict(drawn),
+                            "mean": bg.get("mean", "")})
+            elif w.get("allowed") is not None and not str(w.get("reason") or "").strip():
+                # the declared colours WERE drawn — but some are not the brand's, and the brief
+                # gives no reason: a silent deviation fails, the same way a missing character does
+                known = {str(c).upper() for c in w["allowed"]}
+                outside = {r: v for r, v in drawn.items() if str(v).upper() not in known}
+                if outside:
+                    out.append({"type": "palette", "id": w["id"], "roles": sorted(outside), "drawn": dict(drawn),
+                                "mean": bg.get("mean", ""), "why": "no_reason", "outside": outside})
     return out
+
+
+def _far(a: str, b: str, tolerance: int = 6) -> bool:
+    """Two #RRGGBB colours differ by more than rounding."""
+    try:
+        pa, pb = (tuple(int(str(c).lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)) for c in (a, b))
+    except (ValueError, TypeError):
+        return True
+    return max(abs(x - y) for x, y in zip(pa, pb)) > tolerance
+
+
+PALETTE_TEXT = {
+    # the card's colour label, from the manifest
+    "image": _five("{name} · על רקע תמונה", "{name} · on a picture background", "{name} · sur fond photo",
+                         "{name} · على خلفية صورة", "{name} · на фоне фото"),
+    "custom": _five("לא פלטת המותג — רקע {bg}, טקסט {fg}, הדגשה {accent}",
+                          "Not the brand palette — background {bg}, text {fg}, accent {accent}",
+                          "Hors palette de marque — fond {bg}, texte {fg}, accent {accent}",
+                          "ليست لوحة العلامة — الخلفية {bg}، النص {fg}، التمييز {accent}",
+                          "Не палитра бренда — фон {bg}, текст {fg}, акцент {accent}"),
+    "custom_some": _five("{name} · שקופיות {slides} לא בפלטת המותג (רקע {bg})",
+                               "{name} · slides {slides} are not in the brand palette (background {bg})",
+                               "{name} · diapositives {slides} hors palette de marque (fond {bg})",
+                               "{name} · الشرائح {slides} ليست بلوحة العلامة (الخلفية {bg})",
+                               "{name} · слайды {slides} не в палитре бренда (фон {bg})"),
+    "requested": _five("לבקשתכם: \"{requested}\"", "As you asked: \"{requested}\"", "À votre demande : « {requested} »",
+                             "بطلبكم: \"{requested}\"", "По вашей просьбе: «{requested}»"),
+    "planned": _five("{name} (לפי הבריף — לא נבדק מול הקובץ)", "{name} (per the brief — not checked against the file)",
+                     "{name} (selon le brief — non vérifié sur le fichier)", "{name} (حسب الموجز — لم يُتحقق من الملف)",
+                     "{name} (по брифу — с файлом не сверено)"),
+    "planned_custom": _five("לא פלטת המותג, לבקשתכם: \"{requested}\" (לפי הבריף — לא נבדק מול הקובץ)",
+                            "Not the brand palette, as you asked: \"{requested}\" (per the brief — not checked against the file)",
+                            "Hors palette de marque, à votre demande : « {requested} » (selon le brief — non vérifié sur le fichier)",
+                            "ليست لوحة العلامة، بطلبكم: \"{requested}\" (حسب الموجز — لم يُتحقق من الملف)",
+                            "Не палитра бренда, по вашей просьбе: «{requested}» (по брифу — с файлом не сверено)"),
+}
+
+
+def palette_view(manifests, lang: str = "he", planned: str = "", requested: str = "") -> dict:
+    """The card's colour label, built from what was DRAWN: {"label", "drawn":
+    bool, "variant": the brand variant every slide used ("" = not all of
+    them), "custom": [slide numbers drawn outside the brand palette],
+    "swatches": [{bg, fg, accent, muted}] (each distinct set, in slide
+    order), "note": the manager's own colour request when there is one}.
+    No manifest carries a palette (not rendered yet / rendered before
+    2026-11-27) → the brief's variant, SAID to be a plan."""
+    def pick(key):
+        return PALETTE_TEXT[key].get(lang) or PALETTE_TEXT[key]["en"]
+    many = [m for m in (manifests if isinstance(manifests, list) else [manifests]) if isinstance(m, dict)]
+    rows = [(m.get("n") or i, m["palette"]) for i, m in enumerate(many, 1) if isinstance(m.get("palette"), dict)]
+    if not rows:
+        label = (pick("planned_custom").replace("{requested}", requested) if requested
+                 else pick("planned").replace("{name}", planned) if planned else "")
+        return {"label": label, "drawn": False, "variant": "", "custom": [], "swatches": [], "note": ""}
+    swatches = list({json_key(p.get("roles")): dict(p.get("roles") or {}) for _n, p in rows}.values())
+    names = list(dict.fromkeys(p.get("variant") or "" for _n, p in rows))
+    custom = [n for n, p in rows if not p.get("variant")]
+    first_custom = next((p.get("roles") or {} for _n, p in rows if not p.get("variant")), {})
+    variant = names[0] if len(names) == 1 else ""
+    if not custom:
+        image = any((p.get("background") or {}).get("kind") == "image" for _n, p in rows)
+        label = " / ".join(n for n in names if n)
+        label = pick("image").replace("{name}", label) if image else label
+    elif len(custom) == len(rows):
+        label = pick("custom")
+        for r in ("bg", "fg", "accent"):
+            label = label.replace("{" + r + "}", str(first_custom.get(r) or "—"))
+    else:
+        label = (pick("custom_some").replace("{name}", " / ".join(n for n in names if n))
+                 .replace("{slides}", ", ".join(str(n) for n in custom)).replace("{bg}", str(first_custom.get("bg") or "—")))
+    note = pick("requested").replace("{requested}", requested) if custom and requested else ""
+    return {"label": label, "drawn": True, "variant": variant if not custom else "", "custom": custom,
+            "swatches": swatches[:6], "note": note}
+
+
+def json_key(value) -> str:
+    return "|".join(f"{k}={v}" for k, v in sorted((value or {}).items()))
 
 
 def drawn_fonts(manifests) -> list:
@@ -247,10 +389,6 @@ def font_fallbacks(manifests) -> list:
             if n not in row["slides"]:
                 row["slides"].append(n)
     return list(out.values())
-
-
-def _five(he, en, fr, ar, ru):
-    return {"he": he, "en": en, "fr": fr, "ar": ar, "ru": ru}
 
 
 FONT_SCRIPT = {"hebrew": _five("הטקסט בעברית", "the Hebrew text", "le texte en hébreu", "النص العبري", "текст на иврите"),
@@ -306,7 +444,12 @@ def facts(manifest) -> dict:
     if not manifest:
         return {}
     bg = (layers(manifest, "background") or [{}])[0]
+    colours = manifest.get("palette") if isinstance(manifest, dict) else None
     return {"characters": characters(manifest), "fonts": drawn_fonts(manifest),
+            # the colours this file was drawn with; brand_variant "" = NOT the brand palette
+            **({"palette": {"brand_variant": colours.get("variant", ""), "roles": dict(colours.get("roles") or {}),
+                            "background": (colours.get("background") or {}).get("kind", "")}}
+               if isinstance(colours, dict) and "variant" in colours else {}),
             "font_fallbacks": [{k: f.get(k) for k in ("wanted", "drew", "script", "reason")}
                                for f in font_fallbacks(manifest)],
             "texts": {l.get("role") or "text": l.get("text", "") for l in layers(manifest, "text")},
@@ -323,4 +466,7 @@ FACTS_RULE = ("`drawn` on an item is its RENDER MANIFEST: what was actually draw
               "lacks: that post FAILED — say so plainly, name what is missing, and never call it ready. "
               "drawn.fonts = the fonts that really drew the text; drawn.font_fallbacks = where the brand font "
               "was NOT what drew it (wanted / drew / why): never say a post is in the brand font when it is "
-              "listed there — say which font drew it and why.")
+              "listed there — say which font drew it and why. drawn.palette = the colours the file was "
+              "really drawn with: brand_variant names the brand palette variant it used, and an EMPTY "
+              "brand_variant means it is NOT in the brand palette — never name a palette for a post "
+              "from its template's name or from the brief.")

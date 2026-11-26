@@ -862,6 +862,11 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
     img = _background(spec["background"], size, roles, loader, problems)
     render_manifest.layer(drawn, "background", kind=spec["background"].get("type"),
                           asset=spec["background"].get("image_asset_id") if spec["background"].get("type") == "image" else "")
+    # The colours this slide is drawn with, and the canvas's average colour measured
+    # from the pixels right after the background layer: the card's colour label and
+    # the "did the brief's palette reach the file" check are built from this
+    mean = img.convert("RGB").resize((1, 1), Image.BOX).getpixel((0, 0))
+    render_manifest.palette(drawn, roles, spec["background"], "#%02X%02X%02X" % tuple(mean[:3]))
     accent = _accent(img, spec.get("accent") or {}, size, m, roles, n, problems, fonts)
     if accent.get("rect"):
         render_manifest.layer(drawn, "accent", kind=(spec.get("accent") or {}).get("type"), box=accent["rect"])

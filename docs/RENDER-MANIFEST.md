@@ -48,6 +48,54 @@ post's production record.
 - ways out, both the client's: approve a pose (the design re-checks itself — `apply_approved_poses`), or
   "להמשיך בלי הדמות" (`slide_design.without_character`: the DECLARATION changes, recorded in `design.dropped`).
 
+## The palette (2026-11-27)
+
+Client 27, 2026-11-26: a carousel's card read `צבעים: black + red` over a dark
+teal first slide. The card's colour label was `design.palette.label` — the
+variant the BRIEF named (the template name "carousel black + red" is built from
+the same label). Nothing compared it with the file. The renderer does take its
+roles from the brand palette, but a slide can legitimately be drawn in other
+colours (the manager's explicit colours, post `colors` → `slide_roles`), and the
+card kept saying the brand variant either way.
+
+- `manifest["palette"]` = `{"roles": the four colours the slide was drawn with,
+  "background": {"kind", "role", "mean": the canvas's average colour measured
+  from the pixels after the background layer}, "variant": the brand variant
+  those colours ARE, "" when they are not}` (`render_manifest.palette`,
+  `name_palette`).
+- Declared for a slide (`slide_design.declared_for`) = the brief's variant roles
+  with that slide's explicit colours on top. `render_manifest.missing` compares:
+  other roles, or a solid background whose pixels are not the declared colour =
+  `{"type": "palette"}` → the design card FAILS by name, cannot be approved,
+  `_finalize` / `render_asset` write no file (`palette_not_used`).
+- The card's colour label, chips and note come from `render_manifest.palette_view`
+  over the manifests: the variant's name only when its colours were drawn;
+  otherwise "not the brand palette" with the drawn hexes (and the manager's own
+  request beside it). Before a render (the copy stage) the label says it is the
+  brief's and unchecked. A file made before this date carries no palette: nothing
+  is claimed about its colours.
+- Agents: `drawn.palette.brand_variant` ("" = not the brand palette), FACTS_RULE.
+
+**Palette discipline (same day).** A slide's colours are the DEFINED values of the
+brand's palette variants (`brand_brief.palette_colors` + the variant's resolved
+roles). `manifest.palette.outside` = the drawn role colours the brand does not
+define.
+
+- Outside colours WITH a reason in the brief (`post.colors.requested` = the
+  client's own words, or `post.colors.reason` = the agent's; carried per slide
+  as `colors_reason`) = a NAMED DEVIATION on the design card: the slides, the
+  colours, the reason, whose it is. The card is blocked until the client decides
+  (`slide_design.decide_deviation`, `POST …/design/deviation?decision=accept|brand`):
+  `accept` records who and when (keyed to those exact colours); `brand` drops the
+  slides' own colours and draws the set again in the brand palette. Approving
+  while undecided = `deviation_undecided`.
+- Outside colours with NO reason = `missing` (`deviation_unexplained`): the card
+  FAILS like a missing character — no approve, no files; the one way out is
+  `brand`. `post_brief.clean_colors` also refuses `colors` with no reason.
+- A colour of ANOTHER variant of the same brand is inside the palette: no
+  deviation (the label still does not call it the declared variant).
+- Agent rule: PALETTE DISCIPLINE in `support_agent` (creativity inside the palette).
+
 ## The stage log
 
 `[character_trace] client=… post=… path=… slide=… character=… stage=… outcome=…` — one line per stage:

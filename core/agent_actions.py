@@ -4771,8 +4771,10 @@ ACTIONS = {
                                     "scene, up to 3) — default composite for text_slide, in_scene otherwise; never on "
                                     "real_photo, \"response\"?: your one-line answer to an "
                                     "objection, \"needs_room\"?: one line, ONLY when a text_slide's idea needs more "
-                                    "room than slide_copy_budget allows}], \"colors\"?: ONLY when the manager explicitly asked for other "
-                                    "colours than the brand's: {\"requested\": their words, \"slides\": [{\"bg\": "
+                                    "room than slide_copy_budget allows}], \"colors\"?: ONLY for colours OUTSIDE the brand palette, "
+                                    "always with a reason, shown to the client as a deviation they decide: "
+                                    "{\"requested\"?: the manager's own words when THEY asked, \"reason\"?: your one "
+                                    "sentence why when it is your proposal (one of the two is required), \"slides\": [{\"bg\": "
                                     "#RRGGBB, \"fg\"?: #RRGGBB, \"accent\"?: #RRGGBB}] — 1 entry for all slides or 1 "
                                     "per slide in order}. A carousel about why/reasons/tips = text_carousel."}},
         "available": _produce_possible,

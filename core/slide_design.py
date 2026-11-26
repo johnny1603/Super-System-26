@@ -29,7 +29,7 @@ import copy
 import re
 from datetime import datetime, timezone
 
-from core import post_brief, slide_renderer, slide_spec, slide_templates, social_formats, social_queue
+from core import brand_brief, post_brief, slide_renderer, slide_spec, slide_templates, social_formats, social_queue
 
 SERVICE_NAME = "slide_design"
 MAX_DESIGN_ATTEMPTS = 3
@@ -106,12 +106,98 @@ MISSING_TEXT = {
                   "Diapositive {n} : une partie du texte validé ({field}) n'apparaît pas dans ce modèle.",
                   "الشريحة {n}: جزء من النص الذي وافقتم عليه ({field}) لا يظهر في هذا القالب.",
                   "Слайд {n}: часть одобренного текста ({field}) не попала на слайд в этом шаблоне."),
+    "palette": _five("שקופית {n}: לפוסט הוגדרה פלטת \"{name}\", והשקופית צוירה בצבעים אחרים (רקע {bg}).",
+                     "Slide {n}: the post names the palette \"{name}\", and the slide was drawn in other colours (background {bg}).",
+                     "Diapositive {n} : le post prévoit la palette « {name} », et la diapositive a d'autres couleurs (fond {bg}).",
+                     "الشريحة {n}: المنشور يحدد لوحة \"{name}\"، والشريحة رُسمت بألوان أخرى (الخلفية {bg}).",
+                     "Слайд {n}: для поста задана палитра «{name}», а слайд нарисован другими цветами (фон {bg})."),
+    "deviation": _five("שקופית {n}: צוירה בצבע שאינו בפלטת המותג ({colors}), ובבריף לא נכתבה סיבה לכך.",
+                       "Slide {n}: drawn in a colour that is not in the brand palette ({colors}), and the brief gives no reason for it.",
+                       "Diapositive {n} : dessinée dans une couleur hors palette de marque ({colors}), sans raison écrite dans le brief.",
+                       "الشريحة {n}: رُسمت بلون ليس في لوحة العلامة ({colors})، ولم يُكتب في الموجز سبب لذلك.",
+                       "Слайд {n}: нарисован цветом вне палитры бренда ({colors}), и в брифе не указана причина."),
     "blocked": _five("העיצוב הזה לא יכול להתאשר כמו שהוא: משהו שהוגדר לפוסט לא צויר.",
                      "This design cannot be approved as it is: something the post asked for was not drawn.",
                      "Ce design ne peut pas être validé tel quel : un élément prévu n'a pas été dessiné.",
                      "لا يمكن اعتماد هذا التصميم كما هو: عنصر مطلوب للمنشور لم يُرسم.",
                      "Этот дизайн нельзя одобрить как есть: заявленный элемент не нарисован."),
 }
+
+# A deviation from the brand palette WITH a reason: named on the card, decided by the client
+DEVIATION_TEXT = {
+    "slide": _five("שקופית {n}: {colors} — לא מפלטת המותג", "Slide {n}: {colors} — not from the brand palette",
+                   "Diapositive {n} : {colors} — hors palette de marque", "الشريحة {n}: {colors} — ليست من لوحة العلامة",
+                   "Слайд {n}: {colors} — не из палитры бренда"),
+    "reason_client": _five("לבקשתכם: \"{reason}\"", "As you asked: \"{reason}\"", "À votre demande : « {reason} »",
+                           "بطلبكم: \"{reason}\"", "По вашей просьбе: «{reason}»"),
+    "reason_agent": _five("הסיבה שנכתבה בבריף: {reason}", "The reason written in the brief: {reason}",
+                          "La raison écrite dans le brief : {reason}", "السبب المكتوب في الموجز: {reason}",
+                          "Причина, указанная в брифе: {reason}"),
+    "undecided": _five("לפני האישור צריך החלטה שלכם: לאשר את החריגה מפלטת המותג, או לצייר בצבעי המותג.",
+                       "Before approval we need your decision: approve the deviation from the brand palette, or draw in the brand colours.",
+                       "Avant validation, votre décision : valider l'écart par rapport à la palette, ou dessiner aux couleurs de la marque.",
+                       "قبل الاعتماد نحتاج قراركم: اعتماد الخروج عن لوحة العلامة، أو الرسم بألوان العلامة.",
+                       "Перед одобрением нужно ваше решение: одобрить отступление от палитры бренда или нарисовать в цветах бренда."),
+    "accepted": _five("אישרתם את החריגה מפלטת המותג.", "You approved the deviation from the brand palette.",
+                      "Vous avez validé l'écart par rapport à la palette.", "وافقتم على الخروج عن لوحة العلامة.",
+                      "Вы одобрили отступление от палитры бренда."),
+}
+
+
+def deviation(design: dict) -> dict:
+    """The design's deviation from the brand palette, from what was DRAWN
+    (each manifest's `palette.outside`): {} when every colour is the brand's,
+    else {"slides": [{"n", "colors": {role: hex}}], "key", "accepted": bool}.
+    `key` changes when the colours do — an approval of one deviation never
+    covers another."""
+    rows = [{"n": m.get("n") or i, "colors": dict((m.get("palette") or {}).get("outside") or {})}
+            for i, m in enumerate(design.get("manifests") or [], 1) if isinstance(m, dict)]
+    rows = [r for r in rows if r["colors"]]
+    if not rows:
+        return {}
+    key = ";".join(f"{r['n']}:" + ",".join(f"{k}={v}" for k, v in sorted(r["colors"].items())) for r in rows)
+    return {"slides": rows, "key": key, "accepted": (design.get("deviation_accepted") or {}).get("key") == key}
+
+
+def decide_deviation(client_id: int, item_id: str, decision: str, by: str = "client") -> dict:
+    """The client's decision on colours outside the brand palette. "accept" =
+    the named deviation is approved (recorded with who and when; the card can
+    then be approved). "brand" = the slides' own colours are dropped and the
+    set is drawn again in the brand palette (also the way out of a card that
+    failed for a deviation with no reason). QueueError when it isn't such a card."""
+    item = social_queue.get(client_id, item_id)
+    if not item or item.get("kind") != social_queue.DESIGN_KIND:
+        raise social_queue.QueueError("not_a_design")
+    d = item["design"]
+    found = deviation(d)
+    unexplained = [m for m in d.get("missing") or [] if m.get("reason") == "deviation_unexplained"]
+    if item["status"] != "waiting" or not (found or unexplained):
+        raise social_queue.QueueError("not_editable")
+    if decision == "accept":
+        if unexplained or not found:
+            raise social_queue.QueueError("not_editable")       # nothing to approve without a stated reason
+        changes = {"deviation_accepted": {"key": found["key"], "by": by, "at": _now()}}
+        return social_queue.update_design(client_id, item_id, changes) or item
+    if decision != "brand":
+        raise social_queue.QueueError("bad_decision")
+    slides = [{k: v for k, v in s.items() if k not in ("colors", "colors_reason")} for s in d.get("slides") or []]
+    again = _reaudit(client_id, {**item, "design": {**d, "missing": [m for m in d.get("missing") or []
+                                                                     if m.get("type") != "palette"]}},
+                     slides, _lang(client_id))
+    if not again:
+        raise social_queue.QueueError("not_editable")           # could not be drawn again here: nothing changes
+    changes = {"slides": slides, "rev": int(d.get("rev") or 1) + 1, "missing": again["missing"],
+               "manifests": again["manifests"], "deviation_accepted": {},
+               "dropped": (d.get("dropped") or []) + [{"type": "palette", "id": "colours outside the brand palette",
+                                                       "slides": [r["n"] for r in (found.get("slides") or [])]
+                                                       or [m.get("slide") for m in unexplained],
+                                                       "by": by, "at": _now()}]}
+    if not changes["missing"] and not d.get("problems"):
+        changes["state"] = "ready"
+    out = social_queue.update_design(client_id, item_id, changes)
+    _resolve_post(client_id, d.get("post_id", ""), unexplained)
+    return out or item
+
 
 STATE_TEXT = {
     "ready": _five("מוכן לבדיקה", "Ready for review", "Prêt à vérifier", "جاهز للمراجعة", "Готов к проверке"),
@@ -313,7 +399,9 @@ def _slides_of(entries: list) -> list:
         if s.get("wants_character"):
             row["wants_character"] = dict(s["wants_character"])   # asked for, waiting for the client's pose approval
         if s.get("colors"):
-            row["colors"] = dict(s["colors"])               # the manager's explicit colours (post `colors`)
+            row["colors"] = dict(s["colors"])               # colours stated for this slide (post `colors`)
+            if s.get("colors_reason"):
+                row["colors_reason"] = str(s["colors_reason"])[:300]   # why they may leave the brand palette
         out.append(row)
     return out
 
@@ -425,19 +513,47 @@ def apply_approved_poses(client_id: int) -> list:
     return changed
 
 
+def declared_for(client_id: int, label: str, slide: dict, drawn: dict = None) -> list:
+    """What the BRIEF declared for one slide (core/render_manifest.declared)
+    plus its PALETTE: the role colours of the set's variant, with the
+    manager's explicit colours for this slide on top (post `colors`) — what
+    the render must have used. `drawn` (the slide's manifest) is marked with
+    the brand variant its colours are, or "" when they are not the brand's."""
+    from core import render_manifest
+    brand = slide_spec.palette_roles(client_id, label)
+    render_manifest.name_palette(drawn, label, brand)
+    # PALETTE DISCIPLINE (2026-11-27): the colours a slide may be drawn with are the ones
+    # the brand DEFINES (every variant's values + this variant's resolved roles). A colour
+    # outside them is a DEVIATION: with a reason in the brief it is named on the card and
+    # the client decides; with no reason the card fails, like a missing character.
+    allowed = brand_brief.palette_colors(client_id) | {str(v).upper() for v in brand.values()}
+    render_manifest.mark_outside(drawn, allowed)
+    return render_manifest.declared(slide) + [{"type": "palette", "id": label,
+                                               "roles": slide_renderer.slide_roles(brand, slide.get("colors")),
+                                               "allowed": sorted(allowed),
+                                               "reason": str(slide.get("colors_reason") or "").strip()}]
+
+
 def audit(client_id: int, spec: dict, palette: dict, slides: list, loader=None, on_slide=None) -> dict:
     """ONE guard pass over the set → {"problems", "warnings", "manifests",
     "missing"}: what the render DREW on each slide (core/render_manifest),
     and what the brief declared that it lacks ([{"type", "id", "slide",
-    "asset_id"}]). Every statement about the design is built from this."""
+    "asset_id"}]) — a character, a part of the copy, or the PALETTE variant
+    the brief names. Every statement about the design is built from this."""
     from core import render_manifest
     warnings, manifests = [], []
     problems = check(client_id, spec, palette, slides, loader, warnings=warnings, on_slide=on_slide, manifests=manifests)
     missing = []
     if not problems:
+        label = slide_spec.variant_for(palette)
         for i, (s, drawn) in enumerate(zip(slides, manifests), 1):
-            for w in render_manifest.missing(render_manifest.declared(s), drawn):
-                missing.append({"type": w["type"], "id": w["id"], "slide": s.get("n") or i, "asset_id": s.get("asset_id", "")})
+            for w in render_manifest.missing(declared_for(client_id, label, s, drawn), drawn):
+                row = {"type": w["type"], "id": w["id"], "slide": s.get("n") or i, "asset_id": s.get("asset_id", "")}
+                if w["type"] == "palette":
+                    row["drawn_bg"] = w.get("mean") or (w.get("drawn") or {}).get("bg", "")
+                    if w.get("why") == "no_reason":
+                        row["why"], row["outside"] = "no_reason", w.get("outside") or {}
+                missing.append(row)
     return {"problems": problems, "warnings": warnings, "manifests": manifests, "missing": missing}
 
 
@@ -468,6 +584,17 @@ def missing_rows(missing: list, failures: list, lang: str) -> list:
             line = pick(MISSING_TEXT["character"], lang).replace("{n}", str(m.get("slide") or "")) \
                 .replace("{name}", agent_characters.display_name(m["id"], lang))
             row["line"] = f"{line} {why['message']}" if why.get("message") else line
+        elif m["type"] == "palette":
+            # the brief's palette variant is not what the render used: the card fails, by name
+            if m.get("why") == "no_reason":
+                # colours outside the brand palette and no reason in the brief: fails, by name
+                row["reason"] = "deviation_unexplained"
+                row["line"] = pick(MISSING_TEXT["deviation"], lang).replace("{n}", str(m.get("slide") or "")) \
+                    .replace("{colors}", ", ".join(dict.fromkeys((m.get("outside") or {}).values())) or "—")
+            else:
+                row["reason"] = "palette_not_used"
+                row["line"] = pick(MISSING_TEXT["palette"], lang).replace("{n}", str(m.get("slide") or "")) \
+                    .replace("{name}", str(m.get("id") or "")).replace("{bg}", str(m.get("drawn_bg") or "—"))
         else:
             row["reason"] = "no_text_block"
             row["line"] = pick(MISSING_TEXT["text"], lang).replace("{n}", str(m.get("slide") or "")) \
@@ -561,6 +688,10 @@ def open_for_post(client_id: int, post_item: dict, text_slides: list, lang: str 
         record = _design_record(spec, palette, slides, name, based, result, body.get("set_id", ""), post_item["id"])
         lacking = missing_rows(seen["missing"], missing, lang) if not result["problems"] else []
         record.update(manifests=seen["manifests"], trace=rows[-render_manifest.MAX_TRACE:])
+        if (body.get("colors") or {}).get("requested"):
+            # the manager's own words for colours outside the brand palette: shown beside the card's colour label
+            record["colors_requested"] = str(body["colors"]["requested"])[:200]
+            record["colors_by"] = "agent" if body["colors"].get("by") == "agent" else "client"
         if lacking:
             # Declared in the brief, absent from the render: the card FAILS, by name
             # (knowledge/client-governance.md §8) — it cannot be approved as it is
@@ -736,8 +867,9 @@ def _finalize(client_id: int, item: dict, saved: dict) -> list:
         pngs = slide_renderer.render_set(spec, roles, d["slides"], loader_for(client_id), manifests=manifests,
                                          fonts=fonts_for(client_id))
         # The files are written ONLY when each one holds everything its slide declared
+        # (the palette too: a file drawn in colours the brief did not name is never written)
         lacking = [f"slide {s.get('n') or i} {w['type']} {w['id']}" for i, (s, drawn) in enumerate(zip(d["slides"], manifests), 1)
-                   for w in render_manifest.missing(render_manifest.declared(s), drawn)]
+                   for w in render_manifest.missing(declared_for(client_id, label, s, drawn), drawn)]
         if lacking:
             raise RuntimeError("element_missing: " + "; ".join(lacking))
         for slide, png, drawn in zip(d["slides"], pngs, manifests):
@@ -756,7 +888,9 @@ def _finalize(client_id: int, item: dict, saved: dict) -> list:
                 title=f"{item.get('title') or d.get('set_id')} · {slide.get('n') or ''}/{slide.get('total') or ''}",
                 post_ref={"post_id": d.get("post_id", ""), "set_id": d.get("set_id", ""), "asset_id": slide["asset_id"],
                           "n": slide.get("n"), "of": slide.get("total"),
-                          "template": saved["name"], "template_version": saved["version"], "palette": label},
+                          "template": saved["name"], "template_version": saved["version"],
+                          # the variant this FILE was drawn in ("" = colours outside the brand palette)
+                          "palette": (drawn.get("palette") or {}).get("variant", "")},
                 characters=[ch] if ch.get("pose_id") and shown else None,
                 flags=flags or None, manifest=drawn)
             social_queue.approve(client_id, [added["id"]], by="client:design")
@@ -792,13 +926,14 @@ def render_asset(client_id: int, brief, palette: dict) -> dict:
     png = slide_renderer.render_slide(spec, roles, brief.copy_headline, brief.copy_body, 1, 1, brief.role,
                                       loader_for(client_id), character=entry.get("character"), warnings=warnings,
                                       manifest=drawn, fonts=fonts_for(client_id))
-    wanted = render_manifest.declared({**_slides_of([entry])[0], "copy_headline": brief.copy_headline,
-                                       "copy_body": brief.copy_body})
+    wanted = declared_for(client_id, slide_spec.variant_for(palette),
+                          {**_slides_of([entry])[0], "copy_headline": brief.copy_headline, "copy_body": brief.copy_body}, drawn)
     lacking = render_manifest.missing(wanted, drawn)
     if lacking:
         # declared and not drawn: this asset FAILED — nothing is uploaded, nothing is called made
         why = next((m.get("message") for m in missing if m.get("message")), "")
-        return {"success": False, "status": "character_missing" if lacking[0]["type"] == "character" else "element_missing",
+        return {"success": False, "status": "character_missing" if lacking[0]["type"] == "character"
+                else "palette_not_used" if lacking[0]["type"] == "palette" else "element_missing",
                 "message": why, "missing": lacking, "manifest": drawn}
     uploaded = upload_png(client_id, f"{brief.set_id}-{brief.asset_id}.png", png)
     for agent in render_manifest.characters(drawn):
@@ -886,7 +1021,33 @@ def view(item: dict, lang: str) -> dict:
     slides = d.get("slides") or []
     rev = d.get("rev", 1)
     problems = d.get("problems") or []
-    return {"template_name": d.get("template_name", ""), "rev": rev, "palette": (d.get("palette") or {}).get("label", ""),
+    from core import render_manifest
+    # The colour label is built from what the render USED (each slide's manifest), never from
+    # the template's or the brief's name; before a render it says it is a plan
+    colours = render_manifest.palette_view(list(d.get("manifests") or []), lang,
+                                           planned=(d.get("palette") or {}).get("label", ""),
+                                           requested=d.get("colors_requested", "") if any(
+                                               s.get("colors") for s in slides) and d.get("colors_by") != "agent" else "")
+    # Colours the brand does not define: a NAMED deviation with its reason, which the client
+    # approves or turns down on the card (no reason = it is in `missing` and the card failed)
+    found = deviation(d)
+    reason = next((s.get("colors_reason") for s in slides if s.get("colors_reason")), "") or d.get("colors_requested", "")
+    off = {}
+    if found:
+        unexplained = any(m.get("reason") == "deviation_unexplained" for m in d.get("missing") or [])
+        off = {"lines": [pick(DEVIATION_TEXT["slide"], lang).replace("{n}", str(r["n"]))
+                         .replace("{colors}", ", ".join(dict.fromkeys(r["colors"].values()))) for r in found["slides"]],
+               "reason": "" if unexplained or not reason else pick(
+                   DEVIATION_TEXT["reason_agent" if d.get("colors_by") == "agent" else "reason_client"], lang)
+               .replace("{reason}", reason),
+               "state": "unexplained" if unexplained else "accepted" if found["accepted"] else "waiting",
+               "text": "" if unexplained else pick(DEVIATION_TEXT["accepted" if found["accepted"] else "undecided"], lang)}
+    can_brand = bool(found) and not found.get("accepted") or any(
+        m.get("reason") == "deviation_unexplained" for m in d.get("missing") or [])
+    return {"template_name": d.get("template_name", ""), "rev": rev, "palette": colours["label"],
+            "deviation": off, "can_use_brand_colours": can_brand,
+            "palette_drawn": colours["drawn"], "palette_custom": colours["custom"], "palette_note": colours["note"],
+            "palette_swatches": colours["swatches"],
             "state": d.get("state", "ready"), "state_text": pick(STATE_TEXT.get(d.get("state", "ready"), STATE_TEXT["ready"]), lang),
             "previews": [f"/api/client/social/{item['id']}/slide/{i}?rev={rev}" for i in range(1, len(slides) + 1)],
             "slides": [{"n": s.get("n") or i, "role": s.get("role", ""), "copy_headline": s.get("copy_headline", ""),
@@ -904,7 +1065,8 @@ def view(item: dict, lang: str) -> dict:
             "font_lines": _font_lines(d.get("manifests"), lang),
             "fonts_drawn": _fonts_drawn(d.get("manifests")),
             "blocked": social_queue.design_blocked(item),
-            "blocked_text": pick(MISSING_TEXT["blocked"], lang) if social_queue.design_blocked(item) else "",
+            "blocked_text": "" if not social_queue.design_blocked(item) else pick(
+                DEVIATION_TEXT["undecided"] if off.get("state") == "waiting" and not d.get("missing") else MISSING_TEXT["blocked"], lang),
             "can_drop_character": any(m.get("type") == "character" for m in d.get("missing") or [])
             or any(s.get("wants_character") for s in slides),
             "based_on": d.get("based_on") or {}, "saved": d.get("saved") or {},

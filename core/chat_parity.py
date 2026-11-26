@@ -91,6 +91,9 @@ PARITY = {
     "GET /api/client/avatars/business/pose/{pose_id}/thumb": (NOT_CHAT, _PLUMBING),
     "POST /api/client/social/{item_id}/design/without-character": (
         NOT_CHAT, "a decision made on the failed design card itself, beside what is missing"),
+    "POST /api/client/social/{item_id}/design/deviation": (
+        NOT_CHAT, "approving colours outside the brand palette, or drawing in the brand colours, is decided on the "
+                  "design card itself, beside the named deviation and the slides it shows"),
     "POST /api/client/avatars/poses/decide": (NOT_CHAT, "approving a pose is a decision made on the picture itself, in "
                                                          "the gallery; the chat points there when a post is waiting on it"),
     # ── Package, upgrade, billing ────────────────────────────────────────────

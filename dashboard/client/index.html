@@ -1609,6 +1609,13 @@ body.bs-open { overflow: hidden; }
 .drive-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .drive-actions label { font-size: 12px; color: var(--gray); display: inline-flex; gap: 4px; align-items: center; }
 .soc-flag.warn { color: #FFB020; font-weight: 700; }
+/* the colours a design was really drawn with (its render manifest): chips + the label built from them */
+.soc-colours.off { color: #FFB020; font-weight: 700; }
+.soc-deviation { border: 1px solid #FFB020; border-radius: 12px; padding: 10px 12px; font-size: 12.5px; line-height: 1.6; background: rgba(255,176,32,.07); }
+.soc-deviation.accepted { border-color: var(--line, rgba(255,255,255,.2)); background: none; }
+.soc-deviation ul { margin: 4px 0; padding-inline-start: 18px; }
+.soc-swatch { display: inline-flex; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,.35); flex: none; }
+.soc-swatch i { width: 14px; height: 14px; display: block; }
 .soc-design-spec { font-size: 12.5px; color: var(--gray); }
 .soc-design-spec ul { margin: 4px 0; padding-inline-start: 18px; display: grid; gap: 2px; }
 .soc-design-spec pre { max-height: 220px; overflow: auto; direction: ltr; text-align: left; font-size: 11px;
@@ -3467,6 +3474,12 @@ const DASH_I18N = {
   av_biz_deleted: { he:'הדמות נמחקה.', en:'The character was deleted.', fr:'Le personnage a été supprimé.', ar:'تم حذف الشخصية.', ru:'Персонаж удалён.' },
   av_biz_full: { he:'יש לעסק {n} דמויות — זה המספר המרבי. אפשר למחוק אחת כדי ליצור חדשה.', en:'Your business has {n} characters — the maximum. Delete one to create another.', fr:'Votre entreprise a {n} personnages — le maximum. Supprimez-en un pour en créer un autre.', ar:'لدى عملكم {n} شخصيات — الحد الأقصى. احذفوا واحدة لإنشاء أخرى.', ru:'У вашего бизнеса {n} персонажей — это максимум. Удалите одного, чтобы создать нового.' },
   av_biz_connect: { he:'לחיבור החשבון ליצירת מדיה', en:'Connect the media creation account', fr:'Connecter le compte de création média', ar:'ربط حساب إنشاء الوسائط', ru:'Подключить аккаунт создания медиа' },
+  soc_deviation_title: { he:'חריגה מפלטת המותג', en:'A deviation from the brand palette', fr:'Écart par rapport à la palette de marque', ar:'خروج عن لوحة العلامة', ru:'Отступление от палитры бренда' },
+  soc_deviation_accept: { he:'לאשר את החריגה', en:'Approve the deviation', fr:'Valider l’écart', ar:'اعتماد الخروج عن اللوحة', ru:'Одобрить отступление' },
+  soc_deviation_brand: { he:'לצייר בצבעי המותג', en:'Draw in the brand colours', fr:'Dessiner aux couleurs de la marque', ar:'الرسم بألوان العلامة', ru:'Нарисовать в цветах бренда' },
+  soc_deviation_accept_done: { he:'החריגה אושרה — עכשיו אפשר לאשר את העיצוב.', en:'The deviation is approved — you can approve the design now.', fr:'L’écart est validé — vous pouvez valider le design.', ar:'تم اعتماد الخروج عن اللوحة — يمكنكم اعتماد التصميم الآن.', ru:'Отступление одобрено — теперь можно одобрить дизайн.' },
+  soc_deviation_brand_done: { he:'השקופיות צוירו מחדש בצבעי המותג.', en:'The slides were drawn again in the brand colours.', fr:'Les diapositives ont été redessinées aux couleurs de la marque.', ar:'أُعيد رسم الشرائح بألوان العلامة.', ru:'Слайды перерисованы в цветах бренда.' },
+  soc_deviation_undecided: { he:'אי אפשר לאשר עדיין: קודם מחליטים על החריגה מפלטת המותג, על הכרטיס.', en:'Cannot approve yet: first decide on the deviation from the brand palette, on the card.', fr:'Validation impossible pour l’instant : décidez d’abord de l’écart de palette, sur la carte.', ar:'لا يمكن الاعتماد بعد: قرروا أولًا بشأن الخروج عن لوحة العلامة، على البطاقة.', ru:'Пока нельзя одобрить: сначала решите вопрос об отступлении от палитры, на карточке.' },
   soc_design_no_character: { he:'להמשיך בלי הדמות', en:'Continue without the character', fr:'Continuer sans le personnage', ar:'المتابعة بلا الشخصية', ru:'Продолжить без персонажа' },
   soc_design_no_character_done: { he:'העיצוב ממשיך בלי הדמות — עכשיו אפשר לאשר אותו.', en:'The design continues without the character — you can approve it now.', fr:'Le design continue sans le personnage — vous pouvez le valider.', ar:'يتابع التصميم بلا الشخصية — يمكنكم اعتماده الآن.', ru:'Дизайн продолжается без персонажа — теперь его можно одобрить.' },
   soc_element_missing: { he:'אי אפשר לאשר: משהו שהוגדר לפוסט לא צויר. הפרטים על הכרטיס.', en:'Cannot approve: something the post asked for was not drawn. See the card.', fr:'Validation impossible : un élément prévu n’a pas été dessiné. Voir la carte.', ar:'لا يمكن الاعتماد: عنصر مطلوب للمنشور لم يُرسم. التفاصيل على البطاقة.', ru:'Одобрить нельзя: заявленный элемент не нарисован. Подробности на карточке.' },
@@ -10656,6 +10669,14 @@ function socialDesignRow(item) {
   if (waiting && !ADMIN_VIEW && !revising && !d.blocked) {
     acts.push(`<button type="button" class="sugg-btn approve" data-soc-approve="${esc(item.id)}">${esc(t('soc_design_approve'))}</button>`);
   }
+  // Colours the brand does not define: the client decides — approve the named deviation, or the brand colours
+  const dev = d.deviation || {};
+  if (waiting && !ADMIN_VIEW && !revising && dev.state === 'waiting') {
+    acts.push(`<button type="button" class="sugg-btn approve" data-soc-deviation="${esc(item.id)}:accept">${esc(t('soc_deviation_accept'))}</button>`);
+  }
+  if (waiting && !ADMIN_VIEW && !revising && d.can_use_brand_colours) {
+    acts.push(`<button type="button" class="media-chip" data-soc-deviation="${esc(item.id)}:brand">${esc(t('soc_deviation_brand'))}</button>`);
+  }
   if (waiting && !ADMIN_VIEW && !revising && d.blocked && d.can_drop_character) {
     acts.push(`<button type="button" class="media-chip" data-soc-nochar="${esc(item.id)}">${esc(t('soc_design_no_character'))}</button>`);
   }
@@ -10676,7 +10697,13 @@ function socialDesignRow(item) {
       </div>
       ${item.title ? `<div class="soc-title"><bdi dir="auto">${esc(item.title)}</bdi></div>` : ''}
       <div class="plan-note">${esc(d.stage_text || '')}</div>
-      <div class="soc-meta">${esc(t('soc_design_template', { name: d.template_name || '', rev: d.rev || 1 }))}${d.palette ? ' · ' + esc(t('soc_post_palette', { name: d.palette })) : ''}</div>
+      <div class="soc-meta">${esc(t('soc_design_template', { name: d.template_name || '', rev: d.rev || 1 }))}</div>
+      ${d.palette ? `<div class="soc-meta soc-colours${(d.palette_custom || []).length ? ' off' : ''}" data-soc-colours="${d.palette_drawn ? 'drawn' : 'brief'}">
+        ${(d.palette_swatches || []).map(sw => `<span class="soc-swatch" aria-hidden="true">${['bg', 'fg', 'accent', 'muted'].filter(r => /^#[0-9A-Fa-f]{6}$/.test(sw[r] || '')).map(r => `<i style="background:${esc(sw[r])}"></i>`).join('')}</span>`).join('')}
+        <bdi dir="auto">${esc(t('soc_post_palette', { name: d.palette }))}</bdi>${d.palette_note && !dev.state ? ` · <bdi dir="auto">${esc(d.palette_note)}</bdi>` : ''}</div>` : ''}
+      ${dev.state ? `<div class="soc-deviation ${esc(dev.state)}" data-soc-deviation-state="${esc(dev.state)}"><b>${esc(t('soc_deviation_title'))}</b>
+        <ul>${(dev.lines || []).map(l => `<li><bdi dir="auto">${esc(l)}</bdi></li>`).join('')}</ul>
+        ${dev.reason ? `<div><bdi dir="auto">${esc(dev.reason)}</bdi></div>` : ''}${dev.text ? `<div>${esc(dev.text)}</div>` : ''}</div>` : ''}
       ${d.rationale ? `<div class="soc-meta"><bdi dir="auto">${esc(d.rationale)}</bdi></div>` : ''}
       ${(d.problem_lines || []).length ? d.problem_lines.map(l => `<div class="soc-flag warn">${esc(l)}</div>`).join('')
         : (d.problems ? `<div class="soc-flag warn">${esc(d.problems)}</div>` : '')}
@@ -10781,6 +10808,9 @@ function wireSocial(list) {
   // a carousel is decided as one: approve / delete take every slide of the card
   on('data-soc-approve', id => socialOpenBatch(socialGroupIds(id, 'waiting').length ? socialGroupIds(id, 'waiting') : [id]));
   on('data-soc-del', id => socialOpenDelete(socialGroupIds(id).length ? socialGroupIds(id) : [id]));
+  on('data-soc-deviation', pair => { const [id, decision] = pair.split(':');
+    socialPost('/api/client/social/' + encodeURIComponent(id) + '/design/deviation?decision=' + encodeURIComponent(decision), {},
+      decision === 'accept' ? 'soc_deviation_accept_done' : 'soc_deviation_brand_done'); });
   on('data-soc-nochar', id => socialPost('/api/client/social/' + encodeURIComponent(id) + '/design/without-character', {}, 'soc_design_no_character_done'));
   on('data-soc-edit', id => { social.editing = id; social.rejecting = ''; renderSocial(); });
   on('data-soc-reject', id => { social.rejecting = id; social.editing = ''; renderSocial(); });
@@ -10983,7 +11013,7 @@ async function socialPost(url, body, okKey, onOk) {
     if (!res.ok || !j.success) {
       const code = ((j && j.detail) || {}).code || '';
       socialNote(t(/CHANNEL|NO_CHANNEL/.test(code) ? 'soc_bad_channel' : /DATE/.test(code) ? 'soc_bad_date'
-                   : /REASON/.test(code) ? 'soc_reason_needed' : /ELEMENT_MISSING/.test(code) ? 'soc_element_missing' : 'soc_failed'));
+                   : /REASON/.test(code) ? 'soc_reason_needed' : /ELEMENT_MISSING/.test(code) ? 'soc_element_missing' : /DEVIATION_UNDECIDED/.test(code) ? 'soc_deviation_undecided' : 'soc_failed'));
       return false;
     }
     if (okKey) socialNote(t(okKey));
