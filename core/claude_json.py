@@ -272,6 +272,19 @@ def _complete(client, system, user_message, max_tokens, model, extra, client_id,
     return response
 
 
+def _with_client_rules(system, client_id):
+    """`system` + the client's never-say rule. Never raises and never loses
+    the prompt: no client, an internal call, or an unreadable brief = `system`."""
+    if client_id is None:
+        return system
+    try:
+        from core import brand_voice
+        return brand_voice.with_rule(system, client_id)
+    except Exception as e:
+        print(f"[claude_json] client rules not added (non-fatal): {type(e).__name__}")
+        return system
+
+
 def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_MODEL, api_key=None,
                           client_id=None, cost_category="claude_api", effort=None, retry_empty=True,
                           json_retry=True, timeout=None):
@@ -308,6 +321,10 @@ def safe_claude_json_call(system, user_message, max_tokens=4096, model=DEFAULT_M
       alt text). Without it the SDK default (10 minutes, 2 retries) applies —
       long enough to outlive an action's whole run (proposal 16, 2026-11-02).
     """
+    # What this client said may NEVER be said about them (core/brand_voice) is a hard
+    # constraint on every word produced for them: it rides on every call made for a
+    # client, here, at the one choke point — last and uncached, so cached prefixes hold.
+    system = _with_client_rules(system, client_id)
     client = _client(api_key)
     if timeout and hasattr(client, "with_options"):
         client = client.with_options(timeout=float(timeout), max_retries=1)

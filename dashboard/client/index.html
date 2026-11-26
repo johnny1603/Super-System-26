@@ -1716,6 +1716,21 @@ body.bs-open { overflow: hidden; }
 .br-hero-state { font-size: 13px; color: var(--gray); }
 .br-hero-state.open { color: #FFB020; font-weight: 700; }
 @media (max-width: 640px) { .br-hero { grid-template-columns: 1fr; } .br-hero-mark { min-height: 140px; border-inline-end: 0; border-block-end: 4px solid var(--brh-accent, var(--accent)); } }
+/* the tone, read-only (the system's work), and the ONE question the client answers */
+.br-voice { font-size: 13px; line-height: 1.7; }
+.br-voice summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+.br-voice p { margin: 6px 0 0; color: var(--gray); }
+.br-never { padding-block: 14px; }
+.br-never .br-row { justify-content: space-between; }
+.br-never-line { font-size: 14px; line-height: 1.6; color: var(--gray); }
+.br-never-line.set { color: inherit; font-weight: 600; }
+.br-never-q { font-size: 18px; font-weight: 800; }
+.br-never textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px; border-radius: 10px; margin: 8px 0; }
+.br-never-binding { margin: 0 0 12px; font-size: 13.5px; line-height: 1.6; font-weight: 700; }
+.br-never-list { margin-top: 10px; font-size: 12.5px; color: var(--gray); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.br-never-list .br-chips { margin: 0; min-height: 0; }
+.br-link { all: unset; cursor: pointer; color: var(--accent); font-weight: 700; font-size: 13.5px; text-decoration: underline; padding: 6px 4px; }
+.br-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* what a branding package would add: parts of the brand, not blocked tiles */
 .br-package { border-style: dashed; border-color: var(--accent); }
 .br-pkgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; align-items: start; }
@@ -1766,8 +1781,6 @@ body.bs-open { overflow: hidden; }
 .br-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; min-height: 30px; }
 .br-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 13.5px; background: rgba(60,200,120,.16); }
 .br-chip.no { background: rgba(255,90,90,.16); }
-.br-chip button { all: unset; cursor: pointer; font-size: 15px; line-height: 1; opacity: .7; padding: 2px; }
-.br-chip button:hover, .br-chip button:focus-visible { opacity: 1; }
 .br-upload { position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; }
 .br-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
 @media (max-width: 640px) { .br-card { padding: 14px; } .br-card .sugg-btn, .br-card .media-chip { min-height: 44px; } }
@@ -3419,6 +3432,9 @@ const DASH_I18N = {
   br_font_other_btn: { he:'לבקש משהו אחר', en:'Ask for something else', fr:'Demander autre chose', ar:'طلب شيء آخر', ru:'Попросить другое' },
   br_font_other_label: { he:'מה הייתם רוצים שיהיה אחרת? משפט אחד מספיק.', en:'What would you like to be different? One sentence is enough.', fr:'Que voudriez-vous de différent ? Une phrase suffit.', ar:'ما الذي تريدونه مختلفًا؟ جملة واحدة تكفي.', ru:'Что вы хотели бы иначе? Достаточно одной фразы.' },
   br_font_other_send: { he:'לשלוח את הבקשה', en:'Send the request', fr:'Envoyer la demande', ar:'إرسال الطلب', ru:'Отправить запрос' },
+  br_never_edit: { he:'עריכה', en:'Edit', fr:'Modifier', ar:'تعديل', ru:'Изменить' },
+  br_never_answer: { he:'לענות', en:'Answer', fr:'Répondre', ar:'إجابة', ru:'Ответить' },
+  br_never_save: { he:'לשמור', en:'Save', fr:'Enregistrer', ar:'حفظ', ru:'Сохранить' },
   br_type_observed: { he:'מה שראינו עד עכשיו:', en:'What we have seen so far:', fr:'Ce que nous avons observé :', ar:'ما لاحظناه حتى الآن:', ru:'Что мы видели до сих пор:' },
   br_font_own_title: { he:'גופן משלכם', en:'Your own font', fr:'Votre propre police', ar:'خطكم الخاص', ru:'Свой шрифт' },
   br_font_own_sub: { he:'למותג עם גופן שנרכש או עוצב במיוחד. קבצי TTF, OTF, WOFF או WOFF2. מיד אחרי ההעלאה נגיד לכם בדיוק מה יש בו ומה חסר. אפשר להעלות Regular ו-Bold אחד אחרי השני.', en:'For a brand with a purchased or custom typeface. TTF, OTF, WOFF or WOFF2. Right after the upload we tell you exactly what it has and what it lacks. Upload Regular and Bold one after the other.', fr:'Pour une marque avec une police achetée ou sur mesure. TTF, OTF, WOFF ou WOFF2. Juste après l’envoi, nous vous disons exactement ce qu’elle contient et ce qui manque. Envoyez Regular puis Bold.', ar:'لعلامة بخط مشترى أو مصمم خصيصًا. TTF أو OTF أو WOFF أو WOFF2. بعد الرفع مباشرة نخبركم بالضبط ما فيه وما ينقصه. ارفعوا Regular ثم Bold.', ru:'Для бренда с купленным или собственным шрифтом. TTF, OTF, WOFF или WOFF2. Сразу после загрузки скажем, что в нём есть и чего не хватает. Загрузите Regular, затем Bold.' },
@@ -3427,13 +3443,6 @@ const DASH_I18N = {
   br_font_rights_check: { he:'אני מאשר/ת שיש לי זכות להשתמש בגופן הזה בחומרים שמתפרסמים', en:'I confirm I have the right to use this font in published material', fr:'Je confirme avoir le droit d’utiliser cette police dans des contenus publiés', ar:'أؤكد أن لي حق استخدام هذا الخط في مواد منشورة', ru:'Подтверждаю право использовать этот шрифт в публикуемых материалах' },
   br_font_rights_btn: { he:'אישור זכות השימוש', en:'Confirm the right to use it', fr:'Confirmer le droit d’usage', ar:'تأكيد حق الاستخدام', ru:'Подтвердить право использования' },
   br_font_latin_only: { he:'לטיני בלבד', en:'Latin only', fr:'Latin seulement', ar:'لاتيني فقط', ru:'Только латиница' },
-  br_tone_title: { he:'הטון של המותג', en:'Brand tone', fr:'Ton de la marque', ar:'نبرة العلامة', ru:'Тон бренда' },
-  br_tone_sub: { he:'מילים שמתארות איך המותג מדבר, ומה הוא לא אומר אף פעם.', en:'Words for how the brand speaks, and what it never says.', fr:'Les mots qui décrivent la voix de la marque, et ce qu’elle ne dit jamais.', ar:'كلمات تصف كيف تتحدث العلامة، وما لا تقوله أبدًا.', ru:'Слова о том, как говорит бренд, и чего он не говорит никогда.' },
-  br_tone_says: { he:'כך המותג מדבר', en:'The brand says', fr:'La marque dit', ar:'العلامة تقول', ru:'Бренд говорит' },
-  br_tone_not: { he:'כך הוא לא מדבר', en:'The brand does not say', fr:'La marque ne dit pas', ar:'العلامة لا تقول', ru:'Бренд не говорит' },
-  br_tone_add: { he:'מוסיפים מילה ולוחצים Enter', en:'Add a word and press Enter', fr:'Ajoutez un mot puis Entrée', ar:'أضيفوا كلمة واضغطوا Enter', ru:'Добавьте слово и нажмите Enter' },
-  br_tone_remove: { he:'הסרה', en:'Remove', fr:'Retirer', ar:'إزالة', ru:'Убрать' },
-  br_save_tone: { he:'שמירת הטון', en:'Save tone', fr:'Enregistrer le ton', ar:'حفظ النبرة', ru:'Сохранить тон' },
   br_assets_title: { he:'חומרים קיימים', en:'Existing assets', fr:'Supports existants', ar:'مواد موجودة', ru:'Готовые материалы' },
   br_assets_sub: { he:'כרטיס ביקור, שילוט, פלייר, ספר מותג — כל מה שכבר קיים ומראה איך העסק נראה.', en:'Business card, signage, flyer, brand book — anything that already exists and shows how the business looks.', fr:'Carte de visite, enseigne, flyer, charte — tout ce qui existe déjà et montre l’image de l’entreprise.', ar:'بطاقة عمل، لافتة، منشور، دليل العلامة — كل ما هو موجود ويُظهر شكل العمل.', ru:'Визитка, вывеска, флаер, брендбук — всё, что уже есть и показывает, как выглядит бизнес.' },
   br_assets_add: { he:'העלאת קובץ', en:'Upload a file', fr:'Ajouter un fichier', ar:'رفع ملف', ru:'Загрузить файл' },
@@ -13490,14 +13499,12 @@ async function govPost(path, body) {
 // The page shows and edits the BRAND BRIEF the agents read: colours = its
 // palette (per audience variant — never flattened), typefaces and tone = its
 // text, logos = files in the client's own folder. Nothing here is a draft.
-const brUI = { data: null, busy: false, says: [], nots: [], colors: {}, variants: [],
+const brUI = { data: null, busy: false, neverOpen: false, colors: {}, variants: [],
   fontOther: false, fontReport: null, last: null, pkgOpen: '', pkgConfirm: '' };
 const BR_ROLES_DEFAULT = { bg: '#FFFFFF', fg: '#111111', accent: '#333333', muted: '#8A8A8A' };
 function brNote(text) { const el = document.getElementById('brNotice'); if (el) el.textContent = text || ''; }
 function brTake(data) {
   brUI.data = data;
-  brUI.says = ((data.tone || {}).says || []).slice();
-  brUI.nots = ((data.tone || {}).not_says || []).slice();
   brUI.colors = {};
   let variants = (data.colors || {}).variants || [];
   if (!variants.length) variants = [{ label: 'default', segment_label: '', roles: {} }];
@@ -13607,8 +13614,37 @@ function brHeroHtml() {
     <div class="br-hero-body"><div class="br-eyebrow">${esc(t('br_hero_eyebrow'))}</div>
       <h2>${esc(t('br_hero_title'))}</h2>
       ${chips ? `<div class="br-row">${chips}</div>` : ''}${fonts ? `<div class="br-row">${fonts}</div>` : ''}
-      ${brUI.says.length ? `<div class="br-chips">${brUI.says.slice(0, 6).map(w => `<span class="br-chip">${esc(w)}</span>`).join('')}</div>` : ''}
+      ${brVoiceHtml()}
       <div class="br-hero-state${open ? ' open' : ''}">${esc(open ? t('br_hero_open', { n: open }) : t('br_hero_whole'))}</div></div></div>`;
+}
+// The TONE is the system's work (core/brand_voice): derived from the brief, applied without
+// asking. The client can open it and read it — in their language, with the reasoning — and
+// cannot edit it. Nothing here is a field.
+function brVoiceHtml() {
+  const v = (brUI.data || {}).tone || {};
+  if (!(v.says || []).length) return '';
+  return `<details class="br-voice"><summary>${esc(v.title || '')}</summary>
+    <div class="br-chips">${v.says.map(w => `<span class="br-chip"><bdi dir="auto">${esc(w)}</bdi></span>`).join('')}</div>
+    ${v.why ? `<p><bdi dir="auto">${esc(v.why)}</bdi></p>` : ''}<p>${esc(v.sub || '')}</p></details>`;
+}
+// The ONE question the client answers about the voice: what may never be said about them.
+// It is asked in onboarding; here it is a short line of what is set, with an edit link.
+// The words (question, explanation, what it binds) are the server's — one wording everywhere.
+function brNeverHtml() {
+  const t = uallakI18n.t, n = (brUI.data || {}).never_say || {};
+  if (!n.question) return '';
+  const list = (n.list || []).length ? `<div class="br-never-list"><span>${esc(n.list_label || '')}</span>
+    <span class="br-chips">${n.list.map(w => `<span class="br-chip no"><bdi dir="auto">${esc(w)}</bdi></span>`).join('')}</span></div>` : '';
+  if (brUI.neverOpen && !ADMIN_VIEW) {
+    return `<div class="br-card wide br-never open" id="brNeverCard"><label class="br-field" for="brNeverText"><span class="br-never-q">${esc(n.question)}</span></label>
+      <p class="br-sub">${esc(n.explain || '')}</p>
+      <textarea id="brNeverText" maxlength="${Number(n.max) || 600}" rows="3" dir="auto">${esc(n.text || '')}</textarea>
+      <p class="br-never-binding">${esc(n.binding || '')}</p>${list}
+      <div class="br-row"><button type="button" class="sugg-btn approve" data-br-never-save>${esc(t('br_never_save'))}</button>
+      <button type="button" class="media-chip" data-br-never-cancel>${esc(t('br_pkg_cancel'))}</button></div></div>`;
+  }
+  return `<div class="br-card wide br-never" id="brNeverCard"><div class="br-row"><span class="br-never-line${n.set ? ' set' : ''}"><bdi dir="auto">${esc(n.line || '')}</bdi></span>
+    ${ADMIN_VIEW ? '' : `<button type="button" class="br-link" data-br-never-edit>${esc(t(n.set ? 'br_never_edit' : 'br_never_answer'))}</button>`}</div>${list}</div>`;
 }
 // What a branding package would add (core/brand_package): parts of the brand that are not
 // there yet — each opens to its explanation, a way to ask the owner, and ONE real sample
@@ -13709,17 +13745,13 @@ function brFontsHtml() {
       <div class="br-row" style="margin-top:10px"><label class="sugg-btn approve br-upload">${esc(t('br_font_upload'))}
         <input type="file" data-br-font-file accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"></label></div>`}</div>`;
 }
-function brChips(list, kind) {
-  const t = uallakI18n.t;
-  return list.map((w, i) => `<span class="br-chip ${kind === 'nots' ? 'no' : ''}">${esc(w)}${ADMIN_VIEW ? '' :
-    `<button type="button" data-br-chip-del="${kind}:${i}" aria-label="${esc(t('br_tone_remove') + ' ' + w)}">×</button>`}</span>`).join('');
-}
 function renderBrandPage() {
   const root = document.getElementById('brRoot');
   const d = brUI.data, t = uallakI18n.t;
   if (!root || !d) return;
   const parts = [];
   if (!d.lead) parts.push(brHeroHtml());
+  parts.push(brNeverHtml());
   if (d.lead) {
     parts.push(`<div class="br-card wide br-lead"><h3>${esc(t('br_lead_title'))}</h3><p class="br-sub">${esc(t('br_lead_text'))}</p>
       <div class="br-row">${ADMIN_VIEW ? '' : `<button class="sugg-btn approve" data-br-studio>${esc(t('br_lead_btn'))}</button>`}<span class="br-file-meta">${esc(t('br_lead_own'))}</span></div></div>`);
@@ -13741,11 +13773,6 @@ function renderBrandPage() {
       ${f && !ADMIN_VIEW ? `<button class="media-chip" data-br-del="${esc(f.id)}">${esc(t('br_delete'))}</button>` : ''}</div></div>`; }).join('')}</div></div>`);
   parts.push(brColorsHtml());
   parts.push(brFontsHtml());
-  const toneBox = (kind, titleKey) => `<div class="br-field"><span>${esc(t(titleKey))}</span>${brUI[kind].length ? '' : brGap(kind === 'says' ? 'tone_says' : 'tone_not')}<div class="br-chips">${brChips(brUI[kind], kind)}</div>
-    ${ADMIN_VIEW ? '' : `<input type="text" maxlength="60" data-br-chip-add="${kind}" placeholder="${esc(t('br_tone_add'))}" aria-label="${esc(t(titleKey))}">`}</div>`;
-  parts.push(`<div class="br-card"><h3>${esc(t('br_tone_title'))}</h3><div class="br-sub">${esc(t('br_tone_sub'))}</div>
-    ${toneBox('says', 'br_tone_says')}${toneBox('nots', 'br_tone_not')}
-    ${ADMIN_VIEW ? '' : `<button class="sugg-btn approve" data-br-save="tone">${esc(t('br_save_tone'))}</button>`}</div>`);
   const assets = d.assets || [];
   parts.push(`<div class="br-card wide"><h3>${esc(t('br_assets_title'))}</h3><div class="br-sub">${esc(t('br_assets_sub'))}</div>
     ${assets.length ? `<div class="br-logos">${assets.map(f => `<div class="br-slot">${brThumb(f)}${brFileMeta(f)}
@@ -13801,24 +13828,18 @@ function brReadColors() {
       el.value = '';
     }
   });
-  root.addEventListener('keydown', ev => {
-    const el = ev.target;
-    if (ev.key !== 'Enter' || !el.matches('[data-br-chip-add]')) return;
-    ev.preventDefault();
-    const kind = el.getAttribute('data-br-chip-add'), word = el.value.trim();
-    if (!word || brUI[kind].length >= 12 || brUI[kind].indexOf(word) !== -1) return;
-    brUI[kind].push(word);
-    renderBrandPage();
-    const again = root.querySelector('[data-br-chip-add="' + kind + '"]');
-    if (again) again.focus();
-  });
   root.addEventListener('click', ev => {
     const btn = ev.target.closest('button');
     if (!btn || ADMIN_VIEW) return;
-    if (btn.hasAttribute('data-br-chip-del')) {
-      const [kind, i] = btn.getAttribute('data-br-chip-del').split(':');
-      brUI[kind].splice(Number(i), 1);
+    if (btn.hasAttribute('data-br-never-edit') || btn.hasAttribute('data-br-never-cancel')) {
+      brUI.neverOpen = btn.hasAttribute('data-br-never-edit');
       renderBrandPage();
+      const box = document.getElementById('brNeverText');
+      if (box) box.focus();
+    } else if (btn.hasAttribute('data-br-never-save')) {
+      const box = document.getElementById('brNeverText');
+      brJson('/api/client/brand-identity/never-say', { text: box ? box.value.trim() : '' })
+        .then(ok => { if (ok) { brUI.neverOpen = false; renderBrandPage(); } });
     } else if (btn.hasAttribute('data-br-font-approve')) {        // the server approves ITS OWN choice: no name is sent
       brJson('/api/client/brand-identity/typefaces/approve', {});
     } else if (btn.hasAttribute('data-br-font-other') || btn.hasAttribute('data-br-font-other-cancel')) {
@@ -13865,12 +13886,6 @@ function brReadColors() {
     } else if (btn.getAttribute('data-br-save') === 'colors') {
       brReadColors();
       brJson('/api/client/brand-identity/colors', { variants: brUI.variants.map(v => ({ label: v.label, roles: brUI.colors[v.label] || {} })) });
-    } else if (btn.getAttribute('data-br-save') === 'tone') {
-      root.querySelectorAll('[data-br-chip-add]').forEach(inp => {   // a word typed and not yet entered still counts
-        const kind = inp.getAttribute('data-br-chip-add'), word = inp.value.trim();
-        if (word && brUI[kind].indexOf(word) === -1) brUI[kind].push(word);
-      });
-      brJson('/api/client/brand-identity/tone', { says: brUI.says, not_says: brUI.nots });
     }
   });
 })();

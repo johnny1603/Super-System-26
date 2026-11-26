@@ -725,7 +725,7 @@ class TheSystemChooses(Base):
 
     def test_the_page_has_no_picker(self):
         html = _src("dashboard", "client", "index.html")
-        page = html[html.index("function brFontsHtml()"):html.index("function brChips(")]
+        page = html[html.index("function brFontsHtml()"):html.index("function renderBrandPage()")]
         for gone in ("data-br-font-choose", "data-br-font-open", "data-br-font-use", "data-br-font-name", "brFontPanel",
                      "data-br-save=\"typefaces\"", "f.groups"):
             self.assertNotIn(gone, html)

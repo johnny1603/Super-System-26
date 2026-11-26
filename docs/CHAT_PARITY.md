@@ -96,7 +96,7 @@ Trivial gaps closed in this change:
 | P3 | `POST /api/client/governance/sync-day` | choose the weekly-sync evening from the chat |
 | P3 | `POST /api/client/brand-identity/colors` | set the brand colours from the chat (a card with the palette) |
 | P3 | `POST /api/client/brand-identity/typefaces/other` | ask for a different brand font from the chat (today the manager hears it in the chat as any request) |
-| P3 | `POST /api/client/brand-identity/tone` | set the tone words from the chat |
+| P3 | `POST /api/client/brand-identity/never-say` | set what may never be said about the business from the chat (asked once in onboarding; today the page's edit link) |
 | P3 | `POST /api/client/brand-identity/package/{section}/ask` | ask about a branding-package section from the chat (today the chat's own team request covers a package question) |
 | P3 | `GET /api/client/ownership` | an ownership section in account_state (what they own, where) |
 | P3 | `GET /api/oauth/google-drive/start` | connect_google_drive link card |

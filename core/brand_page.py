@@ -15,7 +15,10 @@ the agents already read (core/brand_brief — one new VERSION per save, by
               Hebrew library or to a font the client uploaded, the slide
               renderer draws with them, and the page's preview and samples
               are pictures made by that same renderer — never CSS.
-- tone      → `voice.tone_attributes` (says) and `voice.avoid` (does not say).
+- tone      → NOT edited here (2026-11-27): the tone is the system's work, shown
+              read-only (core/brand_voice). The client answers ONE question —
+              what may never be said about them (`voice.never_say`), a hard
+              constraint on every text; `voice.avoid` stays and is enforced.
 - logos and existing assets → files in the client's own media folder
               (sub-folder "brand", appProperties carry the version), listed
               in the brief under `assets.logo_files` with their file ids, so
@@ -334,12 +337,14 @@ def ask_other_typeface(client_id: int, text: str, lang: str = "he") -> dict:
     return {"message": got["message"]}
 
 
-def save_tone(client_id: int, says: list, not_says: list) -> dict:
-    cur = brand_brief.current(client_id)
-    text = _text(cur, client_id)
-    text = set_field(text, "voice", "tone_attributes", [f"- tone_attributes: {', '.join(_words(says)) or '—'} {_mark()}"])
-    text = set_field(text, "voice", "avoid", [f"- avoid: {', '.join(_words(not_says)) or '—'} {_mark()}"])
-    return _save(client_id, cur, new_text=text)
+def save_never_say(client_id: int, text: str) -> dict:
+    """The client's answer to the one question (core/brand_voice): written
+    into the brief as `voice.never_say`, a hard constraint on every text."""
+    from core import brand_voice
+    try:
+        return brand_voice.save(client_id, text, "branding page")
+    except ValueError:
+        raise BrandPageError("storage")
 
 
 def _typefaces(body: str) -> dict:
@@ -552,8 +557,8 @@ def dismiss_assessment(client_id: int) -> bool:
 # One line per empty part of the page, in consequence terms. Each line says
 # only what the system really does without that part (the agents place a logo
 # from `assets.logo_files`; a client with no palette is drawn in neutral
-# colours; no brand font = the bundled Rubik / Assistant; the copywriters read
-# the tone fields of the brief). Nothing here judges quality — that is the
+# colours; no brand font = the bundled Rubik / Assistant). The tone is not a
+# gap of the client's: it is the system's work (core/brand_voice). Nothing here judges quality — that is the
 # one friendly note above (§7).
 
 GAPS = {
@@ -592,16 +597,6 @@ GAPS = {
                    "Aucune police choisie : les posts utilisent notre police par défaut, la même que pour toute autre entreprise — le texte ne ressemblera pas à votre enseigne, site ou emballage.",
                    "لم يُختر خط: المنشورات تُرسم بخطنا الافتراضي، نفسه الذي يحصل عليه أي نشاط آخر — فلن يشبه النص لافتتكم أو موقعكم أو عبوتكم.",
                    "Шрифт не выбран: посты рисуются нашим шрифтом по умолчанию, тем же, что у любого другого бизнеса — текст не будет похож на вашу вывеску, сайт или упаковку."),
-    "tone_says": _five("בלי מילים שמתארות את הטון, הכותבים שלנו מנחשים איך העסק מדבר — והטקסטים יכולים להישמע כמו כל עסק אחר בתחום.",
-                       "Without words for the tone, our writers guess how the business speaks — and the copy can sound like any other business in the field.",
-                       "Sans mots pour le ton, nos rédacteurs devinent comment l'entreprise parle — et les textes peuvent ressembler à ceux de n'importe quel concurrent.",
-                       "بلا كلمات تصف النبرة، يخمّن كتّابنا كيف يتحدث النشاط — وقد تبدو النصوص كأي نشاط آخر في المجال.",
-                       "Без слов о тоне наши авторы угадывают, как говорит бизнес — и тексты могут звучать как у любого другого в отрасли."),
-    "tone_not": _five("בלי רשימה של מה שלא אומרים, שום דבר לא עוצר ניסוח שאתם לא סובלים מלהיכנס לפוסט — עד שתראו אותו ותדחו אותו.",
-                      "Without a list of what is never said, nothing stops a phrasing you cannot stand from getting into a post — until you see it and reject it.",
-                      "Sans liste de ce qu'on ne dit jamais, rien n'empêche une formulation que vous détestez d'entrer dans un post — jusqu'à ce que vous la refusiez.",
-                      "بلا قائمة بما لا يُقال، لا شيء يمنع صياغة لا تطيقونها من دخول منشور — إلى أن تروه وترفضوه.",
-                      "Без списка того, что не говорится, ничто не мешает неприятной вам формулировке попасть в пост — пока вы её не увидите и не отклоните."),
     "assets": _five("בלי חומרים קיימים (שלט, אריזה, כרטיס ביקור), אנחנו לא רואים איך המותג נראה בעולם — ועיצובים חדשים עלולים לא להתאים למה שהלקוחות שלכם כבר מכירים.",
                     "Without existing materials (a sign, packaging, a business card), we cannot see how the brand looks in the world — and new designs may not match what your customers already know.",
                     "Sans supports existants (enseigne, emballage, carte de visite), nous ne voyons pas la marque dans la réalité — et les nouveaux designs peuvent ne pas correspondre à ce que vos clients connaissent.",
@@ -610,7 +605,7 @@ GAPS = {
 }
 
 
-def gaps(logos: dict, variants: list, stated: bool, has_colors: bool, chosen: dict, tone: dict, assets: list,
+def gaps(logos: dict, variants: list, stated: bool, has_colors: bool, chosen: dict, assets: list,
          files_ok: bool, lang: str) -> dict:
     """{part: the line} for every EMPTY part of the page — what it costs the
     business in practice. A part that is there has no line. Files that could
@@ -626,10 +621,6 @@ def gaps(logos: dict, variants: list, stated: bool, has_colors: bool, chosen: di
         out["colors"] = pick(GAPS["colors_provisional"], lang)
     if not (chosen.get("headline") or chosen.get("body")):
         out["fonts"] = pick(GAPS["fonts"], lang)
-    if not tone.get("says"):
-        out["tone_says"] = pick(GAPS["tone_says"], lang)
-    if not tone.get("not_says"):
-        out["tone_not"] = pick(GAPS["tone_not"], lang)
     return out
 
 
@@ -710,8 +701,8 @@ def view(client_id: int, lang: str = "he") -> dict:
         kit = {}
     state = brand_brief.page_state(client_id)
     fonts = brand_fonts.view(client_id, body, lang)
-    tone = {"says": _split(read_field(body, "voice", "tone_attributes").replace("—", "")),
-            "not_says": _split(read_field(body, "voice", "avoid").replace("—", ""))}
+    from core import brand_voice
+    voice = brand_voice.page(client_id, lang, body)
     assets = [r for r in rows if r["version"] == ASSET]
     return {
         "brief_status": cur.get("status") or "missing",
@@ -720,9 +711,10 @@ def view(client_id: int, lang: str = "he") -> dict:
         "typefaces": _typefaces(body),
         # the font library, the client's own fonts, what the names resolve to and what the page must say
         "fonts": fonts,
-        "tone": tone,
+        # the tone: the system's, shown read-only; and the ONE question the client answers (core/brand_voice)
+        "tone": voice["tone"], "never_say": voice["never_say"],
         # every EMPTY part of the page, in consequence terms (what it costs — never just "missing")
-        "gaps": gaps(logos, variants, stated, has_colors, fonts.get("chosen") or {}, tone, assets, files_ok, lang),
+        "gaps": gaps(logos, variants, stated, has_colors, fonts.get("chosen") or {}, assets, files_ok, lang),
         # the brand on the client's own REAL posts, newest first ([] = nothing produced yet: nothing shown)
         "work": recent_work(client_id, lang),
         # what a branding package would add, as part of the brand (core/brand_package)

@@ -94,17 +94,16 @@ class WhatAGapCosts(Base):
             for lang in ("he", "en", "fr", "ar", "ru"):
                 self.assertGreater(len(table[lang]), 60, key)
             self.assertFalse(any(table["he"].strip() == w for w in bare))
-        gaps = bp.gaps({}, [], False, False, {}, {}, [], True, "en")
-        self.assertEqual(set(gaps), {"logo_full", "logo_mark", "logo_on_light", "logo_on_dark", "assets", "colors",
-                                     "fonts", "tone_says", "tone_not"})
-        self.assertEqual(bp.gaps({}, [], False, False, {}, {}, [], False, "en").get("logo_full"), None)   # unknown is not missing
-        full = bp.gaps({v: {} for v in bp.LOGO_VERSIONS}, [{}], True, True, {"headline": "Rubik"},
-                       {"says": ["a"], "not_says": ["b"]}, [{}], True, "he")
+        gaps = bp.gaps({}, [], False, False, {}, [], True, "en")
+        # the tone is NOT a gap of the client's: it is the system's work (core/brand_voice)
+        self.assertEqual(set(gaps), {"logo_full", "logo_mark", "logo_on_light", "logo_on_dark", "assets", "colors", "fonts"})
+        self.assertEqual(bp.gaps({}, [], False, False, {}, [], False, "en").get("logo_full"), None)   # unknown is not missing
+        full = bp.gaps({v: {} for v in bp.LOGO_VERSIONS}, [{}], True, True, {"headline": "Rubik"}, [{}], True, "he")
         self.assertEqual(full, {})
 
     def test_the_page_draws_the_lines(self):
         html = _src("dashboard", "client", "index.html")
-        for use in ("brGap('logo_' + v)", "brGap('colors')", "brGap('fonts')", "brGap('assets')", "'tone_says' : 'tone_not'"):
+        for use in ("brGap('logo_' + v)", "brGap('colors')", "brGap('fonts')", "brGap('assets')"):
             self.assertIn(use, html)
 
 
@@ -180,32 +179,33 @@ class ItIsTheBrief(Base):
             bp.save_colors(27, [{"label": "black + red", "roles": {"bg": "red"}}])
         self.assertEqual(ctx.exception.code, "bad_color")
 
-    def test_tone_and_typefaces_are_written_into_the_text_the_agents_load(self):
+    def test_typefaces_and_the_one_answer_are_written_into_the_text_the_agents_load(self):
         before = brand_brief.current(27)["text"]
-        bp.save_tone(27, ["נועז", "שובב"], ["הנחות", "מבצע"])
+        bp.save_never_say(27, "לא להגיד שאנחנו הכי זולים")
         bp.save_typefaces(27, "Rubik", "Assistant")
         text = brand_brief.current(27)["text"]
-        self.assertRegex(text, r"- tone_attributes: נועז, שובב \[stated — the client, branding page, \d{4}-\d\d-\d\d\]")
-        self.assertRegex(text, r"- avoid: הנחות, מבצע \[stated")
+        self.assertRegex(text, r"- never_say: לא להגיד שאנחנו הכי זולים \[stated — the client, branding page, \d{4}-\d\d-\d\d\]")
         self.assertRegex(text, r"- typefaces: headline: Rubik; body: Assistant \[stated")
-        self.assertNotIn("bold, playful, confident", text)                           # replaced, not duplicated
+        self.assertIn("bold, playful, confident", text)                              # the tone is the system's: untouched
+        self.assertEqual(bp.read_field(text, "voice", "avoid"), bp.read_field(before, "voice", "avoid"))   # the older list stays
         self.assertIn("typefaces, PROPOSED", text)                                   # the rest of the brief is untouched
         self.assertIn("- emoji_policy: sparing", text)
-        self.assertEqual(len(text.splitlines()), len(before.splitlines()) - 3)       # two wrapped fields became one line each
-        self.assertIn("נועז, שובב", post_brief.load_context(27)["brand"])              # what both agents read
+        self.assertIn("לא להגיד שאנחנו הכי זולים", post_brief.load_context(27)["brand"])  # what both agents read
         self.assertEqual(post_brief.load_context(27)["brand_facts"]["lead_time_days"], (15, 25))
         v = bp.view(27, "he")
-        self.assertEqual((v["tone"]["says"], v["tone"]["not_says"]), (["נועז", "שובב"], ["הנחות", "מבצע"]))
+        self.assertEqual(v["never_say"]["text"], "לא להגיד שאנחנו הכי זולים")
+        self.assertNotIn("not_says", v["tone"])                                      # nothing on the page edits the tone
         self.assertEqual((v["typefaces"]["headline"], v["typefaces"]["body"]), ("Rubik", "Assistant"))
+        self.assertFalse(hasattr(bp, "save_tone"))
 
     def test_a_client_with_no_brief_starts_one_and_the_system_leads(self):
         v = bp.view(555, "he")
         self.assertTrue(v["lead"])                                                   # no branding at all: we lead
         self.assertEqual(v["assessment"], {})                                        # and never a critique there
-        bp.save_tone(555, ["חם"], [])
+        bp.save_never_say(555, "בלי המילה זול")
         cur = brand_brief.current(555)
         self.assertEqual(cur["status"], "draft")
-        self.assertIn("- tone_attributes: חם [stated", cur["text"])
+        self.assertIn("- never_say: בלי המילה זול [stated", cur["text"])
         bp.save_colors(555, [{"label": "default", "roles": {"bg": "#FFFFFF", "fg": "#111111", "accent": "#0055AA", "muted": "#777777"}}])
         self.assertEqual(brand_brief.roles_for(555, "default")["roles"]["accent"], "#0055AA")
         self.assertFalse(bp.view(555, "he")["lead"])
@@ -295,7 +295,7 @@ class ThePage(unittest.TestCase):
         self.assertIn('<div class="view" id="viewBrand">', self.html)
         self.assertIn("if (name === 'brand') loadBrandPage();", self.html)
         self.assertIn("brUI.variants.map(v => {", self.html)                         # one block per audience variant
-        for route in ("", "/colors", "/typefaces/approve", "/typefaces/other", "/tone", "/upload", "/file/{file_id}/delete", "/file/{file_id}",
+        for route in ("", "/colors", "/typefaces/approve", "/typefaces/other", "/never-say", "/upload", "/file/{file_id}/delete", "/file/{file_id}",
                       "/assessment/dismiss"):
             self.assertIn(f'"/api/client/brand-identity{route}")', self.api)
         self.assertIn('"client_brand_identity"', _src("core", "admin_view.py"))       # staff see it read-only

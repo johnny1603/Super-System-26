@@ -189,6 +189,14 @@ JOB 2 — LEARN WHAT ONLY THEY KNOW. Across the conversation, gather:
   ask it plainly once, and never guess it. Put ONLY what they said in captured.contact_channels
   using these words: "whatsapp", "phone", "form", "store". The system then shows them a card
   to confirm — don't describe the card, just thank them.
+- WHAT WE MUST NEVER SAY ABOUT THEM — ask it ONCE, as its own turn, in these words (in the
+  conversation's language when it is not Hebrew): "יש משהו שאסור לנו להגיד עליכם?" Add ONE short
+  sentence that it is for things only they would know — a phrase that belongs to a competitor,
+  a word that lands badly in their field, something that went wrong once — and not for style
+  preferences: the style is ours to handle. Put their answer in captured.never_say IN THEIR OWN
+  WORDS — not summarised, not translated, nothing added. "No" / "nothing" = leave it empty. When
+  they do answer, tell them in one short sentence that it is now a binding rule on every text we
+  write for them. If never_say_set in the data is true it was already answered: NEVER ask again.
 - Anything else a specialist could use: who their best customers actually are, what they
   sell most, seasonality, what they've tried before that flopped, whether they're willing
   to appear on camera.
@@ -218,6 +226,7 @@ Return JSON only:
   "speaking_as": "general|google|meta|website|media",
   "captured": {{"competitors": [{{"name": "", "url": ""}}],
                 "contact_channels": [],
+                "never_say": "",
                 "notes": {{"key": "short value"}}}},
   "interview_complete": false}}
 
@@ -398,6 +407,8 @@ def start_or_continue(client_id: int, message: str = "", language: str = None) -
         "conversation_so_far": _transcript(client_id),
         "client_latest_message": message,
         "already_captured": captured_facts(client_id),
+        # the ONE question about what may never be said about them is asked once (core/brand_voice)
+        "never_say_set": _never_say_set(client_id),
     }
 
     log_step(AGENT_NAME, "interview_turn",
@@ -435,7 +446,7 @@ def start_or_continue(client_id: int, message: str = "", language: str = None) -
         log_communication(client_id, "outbound", "dashboard_chat", vendor_names.scrub_auto(reply))
 
     captured = result.get("captured") or {}
-    captured_count = _store_captured(client_id, captured)
+    captured_count = _store_captured(client_id, captured) + _store_never_say(client_id, captured)
     action = conversion_card(client_id, captured.get("contact_channels") if isinstance(captured, dict) else None)
 
     complete = bool(result.get("interview_complete")) or len(_transcript(client_id)) >= MAX_TURNS * 2
@@ -469,6 +480,31 @@ def conversion_card(client_id: int, channels) -> dict:
         print(f"[{AGENT_NAME}] conversion card not proposed for client {client_id}: {type(e).__name__}")
         return None
     return proposal.get("card")
+
+
+def _never_say_set(client_id: int) -> bool:
+    try:
+        from core import brand_voice
+        return bool(brand_voice.read(client_id)["text"])
+    except Exception:
+        return False
+
+
+def _store_never_say(client_id: int, captured) -> int:
+    """What the client said may never be said about them → the brand brief
+    (`voice.never_say`), where it is a hard constraint on every text
+    (core/brand_voice). Their own words, kept as said. 1 when stored."""
+    text = str((captured or {}).get("never_say") or "").strip() if isinstance(captured, dict) else ""
+    if len(text) < 2:
+        return 0
+    try:
+        from core import brand_voice
+        brand_voice.save(client_id, text, "onboarding")
+    except Exception as e:
+        print(f"[{AGENT_NAME}] never_say not stored for client {client_id}: {type(e).__name__}")
+        return 0
+    _log_activity(client_id, "never_say_captured", {"at": datetime.now(timezone.utc).isoformat()})
+    return 1
 
 
 def _store_captured(client_id: int, captured: dict) -> int:

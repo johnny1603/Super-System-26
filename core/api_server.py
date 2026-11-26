@@ -9135,8 +9135,10 @@ def _brand_fail(e, lang: str):
 @app.get("/api/client/brand-identity")
 def client_brand_identity(request: Request):
     client_id = _require_session(request)
-    from core import brand_page
-    return {"success": True, "data": brand_page.view(client_id, _client_lang(client_id))}
+    from core import brand_page, brand_voice
+    lang = _client_lang(client_id)
+    brand_voice.ensure_shown(client_id, lang)          # the brief's tone tags in the client's language: once per change, never raises
+    return {"success": True, "data": brand_page.view(client_id, lang)}
 
 class BrandColorsRequest(BaseModel):
     variants: list[dict] = []
@@ -9183,20 +9185,18 @@ def client_brand_identity_typefaces_other(req: BrandTextRequest, request: Reques
     log_activity(client_id, "client", "brand_typefaces_other_asked", "The client asked for a different brand font on the branding page")
     return {"success": True, "message": got["message"], "data": brand_page.view(client_id, lang)}
 
-class BrandToneRequest(BaseModel):
-    says: list[str] = []
-    not_says: list[str] = []
-
-@app.post("/api/client/brand-identity/tone")
-def client_brand_identity_tone(req: BrandToneRequest, request: Request):
+# The client does not edit the tone (it is the system's work). ONE question is theirs:
+# what may never be said about them — a hard constraint on every text (core/brand_voice).
+@app.post("/api/client/brand-identity/never-say")
+def client_brand_identity_never_say(req: BrandTextRequest, request: Request):
     client_id = _require_session(request)
     from core import brand_page
     lang = _client_lang(client_id)
     try:
-        brand_page.save_tone(client_id, req.says, req.not_says)
+        brand_page.save_never_say(client_id, req.text)
     except brand_page.BrandPageError as e:
         _brand_fail(e, lang)
-    log_activity(client_id, "client", "brand_tone_set", "The client set the brand's tone words on the branding page")
+    log_activity(client_id, "client", "brand_never_say_set", "The client set what may never be said about the business (branding page)")
     return {"success": True, "data": brand_page.view(client_id, lang)}
 
 @app.post("/api/client/brand-identity/upload")

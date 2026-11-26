@@ -70,7 +70,9 @@ PARITY = {
         NOT_CHAT, "approving the font the system chose is done beside its rendered sample and the reason, on the page"),
     "POST /api/client/brand-identity/typefaces/other": (
         GAP, "P3: ask for a different brand font from the chat (today the manager hears it in the chat as any request)"),
-    "POST /api/client/brand-identity/tone": (GAP, "P3: set the tone words from the chat"),
+    "POST /api/client/brand-identity/never-say": (
+        GAP, "P3: set what may never be said about the business from the chat (asked once in onboarding; today the "
+             "page's edit link)"),
     "POST /api/client/brand-identity/assessment/dismiss": (NOT_CHAT, "closing a note on the page it is shown on"),
     # ── Brand fonts (core/brand_fonts) ───────────────────────────────────────
     "GET /api/client/brand-identity/font-sample": (NOT_CHAT, "a picture of one font for the picker on the page"),

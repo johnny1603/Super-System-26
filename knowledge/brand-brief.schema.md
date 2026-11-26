@@ -61,6 +61,9 @@ audience
 voice
   tone_attributes[]
   use_words[], avoid_words[]
+  never_say                the CLIENT's own answer to "is there anything we must never say about
+                           you?" — written only by the client (onboarding / the branding page),
+                           never drafted or edited by an agent. A hard constraint on every text.
   formality, emoji_policy
   language                 and any term that must never be translated
 

@@ -1033,8 +1033,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   The branding page's preview and font samples are pictures from the renderer, never CSS. `tests/test_brand_fonts.py` (CI installs
   fonttools + brotli for it).
 - **Branding page "מיתוג" (2026-11-26, docs/BRAND-BRIEF.md §The client's branding page)**: `core/brand_page` is a VIEW of the brand
-  brief, never a store — colours = the brief's palette PER audience variant (never flattened), typefaces/tone = fields in its text
-  marked [stated], logos = files in the client's `brand` folder listed in `assets.logo_files`. The client's branding is accepted as it
+  brief, never a store — colours = the brief's palette PER audience variant (never flattened), typefaces = a field in its text
+  marked [stated]. The TONE is not edited by the client (`core/brand_voice`): shown read-only; the client answers ONE question —
+  what may never be said about them (`voice.never_say`, asked once in onboarding, a short line + edit link on the page) — and
+  `brand_voice.rule` is appended to EVERY model call made for a client in `claude_json.safe_claude_json_call` (never bypass that
+  choke point for client-facing copy; `tests/test_brand_voice.py`); logos = files in the client's `brand` folder listed in `assets.logo_files`. The client's branding is accepted as it
   is; ONE measured friendly note at most, dismissed for good; no branding = the studio leads. Step two (2026-11-27): no sample slide —
   `recent_work` shows the last 4 REAL posts with the colours/fonts their manifests record (none = no card); NO font picker — the SYSTEM
   chooses the brand font from the library (`brand_fonts.direction` / `propose`), the page shows it as real samples with one line of
