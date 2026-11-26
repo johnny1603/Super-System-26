@@ -1046,8 +1046,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   comes from the manifest's `palette` (`render_manifest.palette_view`), and a brief variant the render did not use FAILS the card
   (docs/RENDER-MANIFEST.md §The palette). PALETTE DISCIPLINE: a colour the brand does not define needs a reason in the brief
   (`colors.requested` / `colors.reason`) and lands on the design card as a named deviation the client approves or turns down
-  (`slide_design.decide_deviation`); no reason = the card fails. `core/brand_package`: what a branding package would add (4 sections),
-  ONE confirmed in-code sample per section from the client's own brand (0 credits, never a model), "ask Johnny" = a team request,
+  (`slide_design.decide_deviation`); no reason = the card fails. `core/brand_package`: the branding package = three DELIVERABLES (a logo, a branded website,
+  two landing pages for different purposes; typography + visual language are what the work establishes, never tiles of their own),
+  ONE confirmed MOCKUP per section composed in code from THIS client's material — their logo file, palette variants, product photos
+  from the media library, own copy (0 credits, never a model, never a generic template: no product photo = `needs_photos`, nothing
+  recorded), "ask Johnny" = a team request,
   every request an admin alert ("buying signal"). `tests/test_brand_page.py`, `tests/test_brand_package.py`. Pose library `agent_poses`: offered before generating,
   last pose never repeated. **No agent ever sets or rebuilds a character** (`set_reference` admin-only,
   `create_element` refuses; `report_element_weak` only). Background removal path NOT in the docs, NOT run
