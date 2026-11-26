@@ -60,7 +60,7 @@ TEXT = {
                       "Y a-t-il quelque chose que nous ne devons jamais dire sur vous ?", "هل هناك شيء يُمنع علينا قوله عنكم؟",
                       "Есть ли что-то, чего нам нельзя о вас говорить?"),
     "explain": _five("זה המקום לדברים שרק אתם יודעים: ביטוי שמזוהה עם מתחרה, מילה שנשמעת רע בתחום שלכם, משהו שהשתבש פעם. "
-                     "לא להעדפות סגנון, את הסגנון אנחנו קובעים.",
+                     "לא להעדפות סגנון, את הסגנון אנחנו מתאימים לכם לפי האפיון.",
                      "This is for things only you would know: a phrase that belongs to a competitor, a word that lands badly "
                      "in your field, something that went wrong once. Not for style preferences; the style is ours to handle.",
                      "C'est pour ce que vous seuls savez : une expression associée à un concurrent, un mot mal perçu dans "
@@ -79,7 +79,7 @@ TEXT = {
                      "подписи, заголовки, лендинги и ответы вашим клиентам."),
     "line_set": _five("אסור לנו להגיד עליכם: {text}", "We must never say about you: {text}", "Nous ne devons jamais dire sur vous : {text}",
                       "يُمنع علينا أن نقول عنكم: {text}", "Нам нельзя говорить о вас: {text}"),
-    "line_empty": _five("לא הגדרתם משהו שאסור לנו להגיד עליכם.", "You have not set anything we must never say about you.",
+    "line_empty": _five("עוד לא הגדרתם משהו שאסור לנו להגיד עליכם.", "You have not set anything we must never say about you.",
                         "Vous n'avez rien indiqué que nous ne devons jamais dire sur vous.", "لم تحددوا شيئًا يُمنع علينا قوله عنكم.",
                         "Вы не указали ничего, чего нам нельзя о вас говорить."),
     "list_label": _five("כללים נוספים מתוך האפיון של העסק, שגם הם מחייבים:", "More rules from the business brief, binding as well:",
