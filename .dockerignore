@@ -5,4 +5,5 @@ __pycache__
 *.pyo
 .env
 data/
+assets/fonts/library/
 core/leads.db

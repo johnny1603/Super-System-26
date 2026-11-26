@@ -16,3 +16,5 @@ chat-timing-frustration-for-supabase.txt
 Claude outputs/
 # one instance's runtime files (alert history, monitor memory) — never in git, never in the image
 data/
+# the Hebrew font library: installed at build time from assets/fonts/hebrew-fonts.lock.json
+assets/fonts/library/
