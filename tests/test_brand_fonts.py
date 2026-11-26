@@ -590,9 +590,7 @@ class Page(Base):
         self.assertEqual(note["suggest"], fl.nearest_with_bold(thin["family"]))
         self.assertIn(thin["family"], note["text"])
         self.assertIn(note["suggest"], note["text"])
-        row = next(f for g in fonts["groups"] for f in g["families"] if f["family"] == thin["family"])
-        self.assertEqual(row["suggest"], note["suggest"])
-        self.assertEqual([g["category"] for g in fonts["groups"]][:4], ["sans", "serif", "display", "handwriting"])
+        self.assertNotIn("groups", fonts)                               # the library is the system's pool, not sent to the page
 
     def test_every_picture_on_the_page_is_made_by_the_post_renderer(self):
         src = _src("core", "brand_fonts.py")
@@ -626,6 +624,118 @@ class Page(Base):
         for lang in ("he", "en", "fr", "ar", "ru"):
             self.assertTrue(bf.pick(bf.TEXT["rights_ask"], lang))
             self.assertTrue(bf.pick(bf.TEXT["rights_logged"], lang))
+
+
+class TheSystemChooses(Base):
+    """knowledge/client-governance.md: the system decides direction, the client
+    approves. No picker, no font name from the client; their own uploaded font
+    is a fact about the brand."""
+
+    def setUp(self):
+        super().setUp()
+        self.alerts = []
+        bp._alert = lambda lines: self.alerts.extend(lines)
+
+    def direction(self):
+        return bp.view(27, "he")["fonts"]["direction"]
+
+    def test_the_page_shows_one_choice_with_its_reason_and_looking_saves_nothing(self):
+        bp.view(27, "he")                                                # (the first read seeds client 27's brief row)
+        before = copy.deepcopy(self.rows)
+        d = self.direction()
+        self.assertEqual((d["state"], d["source"]), ("proposed", "system"))
+        bold = next(p for p in bf.PROFILES if p[0] == "bold")           # client 27's voice: bold, playful, confident
+        self.assertIn(d["families"]["headline"], bold[2])
+        self.assertIn(d["families"]["body"], bold[3])
+        self.assertNotEqual(d["families"]["headline"], d["families"]["body"])
+        self.assertIn(d["families"]["headline"], d["reason"])            # one line on why it fits, naming the font
+        self.assertIn("בטוח וישיר", d["reason"])
+        self.assertEqual([s["slot"] for s in d["samples"]], ["headline", "body"])
+        self.assertEqual(self.rows, before)                              # a proposal is not a choice: nothing written
+        view = bp.view(27, "he")
+        self.assertIn("fonts", view["gaps"])                             # the warning stays until it is approved
+        self.assertEqual(view["fonts"]["chosen"]["headline"], "")
+        self.assertEqual(bf.resolve(27)["chains"]["headline"], [])       # and posts are drawn as they are today
+
+    def test_approving_writes_the_systems_choice_and_takes_no_name_from_the_client(self):
+        proposed = self.direction()["families"]
+        bp.approve_typefaces(27)
+        text = brand_brief.current(27)["text"]
+        self.assertRegex(text, rf"- typefaces: headline: {proposed['headline']}; body: {proposed['body']} \[stated — the client")
+        d = self.direction()
+        self.assertEqual((d["state"], d["source"], d["families"]), ("approved", "brief", proposed))
+        self.assertNotIn("fonts", bp.view(27, "he")["gaps"])
+        with self.assertRaises(bp.BrandPageError) as e:
+            bp.approve_typefaces(27)
+        self.assertEqual(e.exception.code, "nothing_to_approve")
+        api = _src("core", "api_server.py")
+        route = api[api.index('"/api/client/brand-identity/typefaces/approve"'):api.index('"/api/client/brand-identity/typefaces/other"')]
+        self.assertIn("def client_brand_identity_typefaces_approve(request: Request):", route)   # no body: no name
+        self.assertIn("brand_page.approve_typefaces(client_id)", route)
+        self.assertNotIn('"/api/client/brand-identity/typefaces")', api)                         # the picker's route is gone
+        self.assertNotIn("BrandTypefacesRequest", api)
+
+    def test_a_choice_set_in_the_brief_by_us_waits_for_the_client(self):
+        cur = brand_brief.current(27)
+        brand_brief.save_edit(27, new_text=bp.set_field(cur["text"], "visual_identity", "typefaces",
+                                                         ["- typefaces: headline: Frank Ruhl Libre; body: Assistant"]), by="manager")
+        d = self.direction()
+        self.assertEqual((d["state"], d["source"], d["families"]["headline"]), ("proposed", "brief", "Frank Ruhl Libre"))
+        bp.approve_typefaces(27)
+        self.assertEqual(self.direction()["state"], "approved")
+
+    def test_something_else_is_the_clients_words_sent_to_the_owner(self):
+        with self.assertRaises(bp.BrandPageError) as e:
+            bp.ask_other_typeface(27, "  ", "he")
+        self.assertEqual(e.exception.code, "say_what")
+        self.assertTrue(bp.error_text("say_what", "he"))
+        before = brand_brief.current(27)["text"]
+        got = bp.ask_other_typeface(27, "משהו יותר עגול ורך", "he")
+        self.assertIn("הצעה חדשה", got["message"])
+        self.assertEqual(len(self.alerts), 1)
+        self.assertIn("client 27", self.alerts[0])
+        self.assertIn("משהו יותר עגול ורך", self.alerts[0])
+        self.assertEqual(brand_brief.current(27)["text"], before)        # asking changes no font
+        d = self.direction()
+        self.assertIn("ביקשתם משהו אחר", d["asked"])
+        self.assertEqual(d["state"], "proposed")
+
+    def test_the_clients_own_font_is_a_fact_about_the_brand(self):
+        self.own(record("House Hebrew", RUBIK, weights=(400, 700)))
+        self.assertEqual(self.direction()["source"], "system")           # rights not confirmed yet: not used
+        bf.confirm_rights(27, "house-hebrew")
+        d = self.direction()
+        self.assertEqual((d["state"], d["source"]), ("proposed", "own"))
+        self.assertEqual((d["families"]["headline"], d["families"]["body"], d["families"]["hebrew"]), ("House Hebrew", "House Hebrew", ""))
+        self.assertIn("שהעליתם", d["reason"])
+        bp.approve_typefaces(27)
+        self.assertEqual(bf.resolve(27)["chains"]["headline"][0].family, "House Hebrew")
+        self.assertEqual(self.direction()["state"], "approved")
+
+    def test_an_own_font_without_hebrew_is_paired_by_the_system(self):
+        rec = record("Acme Latin", RUBIK, weights=(400, 700), hebrew=False, ranges=LATIN)
+        rec["rights"] = {"confirmed": True, "at": "2026-11-27T10:00:00+00:00"}
+        self.own(rec)
+        f = self.direction()["families"]
+        self.assertEqual(f["headline"], "Acme Latin")
+        self.assertTrue(f["hebrew"])                                     # never a Latin-only brand font alone
+        self.assertNotEqual(f["body"], "Acme Latin")
+        bp.approve_typefaces(27)                                         # passes the pairing check as it stands
+        self.assertEqual(bf.wanted(27)["hebrew"], f["hebrew"])
+
+    def test_the_page_has_no_picker(self):
+        html = _src("dashboard", "client", "index.html")
+        page = html[html.index("function brFontsHtml()"):html.index("function brChips(")]
+        for gone in ("data-br-font-choose", "data-br-font-open", "data-br-font-use", "data-br-font-name", "brFontPanel",
+                     "data-br-save=\"typefaces\"", "f.groups"):
+            self.assertNotIn(gone, html)
+        for kept in ("data-br-font-approve", "data-br-font-other", "dir.reason", "brGap('fonts')", "data-br-font-file",
+                     "brFontRights", "data-br-font-rights"):
+            self.assertIn(kept, page)
+        self.assertIn("brJson('/api/client/brand-identity/typefaces/approve', {})", html)
+        for table in list(bf.WHY.values()):
+            self.assertEqual(sorted(table), ["ar", "en", "fr", "he", "ru"])
+        self.assertEqual({p[0] for p in bf.PROFILES} | {bf.DEFAULT_PROFILE[0]}, set(bf.WHY) - {"own", "set", "asked", "asked_done"})
 
 
 if __name__ == "__main__":

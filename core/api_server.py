@@ -9153,22 +9153,35 @@ def client_brand_identity_colors(req: BrandColorsRequest, request: Request):
     log_activity(client_id, "client", "brand_colors_set", "The client set the brand colours on the branding page")
     return {"success": True, "data": brand_page.view(client_id, lang)}
 
-class BrandTypefacesRequest(BaseModel):
-    headline: str = ""
-    body: str = ""
-    hebrew: str = ""
+class BrandTextRequest(BaseModel):
+    text: str = ""
 
-@app.post("/api/client/brand-identity/typefaces")
-def client_brand_identity_typefaces(req: BrandTypefacesRequest, request: Request):
+# The SYSTEM chooses the brand font; the client approves it or asks for something else.
+# No route takes a font name from the client (knowledge/client-governance.md).
+@app.post("/api/client/brand-identity/typefaces/approve")
+def client_brand_identity_typefaces_approve(request: Request):
     client_id = _require_session(request)
     from core import brand_page
     lang = _client_lang(client_id)
     try:
-        brand_page.save_typefaces(client_id, req.headline, req.body, req.hebrew)
+        chosen = brand_page.approve_typefaces(client_id)
     except brand_page.BrandPageError as e:
         _brand_fail(e, lang)
-    log_activity(client_id, "client", "brand_typefaces_set", "The client set the brand typefaces on the branding page")
+    log_activity(client_id, "client", "brand_typefaces_approved",
+                 f"The client approved the brand fonts the system chose: {chosen['headline']} / {chosen['body']}")
     return {"success": True, "data": brand_page.view(client_id, lang)}
+
+@app.post("/api/client/brand-identity/typefaces/other")
+def client_brand_identity_typefaces_other(req: BrandTextRequest, request: Request):
+    client_id = _require_session(request)
+    from core import brand_page
+    lang = _client_lang(client_id)
+    try:
+        got = brand_page.ask_other_typeface(client_id, req.text, lang)
+    except brand_page.BrandPageError as e:
+        _brand_fail(e, lang)
+    log_activity(client_id, "client", "brand_typefaces_other_asked", "The client asked for a different brand font on the branding page")
+    return {"success": True, "message": got["message"], "data": brand_page.view(client_id, lang)}
 
 class BrandToneRequest(BaseModel):
     says: list[str] = []

@@ -74,25 +74,25 @@ TEXT = {
                        "تم استلام {family}. يحتوي الأبجدية العبرية كاملة مع الحروف النهائية.",
                        "{family} принят. В нём есть весь ивритский алфавит, включая конечные буквы."),
     "hebrew_none": _five("בגופן {family} אין אותיות עבריות. אפשר להשתמש בו רק לטקסט באותיות לטיניות (אנגלית). "
-                         "נשמור אותו למילים באנגלית — ואיזה גופן עברי תרצו שיופיע לצידו?",
+                         "נשמור אותו למילים באנגלית, ונצמיד לו גופן עברי שמתאים לו.",
                          "{family} has no Hebrew letters. It can be used for Latin (English) text only. We will keep "
-                         "it for the English words — which Hebrew font should go with it?",
+                         "it for the English words, and pair it with a Hebrew font that suits it.",
                          "{family} n'a pas de lettres hébraïques. Elle ne sert que pour le texte latin. Nous la gardons "
-                         "pour les mots en caractères latins — quelle police hébraïque doit l'accompagner ?",
-                         "{family} لا يحتوي حروفًا عبرية. يصلح للنص اللاتيني فقط. سنحتفظ به للكلمات اللاتينية — "
-                         "أي خط عبري تريدون أن يرافقه؟",
+                         "pour les mots en caractères latins, et nous lui associons une police hébraïque assortie.",
+                         "{family} لا يحتوي حروفًا عبرية. يصلح للنص اللاتيني فقط. سنحتفظ به للكلمات اللاتينية "
+                         "ونقرنه بخط عبري يناسبه.",
                          "В {family} нет ивритских букв. Он годится только для латиницы. Оставим его для латинских "
-                         "слов — какой ивритский шрифт поставить рядом?"),
+                         "слов и подберём к нему ивритский шрифт."),
     "hebrew_partial": _five("בגופן {family} חסרות אותיות עבריות ({letters}), ולכן אי אפשר לכתוב בו עברית. אפשר להשתמש "
-                            "בו רק לטקסט באותיות לטיניות — ואיזה גופן עברי תרצו שיופיע לצידו?",
+                            "בו רק לטקסט באותיות לטיניות, ונצמיד לו גופן עברי שמתאים לו.",
                             "{family} is missing Hebrew letters ({letters}), so Hebrew cannot be set in it. It can be "
-                            "used for Latin text only — which Hebrew font should go with it?",
+                            "used for Latin text only, and we pair it with a Hebrew font that suits it.",
                             "Il manque des lettres hébraïques à {family} ({letters}) : l'hébreu ne peut pas y être "
-                            "composé. Texte latin uniquement — quelle police hébraïque doit l'accompagner ?",
-                            "تنقص {family} حروف عبرية ({letters})، فلا يمكن كتابة العبرية به. للنص اللاتيني فقط — "
-                            "أي خط عبري تريدون أن يرافقه؟",
+                            "composé. Texte latin uniquement ; nous lui associons une police hébraïque assortie.",
+                            "تنقص {family} حروف عبرية ({letters})، فلا يمكن كتابة العبرية به. للنص اللاتيني فقط "
+                            "ونقرنه بخط عبري يناسبه.",
                             "В {family} не хватает ивритских букв ({letters}), набирать иврит им нельзя. Только "
-                            "латиница — какой ивритский шрифт поставить рядом?"),
+                            "латиница; мы подберём к нему ивритский шрифт."),
     "no_latin": _five("אין בו אותיות לטיניות — מילים באנגלית יצוירו בגופן אחר, ונסמן את זה על הפוסט.",
                       "It has no Latin letters — English words will be drawn in another font, and the post will say so.",
                       "Elle n'a pas de lettres latines — les mots latins seront dans une autre police, et le post le dira.",
@@ -174,14 +174,14 @@ TEXT = {
                                "{family} n'a pas de gras — les titres seront en {heaviest}. Nous n'épaississons jamais une police artificiellement.",
                                "{family} بلا وزن عريض — العناوين سترسم بوزن {heaviest}. لا نُسمّك الخط اصطناعيًا.",
                                "У {family} нет жирного — заголовки будут в {heaviest}. Искусственно мы шрифт не утолщаем."),
-    "unknown_family": _five("אין לנו גופן בשם \"{family}\". עד שתבחרו אותו מהספרייה או תעלו את הקובץ שלו, הפוסטים יצוירו "
+    "unknown_family": _five("אין לנו גופן בשם \"{family}\". עד שתעלו את הקובץ שלו, הפוסטים יצוירו "
                             "בגופן אחר — וזה יסומן על כל פוסט.",
-                            "We have no font called \"{family}\". Until you choose it from the library or upload its "
+                            "We have no font called \"{family}\". Until you upload its "
                             "file, posts are drawn in another font — and every post will say so.",
-                            "Nous n'avons pas de police « {family} ». Tant qu'elle n'est pas choisie dans la bibliothèque "
-                            "ou téléversée, les posts sont dans une autre police — et chaque post le dira.",
-                            "لا يوجد لدينا خط باسم \"{family}\". إلى أن تختاروه من المكتبة أو ترفعوا ملفه، سترسم المنشورات بخط آخر — وسيُذكر ذلك على كل منشور.",
-                            "У нас нет шрифта «{family}». Пока вы не выберете его в библиотеке или не загрузите файл, "
+                            "Nous n'avons pas de police « {family} ». Tant qu'elle n'est pas "
+                            "téléversée, les posts sont dans une autre police — et chaque post le dira.",
+                            "لا يوجد لدينا خط باسم \"{family}\". إلى أن ترفعوا ملفه، سترسم المنشورات بخط آخر — وسيُذكر ذلك على كل منشور.",
+                            "У нас нет шрифта «{family}». Пока вы не загрузите его файл, "
                             "посты рисуются другим шрифтом — и это отмечается на каждом посте."),
     "not_installed": _five("הגופן {family} בספרייה שלנו, אבל הקבצים שלו לא מותקנים כרגע בשרת. עד שזה יתוקן הפוסטים "
                            "יצוירו בגופן אחר, וזה יסומן.",
@@ -192,11 +192,11 @@ TEXT = {
                            "{family} في مكتبتنا لكن ملفاته غير مثبتة على الخادم الآن. إلى أن يُصلح ذلك سترسم المنشورات بخط آخر مع الإشارة لذلك.",
                            "{family} есть в библиотеке, но его файлы сейчас не установлены на сервере. Пока это не "
                            "исправят, посты рисуются другим шрифтом, с пометкой."),
-    "needs_pairing": _five("ב{family} אין עברית. בחרו גופן עברי שיופיע לצידו — בלי זה העברית תצויר בגופן ברירת המחדל.",
-                           "{family} has no Hebrew. Choose a Hebrew font to go with it — without one, Hebrew is drawn in the default font.",
-                           "{family} n'a pas d'hébreu. Choisissez une police hébraïque pour l'accompagner — sinon l'hébreu sera dans la police par défaut.",
-                           "{family} بلا عبرية. اختاروا خطًا عبريًا يرافقه — وإلا رُسمت العبرية بالخط الافتراضي.",
-                           "В {family} нет иврита. Выберите парный ивритский шрифт — иначе иврит будет шрифтом по умолчанию."),
+    "needs_pairing": _five("ב{family} אין עברית, ועוד לא הוצמד לו גופן עברי — עד אז העברית מצוירת בגופן ברירת המחדל.",
+                           "{family} has no Hebrew, and no Hebrew font is paired with it yet — until then Hebrew is drawn in the default font.",
+                           "{family} n'a pas d'hébreu et aucune police hébraïque ne lui est encore associée — d'ici là l'hébreu est dans la police par défaut.",
+                           "{family} بلا عبرية ولم يُقرن به خط عبري بعد — إلى ذلك الحين تُرسم العبرية بالخط الافتراضي.",
+                           "В {family} нет иврита, и парный ивритский шрифт пока не подобран — до тех пор иврит рисуется шрифтом по умолчанию."),
 }
 ERRORS = {
     "bad_font": _five("אפשר להעלות קובץ גופן מסוג TTF, OTF, WOFF או WOFF2", "You can upload a TTF, OTF, WOFF or WOFF2 font file",
@@ -219,6 +219,14 @@ ERRORS = {
                            "La police choisie n'a pas d'hébreu — choisissez aussi une police hébraïque",
                            "الخط المختار بلا عبرية — اختاروا خطًا عبريًا يرافقه",
                            "В выбранном шрифте нет иврита — выберите и парный ивритский шрифт"),
+    "say_what": _five("כתבו במשפט מה הייתם רוצים שיהיה אחרת, כדי שנדע מה להציע",
+                      "Write in a sentence what you would like to be different, so we know what to propose",
+                      "Dites en une phrase ce que vous voudriez de différent, pour que nous sachions quoi proposer",
+                      "اكتبوا في جملة ما تريدونه مختلفًا لنعرف ماذا نقترح",
+                      "Напишите одной фразой, что вы хотели бы иначе, чтобы мы знали, что предложить"),
+    "nothing_to_approve": _five("אין כרגע הצעה שמחכה לאישור", "There is no proposal waiting for approval right now",
+                                "Aucune proposition n'attend de validation", "لا يوجد اقتراح بانتظار الموافقة الآن",
+                                "Сейчас нет предложения, ожидающего подтверждения"),
     "pairing_no_hebrew": _five("הגופן שבחרתם לעברית לא מכיל עברית — בחרו גופן עברי אחר",
                                "The font chosen for Hebrew has no Hebrew — choose another Hebrew font",
                                "La police choisie pour l'hébreu n'en contient pas — choisissez-en une autre",
@@ -728,20 +736,200 @@ def check_choice(client_id: int, headline: str, body: str, hebrew: str):
             raise FontError("needs_pairing")
 
 
+# ─── The SYSTEM's choice (knowledge/client-governance.md: the system decides
+# direction, the client approves) ─────────────────────────────────────────────
+#
+# The client is never handed the library to choose from. The library is the
+# POOL the system chooses from; the page shows the one choice — as a real
+# sample, with one line on why it fits — and the client approves it or asks
+# for something else. A font the client UPLOADED is a fact about their brand,
+# so it is the choice. Nothing is written by looking: a proposal becomes the
+# brand font (the brief's `typefaces`, which the renderer reads) only when the
+# client approves it.
+
+PROFILES = (
+    # (key, words of the brief's voice that point to it, headline candidates, body candidates)
+    ("heritage", ("craft", "heritage", "tradition", "premium", "luxury", "elegan", "refined", "classic", "authentic",
+                  "artisan", "boutique", "מסורת", "יוקר", "אומנות", "קלאסי"),
+     ("Frank Ruhl Libre", "Noto Serif Hebrew", "David Libre"), ("Assistant", "Heebo", "Open Sans")),
+    ("bold", ("bold", "confident", "energetic", "street", "edgy", "direct", "strong", "daring", "urban", "sport",
+              "נועז", "בטוח", "ישיר", "אנרגטי"),
+     ("Heebo", "Noto Sans Hebrew", "Rubik"), ("Assistant", "Open Sans", "Rubik")),
+    ("warm", ("warm", "friendly", "family", "playful", "fun", "approachable", "personal", "cozy", "homey", "kids",
+              "חם", "משפחתי", "שובב", "ידידותי"),
+     ("Fredoka", "M PLUS Rounded 1c", "Rubik"), ("Assistant", "Open Sans", "Heebo")),
+    ("precise", ("professional", "precise", "expert", "technical", "trust", "clinical", "reliable", "serious",
+                 "corporate", "מקצועי", "מדויק", "אמין"),
+     ("IBM Plex Sans Hebrew", "Noto Sans Hebrew", "Heebo"), ("Assistant", "Open Sans", "Rubik")),
+)
+DEFAULT_PROFILE = ("clear", (), ("Rubik", "Heebo"), ("Assistant", "Open Sans"))
+
+WHY = {
+    "heritage": _five("בחרנו ב-{head} לכותרות כי האפיון שלכם מתאר מותג של איכות ומסורת, וגופן סריפי נושא את זה. {body} לטקסט, כי הוא נשאר קריא גם בשורות ארוכות.",
+                      "We chose {head} for headlines because your brief describes a brand of quality and tradition, and a serif face carries that. {body} for text, because it stays readable in long lines.",
+                      "Nous avons choisi {head} pour les titres : votre brief décrit une marque de qualité et de tradition, ce qu'une police à empattements porte bien. {body} pour le texte, lisible même sur de longues lignes.",
+                      "اخترنا {head} للعناوين لأن موجزكم يصف علامة جودة وتقاليد، والخط المذيّل يحمل ذلك. و{body} للنص لأنه يبقى مقروءًا في السطور الطويلة.",
+                      "Мы выбрали {head} для заголовков: ваш бриф описывает бренд качества и традиции, и шрифт с засечками это передаёт. {body} — для текста: он читается и в длинных строках."),
+    "bold": _five("בחרנו ב-{head} לכותרות כי האפיון שלכם מתאר מותג בטוח וישיר, והוא נקרא חזק גם במסך קטן. {body} לטקסט, כי הוא נקי ולא מתחרה בכותרת.",
+                  "We chose {head} for headlines because your brief describes a confident, direct brand, and it reads strongly even on a small screen. {body} for text, because it is clean and does not compete with the headline.",
+                  "Nous avons choisi {head} pour les titres : votre brief décrit une marque sûre d'elle et directe, et cette police reste forte sur petit écran. {body} pour le texte, net et discret face au titre.",
+                  "اخترنا {head} للعناوين لأن موجزكم يصف علامة واثقة ومباشرة، وهو يُقرأ بقوة حتى على شاشة صغيرة. و{body} للنص لأنه نظيف ولا ينافس العنوان.",
+                  "Мы выбрали {head} для заголовков: ваш бриф описывает уверенный, прямой бренд, и этот шрифт сильно читается даже на маленьком экране. {body} — для текста: чистый и не спорит с заголовком."),
+    "warm": _five("בחרנו ב-{head} לכותרות כי האפיון שלכם מתאר מותג חם ואישי, והקווים העגולים שלו מרגישים כך. {body} לטקסט, כי הוא קריא ורגוע.",
+                  "We chose {head} for headlines because your brief describes a warm, personal brand, and its rounded lines feel that way. {body} for text, because it is readable and calm.",
+                  "Nous avons choisi {head} pour les titres : votre brief décrit une marque chaleureuse et personnelle, et ses formes arrondies le traduisent. {body} pour le texte, lisible et calme.",
+                  "اخترنا {head} للعناوين لأن موجزكم يصف علامة دافئة وشخصية، وخطوطه المستديرة توحي بذلك. و{body} للنص لأنه مقروء وهادئ.",
+                  "Мы выбрали {head} для заголовков: ваш бриф описывает тёплый, личный бренд, и округлые линии это передают. {body} — для текста: читаемый и спокойный."),
+    "precise": _five("בחרנו ב-{head} לכותרות כי האפיון שלכם מתאר מותג מקצועי ומדויק, והוא נראה מסודר ואמין. {body} לטקסט, כי הוא קריא בכל גודל.",
+                     "We chose {head} for headlines because your brief describes a professional, precise brand, and it looks orderly and trustworthy. {body} for text, because it is readable at every size.",
+                     "Nous avons choisi {head} pour les titres : votre brief décrit une marque professionnelle et précise, et cette police paraît ordonnée et fiable. {body} pour le texte, lisible à toutes les tailles.",
+                     "اخترنا {head} للعناوين لأن موجزكم يصف علامة مهنية ودقيقة، وهو يبدو منظمًا وموثوقًا. و{body} للنص لأنه مقروء بكل حجم.",
+                     "Мы выбрали {head} для заголовков: ваш бриф описывает профессиональный, точный бренд, и шрифт выглядит аккуратно и надёжно. {body} — для текста: читается в любом размере."),
+    "clear": _five("בחרנו ב-{head} לכותרות וב-{body} לטקסט: זוג נקי וקריא שעובד היטב בעברית במסך קטן. כשהאפיון של העסק יתמלא, נדייק את הבחירה.",
+                   "We chose {head} for headlines and {body} for text: a clean, readable pair that works well in Hebrew on a small screen. Once the business brief fills in, we will refine the choice.",
+                   "Nous avons choisi {head} pour les titres et {body} pour le texte : un duo net et lisible, efficace en hébreu sur petit écran. Quand le brief sera complété, nous affinerons ce choix.",
+                   "اخترنا {head} للعناوين و{body} للنص: زوج نظيف ومقروء يعمل جيدًا بالعبرية على شاشة صغيرة. وعند اكتمال موجز النشاط سنضبط الاختيار.",
+                   "Мы выбрали {head} для заголовков и {body} для текста: чистая, читаемая пара, которая хорошо работает на иврите на маленьком экране. Когда бриф будет заполнен, уточним выбор."),
+    "own": _five("זה הגופן שהעליתם, {head}: הוא חלק מהמותג שלכם, ולכן הוא הגופן של הכותרות. לטקסט הרץ: {body}.",
+                 "This is the font you uploaded, {head}: it is part of your brand, so it is the headline font. For running text: {body}.",
+                 "C'est la police que vous avez téléversée, {head} : elle fait partie de votre marque, c'est donc la police des titres. Pour le texte courant : {body}.",
+                 "هذا الخط الذي رفعتموه، {head}: هو جزء من علامتكم ولذلك هو خط العناوين. وللنص: {body}.",
+                 "Это загруженный вами шрифт, {head}: он часть вашего бренда, поэтому он — шрифт заголовков. Для основного текста: {body}."),
+    "set": _five("הגופנים של המותג שלכם: {head} לכותרות, {body} לטקסט. כל פוסט מצויר בהם.",
+                 "Your brand's fonts: {head} for headlines, {body} for text. Every post is drawn in them.",
+                 "Les polices de votre marque : {head} pour les titres, {body} pour le texte. Chaque post est dessiné avec elles.",
+                 "خطوط علامتكم: {head} للعناوين و{body} للنص. كل منشور يُرسم بها.",
+                 "Шрифты вашего бренда: {head} для заголовков, {body} для текста. Каждый пост рисуется ими."),
+    "asked": _five("ביקשתם משהו אחר ב-{date}. הבקשה אצל הצוות, ונחזור אליכם עם הצעה חדשה. עד אז שום דבר לא משתנה.",
+                   "You asked for something else on {date}. The request is with the team, and we will come back with a new proposal. Nothing changes until then.",
+                   "Vous avez demandé autre chose le {date}. La demande est chez l'équipe, qui reviendra avec une nouvelle proposition. Rien ne change d'ici là.",
+                   "طلبتم شيئًا آخر في {date}. الطلب لدى الفريق وسنعود باقتراح جديد. لا شيء يتغير حتى ذلك الحين.",
+                   "{date} вы попросили другое. Запрос у команды, мы вернёмся с новым предложением. До тех пор ничего не меняется."),
+    "asked_done": _five("הבקשה נרשמה והועברה לצוות. נחזור אליכם עם הצעה חדשה.",
+                        "Your request was recorded and passed to the team. We will come back with a new proposal.",
+                        "Votre demande a été enregistrée et transmise à l'équipe. Nous reviendrons avec une nouvelle proposition.",
+                        "سُجّل طلبكم وأُرسل إلى الفريق. سنعود باقتراح جديد.",
+                        "Запрос записан и передан команде. Мы вернёмся с новым предложением."),
+}
+OTHER_MIN, OTHER_MAX = 3, 400
+
+
+def _profile(body: str) -> tuple:
+    """The profile the brief's VOICE points to (most matching words; none = the default)."""
+    from core import brand_page
+    voice = " ".join(brand_page.read_field(body or "", "voice", key) for key in ("tone_attributes", "personality")).lower()
+    best, hits = DEFAULT_PROFILE, 0
+    for profile in PROFILES:
+        n = sum(1 for word in profile[1] if word in voice)
+        if n > hits:
+            best, hits = profile, n
+    return best
+
+
+def _own_ready(own: dict) -> list:
+    """The client's own fonts that may be used: rights confirmed, newest first."""
+    rows = [r for r in (own or {}).values() if (r.get("rights") or {}).get("confirmed") and r.get("weights")]
+    return sorted(rows, key=lambda r: r.get("updated_at", ""), reverse=True)
+
+
+def propose(client_id: int, body: str, own: dict = None) -> dict:
+    """What the SYSTEM would set as this brand's fonts: {"headline", "body",
+    "hebrew", "why"} — the client's own uploaded font when there is one (a
+    fact about their brand), else a pair from the installed library that fits
+    the brief's voice. {} when the library has nothing installed to choose from."""
+    own = uploads(client_id) if own is None else own
+    key, _words, heads, bodies = _profile(body)
+    usable = {font_library.norm(f["family"]): f for f in font_library.catalog() if f["installed"]}
+    head = next((f for f in heads if font_library.norm(f) in usable and usable[font_library.norm(f)]["has_bold"]), "")
+    text = next((f for f in bodies if font_library.norm(f) in usable and f != head), "")
+    mine = _own_ready(own)
+    if mine:
+        rec = mine[0]
+        weights = [int(w) for w in rec["weights"]]
+        whole = bool(rec.get("hebrew")) and any(400 <= w <= 500 for w in weights) and len(weights) > 1
+        pair = "" if rec.get("hebrew") else (head or text)
+        if not rec.get("hebrew") and not pair:
+            return {}                                 # a font without Hebrew and nothing installed to pair it with
+        return {"headline": rec["family"], "body": rec["family"] if whole else (text or head or rec["family"]),
+                "hebrew": pair, "why": "own"}
+    if not head:
+        return {}
+    return {"headline": head, "body": text or head, "hebrew": "", "why": key}
+
+
+def _key(names: dict) -> str:
+    return "|".join(font_library.norm(names.get(k) or "") for k in ("headline", "body", "hebrew"))
+
+
+def _approved(body: str) -> bool:
+    """The brief's typefaces line carries the client's own mark (set by their approval)."""
+    m = re.search(r"^-\s+\**typefaces\**\s*:(.*)$", body or "", re.MULTILINE | re.IGNORECASE)
+    return bool(m and re.search(r"\[stated[^\]]*\bclient\b", m.group(1), re.IGNORECASE))
+
+
+def direction(client_id: int, body: str, lang: str = "he", own: dict = None) -> dict:
+    """The page's ONE font block: {"state": "approved" | "proposed" | "none",
+    "families": {"headline", "body", "hebrew"}, "samples": [{"slot", "family",
+    "weight"}], "reason", "source": "brief" | "system" | "own", "asked": text
+    or ""}. "proposed" = waiting for the client (approve, or ask for something
+    else); until then posts keep the font they are drawn in today."""
+    own = uploads(client_id) if own is None else own
+    names = wanted(client_id, body)
+    fresh = propose(client_id, body, own)
+    has = bool(names["headline"] or names["body"])
+    used = {font_library.norm(names[k]) for k in ("headline", "body") if names[k]}
+    if fresh and fresh["why"] == "own" and font_library.norm(fresh["headline"]) not in used:
+        families, state, source, why = fresh, "proposed", "own", "own"        # their own font, not in use yet
+    elif has:
+        families, state, source = names, "approved" if _approved(body) else "proposed", "brief"
+        why = fresh["why"] if fresh and _key(fresh) == _key(names) else "set"
+    elif fresh:
+        families, state, source, why = fresh, "proposed", "system", fresh["why"]
+    else:
+        return {"state": "none", "families": {"headline": "", "body": "", "hebrew": ""}, "samples": [], "reason": "",
+                "source": "", "asked": ""}
+    families = {k: families.get(k) or "" for k in ("headline", "body", "hebrew")}
+    samples = []
+    for slot, weight in (("headline", font_library.BOLD), ("body", font_library.REGULAR)):
+        got, issue = find(client_id, families[slot], own) if families[slot] else (None, "x")
+        if got is not None and not issue and got.weights:
+            samples.append({"slot": slot, "family": got.family,
+                            "weight": min(got.weights, key=lambda w: abs(int(w) - weight))})
+    asked = ""
+    try:
+        note = brand_brief.page_state(client_id).get("fonts_other") or {}
+        if note.get("for") == _key(families) and note.get("at"):
+            asked = _fill(pick(WHY["asked"], lang), date=str(note["at"])[:10])
+    except Exception as e:
+        _log(f"client {client_id}: font request unreadable ({type(e).__name__})")
+    return {"state": state, "families": families, "samples": samples, "source": source, "asked": asked,
+            "reason": _fill(pick(WHY[why], lang), head=families["headline"] or "—", body=families["body"] or "—")}
+
+
+def ask_other(client_id: int, text: str, lang: str = "he") -> dict:
+    """The client asks for something else: their words are recorded against
+    THIS choice and the caller tells the owner. FontError("say_what") when
+    nothing was said. {"message", "text", "families"}."""
+    text = re.sub(r"\s+", " ", str(text or "")).strip()[:OTHER_MAX]
+    if len(text) < OTHER_MIN:
+        raise FontError("say_what")
+    families = direction(client_id, brand_brief.current(client_id).get("text", ""), lang)["families"]
+    try:
+        brand_brief.set_page_state(client_id, fonts_other={"at": _now(), "text": text, "for": _key(families)})
+    except Exception:
+        raise FontError("storage")
+    return {"message": pick(WHY["asked_done"], lang), "text": text, "families": families}
+
+
 def view(client_id: int, body: str, lang: str = "he") -> dict:
-    """The fonts part of the branding page."""
+    """The fonts part of the branding page: the system's choice (`direction`),
+    the client's own fonts, what the names resolve to and what the page must
+    say. The library itself is NOT sent: it is the system's pool, not a picker."""
     own = uploads(client_id)
     names = wanted(client_id, body)
     lib = font_library.status()
-    groups = [{"category": g["category"],
-               "families": [{"family": f["family"], "weights": f["weights"], "has_bold": f["has_bold"],
-                             "installed": f["installed"],
-                             # no bold: the nearest family that has one, offered on the page
-                             "suggest": "" if f["has_bold"] else font_library.nearest_with_bold(f["family"])}
-                            for f in g["families"]]}
-              for g in font_library.grouped()]
     resolved = resolve(client_id)
-    return {"chosen": names, "groups": groups,
+    return {"chosen": names, "direction": direction(client_id, body, lang, own),
             "library": {"pinned": lib["pinned"], "installed": lib["installed"]},
             "own": [row(rec, lang) for rec in sorted(own.values(), key=lambda r: r.get("family", "").lower())],
             "notes": notes(client_id, names, own, lang),

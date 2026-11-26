@@ -1036,8 +1036,10 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   brief, never a store — colours = the brief's palette PER audience variant (never flattened), typefaces/tone = fields in its text
   marked [stated], logos = files in the client's `brand` folder listed in `assets.logo_files`. The client's branding is accepted as it
   is; ONE measured friendly note at most, dismissed for good; no branding = the studio leads. Step two (2026-11-27): no sample slide —
-  `recent_work` shows the last 4 REAL posts with the colours/fonts their manifests record (none = no card); the font library is always
-  open on the page; every empty part states what it COSTS (`GAPS`, 5 languages — a new slot needs its line). The card's colour label
+  `recent_work` shows the last 4 REAL posts with the colours/fonts their manifests record (none = no card); NO font picker — the SYSTEM
+  chooses the brand font from the library (`brand_fonts.direction` / `propose`), the page shows it as real samples with one line of
+  why, the client approves (`/typefaces/approve`, no name is ever sent) or asks for something else (`/typefaces/other` → admin
+  alert); their own uploaded font (rights confirmed) is the choice; every empty part states what it COSTS (`GAPS`, 5 languages — a new slot needs its line). The card's colour label
   comes from the manifest's `palette` (`render_manifest.palette_view`), and a brief variant the render did not use FAILS the card
   (docs/RENDER-MANIFEST.md §The palette). PALETTE DISCIPLINE: a colour the brand does not define needs a reason in the brief
   (`colors.requested` / `colors.reason`) and lands on the design card as a named deviation the client approves or turns down

@@ -70,7 +70,7 @@ Client dashboard → מיתוג. It is a VIEW of the brief, not a store (`knowle
 | On the page | Where it is written | Who reads it |
 |---|---|---|
 | Brand colours, per audience variant (client 27: `black + red` private, `black + gold` business — shown as two blocks, never one palette) | the brief's `palette.variants[label][role]`, `status: stated` | `brand_brief.roles_for` → the slide renderer |
-| Typefaces (headline / body) | `visual_identity.typefaces` in the text, `[stated — the client, branding page, date]` | both content agents (the brief in full) |
+| Typefaces (headline / body) — CHOSEN BY THE SYSTEM, approved by the client (no picker; docs/FONTS.md §4) | `visual_identity.typefaces` in the text, written when the client approves: `[stated — the client, branding page, date]` | the slide renderer (`brand_fonts.resolve`), both content agents |
 | Tone: says / does not say | `voice.tone_attributes` / `voice.avoid` | both content agents |
 | Logo versions (full, mark only, on light, on dark) and existing assets | files in the client's media folder, sub-folder `brand` (appProperties `uallak_kind: brand_file`, `brand_version`, measured width/height/alpha); listed in the text under `assets.logo_files` with their file ids | agents (a slide spec's `logo.asset_ref`) |
 

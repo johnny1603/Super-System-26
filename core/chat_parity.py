@@ -66,7 +66,10 @@ PARITY = {
                                                "in a chat goes to the media folder (chat_uploads)"),
     "POST /api/client/brand-identity/file/{file_id}/delete": (NOT_CHAT, "removing a file is done where it is shown"),
     "POST /api/client/brand-identity/colors": (GAP, "P3: set the brand colours from the chat (a card with the palette)"),
-    "POST /api/client/brand-identity/typefaces": (GAP, "P3: set the brand typefaces from the chat"),
+    "POST /api/client/brand-identity/typefaces/approve": (
+        NOT_CHAT, "approving the font the system chose is done beside its rendered sample and the reason, on the page"),
+    "POST /api/client/brand-identity/typefaces/other": (
+        GAP, "P3: ask for a different brand font from the chat (today the manager hears it in the chat as any request)"),
     "POST /api/client/brand-identity/tone": (GAP, "P3: set the tone words from the chat"),
     "POST /api/client/brand-identity/assessment/dismiss": (NOT_CHAT, "closing a note on the page it is shown on"),
     # ── Brand fonts (core/brand_fonts) ───────────────────────────────────────

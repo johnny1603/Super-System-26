@@ -305,6 +305,35 @@ def save_typefaces(client_id: int, headline: str, body: str, hebrew: str = "") -
     return out
 
 
+def approve_typefaces(client_id: int) -> dict:
+    """The client approves the font the SYSTEM chose (brand_fonts.direction).
+    The names come from the server, never from the request: the client
+    approves a decision, they do not pick from the library. The approval is
+    what writes the brief's `typefaces` (marked as the client's)."""
+    cur = brand_brief.current(client_id)
+    choice = brand_fonts.direction(client_id, cur.get("text", ""))
+    if choice["state"] != "proposed":
+        raise BrandPageError("nothing_to_approve")
+    f = choice["families"]
+    save_typefaces(client_id, f["headline"], f["body"], f["hebrew"])
+    return f
+
+
+def ask_other_typeface(client_id: int, text: str, lang: str = "he") -> dict:
+    """"Something else": the client's words, recorded against the current
+    choice, and the owner told (a person proposes the next one — the brief's
+    `typefaces`, which then waits here for approval). {"message"}."""
+    try:
+        got = brand_fonts.ask_other(client_id, text, lang)
+    except brand_fonts.FontError as e:
+        raise BrandPageError(e.code)
+    f = got["families"]
+    _alert([f"client {client_id}: asked for a DIFFERENT brand font on the branding page "
+            f"(shown: {f['headline'] or '—'} / {f['body'] or '—'}). Their words: \"{got['text']}\". "
+            f"Set `typefaces` in the brand brief; it then waits on their page for approval."])
+    return {"message": got["message"]}
+
+
 def save_tone(client_id: int, says: list, not_says: list) -> dict:
     cur = brand_brief.current(client_id)
     text = _text(cur, client_id)

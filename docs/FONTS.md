@@ -122,19 +122,39 @@ raises the headline's `max_chars`).
 part only when chosen). A name we have no file for is saved as the client
 states it — the page and every post then say it is not available.
 
-- the picker is ALWAYS open on the page (2026-11-27): the client's own fonts,
-  then the library grouped by category; each row is a picture of the font
-  drawn by the renderer (`GET /api/client/brand-identity/font-sample`). The
-  slot buttons (headline / body / Hebrew pairing) only choose which slot a
-  click on a font sets;
+- **there is NO picker (2026-11-27, knowledge/client-governance.md: the system
+  decides direction, the client approves).** The library is the POOL the
+  system chooses from — for posts, and for the sites and landing pages we
+  build — and is not sent to the page. The page shows ONE choice
+  (`brand_fonts.direction`): the families as real samples drawn by the
+  renderer (`GET /api/client/brand-identity/font-sample`), one line on why it
+  fits (`WHY`, 5 languages), and its state:
+  - `proposed` — waiting for the client. Either the system's own proposal
+    (`propose`: the brief's voice words → a profile in `PROFILES` → the first
+    installed headline family with a bold + a body family), or names a person
+    wrote into the brief's `typefaces`. Nothing is written by looking, and
+    until it is approved posts are drawn as they are today (the
+    "לא נבחר גופן" line stays);
+  - `approved` — `POST …/typefaces/approve` (no body: the server approves ITS
+    OWN choice, a client can never send a font name) wrote the brief's
+    `typefaces` with the client's mark;
+  - "something else" — `POST …/typefaces/other {text}`: the client's words,
+    recorded against that choice (`page.fonts_other`) + an admin alert. A
+    person then sets `typefaces` in the brief, which waits on the page for
+    approval. There is no automatic second choice;
+- **the client's own font is still uploaded here**, with the rights
+  confirmation: it is a fact about their brand, not a design choice. Once its
+  rights are confirmed it IS the proposal (`source: own`, headline; body too
+  when it has a regular and a bold; a font without Hebrew is paired with a
+  Hebrew family by the system);
 - there is NO sample slide any more (2026-11-27 — it carried copy we invented).
   The page shows the client's last real posts instead (`brand_page.recent_work`),
   each with the fonts and colours its file was drawn with. Nothing on the page
   is CSS imitation;
-- notes: no bold (+ switch to the nearest family that has one), a font without
-  Hebrew (the pairing slot opens at once), an unknown name, files not installed.
+- notes (text only): no bold, a font without Hebrew and no pairing yet, an
+  unknown name, files not installed.
 
-Routes: `POST …/font/upload` (raw body, `X-File-Name`, `?rights=1`),
+Routes: `POST …/typefaces/approve`, `POST …/typefaces/other`, `POST …/font/upload` (raw body, `X-File-Name`, `?rights=1`),
 `POST …/font/{id}/rights`, `POST …/font/{id}/delete`, the GET above.
 Staff view is read-only (the GETs are in `admin_view.READ_ENDPOINTS`).
 

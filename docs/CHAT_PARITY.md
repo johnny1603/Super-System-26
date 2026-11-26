@@ -95,7 +95,7 @@ Trivial gaps closed in this change:
 | P2 | `POST /api/client/governance/approve-week` | approve the weekly sync by answering it in the manager's chat |
 | P3 | `POST /api/client/governance/sync-day` | choose the weekly-sync evening from the chat |
 | P3 | `POST /api/client/brand-identity/colors` | set the brand colours from the chat (a card with the palette) |
-| P3 | `POST /api/client/brand-identity/typefaces` | set the brand typefaces from the chat |
+| P3 | `POST /api/client/brand-identity/typefaces/other` | ask for a different brand font from the chat (today the manager hears it in the chat as any request) |
 | P3 | `POST /api/client/brand-identity/tone` | set the tone words from the chat |
 | P3 | `POST /api/client/brand-identity/package/{section}/ask` | ask about a branding-package section from the chat (today the chat's own team request covers a package question) |
 | P3 | `GET /api/client/ownership` | an ownership section in account_state (what they own, where) |

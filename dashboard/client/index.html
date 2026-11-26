@@ -1744,25 +1744,17 @@ body.bs-open { overflow: hidden; }
 .br-work-title { display: block; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
 .br-work-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--gray); line-height: 1.5; }
 .br-work-line.off { color: #FFB020; font-weight: 700; }
-.br-fontfor { font-size: 12.5px; color: var(--gray); margin: 0 0 8px; }
-.br-fontpick.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.br-fontslots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin-bottom: 12px; }
-.br-fontslot { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.br-fontpick { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 10px;
-  border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.2)); background: rgba(0,0,0,.25); font-weight: 700; font-size: 14px; }
-.br-fontpick:focus-visible, .br-fontrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.br-fontpick[aria-expanded=true] { border-color: var(--accent); }
-.br-fontpick img, .br-fontrow img, .br-ownfont img { height: 44px; width: auto; max-width: min(100%, 250px); border-radius: 8px; background: #fff; display: block; }
-.br-fontpanel { border: 1px solid var(--accent); border-radius: 14px; padding: 12px; margin-bottom: 14px; max-height: 520px; overflow: auto; }
-.br-fontpanel h4 { font-size: 13.5px; font-weight: 800; margin: 12px 0 8px; position: sticky; top: -12px; background: var(--bg, #0d0d12); padding: 6px 0; z-index: 1; }
-.br-fontpanel h4:first-child { margin-top: 0; }
-.br-fontlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px; }
-.br-fontrow { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 5px; padding: 8px; border-radius: 12px;
-  border: 1px solid var(--line, rgba(255,255,255,.12)); min-height: 44px; }
-.br-fontrow:hover { border-color: rgba(255,255,255,.4); }
-.br-fontrow.sel { border-color: var(--accent); background: rgba(255,76,31,.1); }
-.br-fontrow .br-fontname { font-weight: 700; font-size: 13.5px; }
-.br-fontmeta { font-size: 11.5px; color: var(--gray); }
+.br-ownfont img, .br-fontshow img { height: 44px; width: auto; max-width: min(100%, 250px); border-radius: 8px; background: #fff; display: block; }
+/* the system's font choice: real samples, the reason, approve / something else */
+.br-fontchoice { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 14px; padding: 16px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 12px; }
+.br-fontchoice.proposed { border-color: #FFB020; }
+.br-fontchoice.approved { border-color: rgba(60,200,120,.55); }
+.br-fontshows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.br-fontshow { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--gray); }
+.br-fontshow img { height: 64px; max-width: 100%; }
+.br-fontwhy { margin: 0; font-size: 14px; line-height: 1.7; }
+.br-fontstate { font-size: 12.5px; color: var(--gray); }
+.br-fontchoice textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px; border-radius: 10px; }
 .br-tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: rgba(255,176,32,.18); color: #FFB020; font-weight: 700; margin-inline-start: 6px; }
 .br-fontnote { font-size: 13px; line-height: 1.6; color: #FFB020; margin: 0 0 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .br-ownfont { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
@@ -3403,8 +3395,6 @@ const DASH_I18N = {
   br_work_waiting: { he:'ממתין לאישור שלכם', en:'Waiting for your approval', fr:'En attente de votre validation', ar:'بانتظار موافقتكم', ru:'Ждёт вашего одобрения' },
   br_work_approved: { he:'אושר', en:'Approved', fr:'Validé', ar:'تمت الموافقة', ru:'Одобрено' },
   br_work_published: { he:'פורסם', en:'Published', fr:'Publié', ar:'نُشر', ru:'Опубликовано' },
-  br_font_library: { he:'{n} משפחות גופנים בעברית', en:'{n} Hebrew font families', fr:'{n} familles de polices hébraïques', ar:'{n} عائلة خطوط عبرية', ru:'{n} семейств шрифтов с ивритом' },
-  br_font_for: { he:'לחיצה על גופן בוחרת אותו עבור: {slot}', en:'Clicking a font chooses it for: {slot}', fr:'Un clic sur une police la choisit pour : {slot}', ar:'النقر على خط يختاره لـ: {slot}', ru:'Клик по шрифту выбирает его для: {slot}' },
   br_none_yet: { he:'עוד לא הועלה', en:'Not uploaded yet', fr:'Pas encore ajouté', ar:'لم يُرفع بعد', ru:'Ещё не загружено' },
   br_files_down: { he:'לא הצלחנו לקרוא את הקבצים כרגע. מה שהעליתם שמור.', en:'We couldn’t read the files right now. What you uploaded is saved.', fr:'Lecture des fichiers impossible pour l’instant. Vos fichiers sont conservés.', ar:'تعذّرت قراءة الملفات الآن. ما رفعتموه محفوظ.', ru:'Не удалось прочитать файлы. Загруженное сохранено.' },
   br_colors_title: { he:'צבעי המותג', en:'Brand colours', fr:'Couleurs de marque', ar:'ألوان العلامة', ru:'Цвета бренда' },
@@ -3421,36 +3411,22 @@ const DASH_I18N = {
   br_type_title: { he:'גופנים', en:'Typefaces', fr:'Polices', ar:'الخطوط', ru:'Шрифты' },
   br_type_headline: { he:'כותרות', en:'Headlines', fr:'Titres', ar:'العناوين', ru:'Заголовки' },
   br_type_body: { he:'טקסט רץ', en:'Body text', fr:'Texte courant', ar:'النص', ru:'Основной текст' },
+  br_fonts_sub: { he:'את הגופן של המותג בוחרת המערכת, מתוך ספריית הגופנים העבריים שלנו ולפי האפיון של העסק. אתם מאשרים, או מבקשים משהו אחר. מה שרואים כאן מצויר באותו קוד שמצייר את הפוסטים.', en:'The system chooses the brand font, from our Hebrew font library and by the brief of the business. You approve it, or ask for something else. What you see here is drawn by the same code that draws the posts.', fr:'Le système choisit la police de la marque, dans notre bibliothèque de polices hébraïques et selon le brief de l’entreprise. Vous validez, ou demandez autre chose. Ce que vous voyez ici est dessiné par le code qui dessine les posts.', ar:'النظام يختار خط العلامة من مكتبة خطوطنا العبرية ووفق موجز النشاط. أنتم توافقون أو تطلبون شيئًا آخر. ما ترونه هنا مرسوم بالشيفرة نفسها التي ترسم المنشورات.', ru:'Шрифт бренда выбирает система — из нашей библиотеки ивритских шрифтов и по брифу бизнеса. Вы подтверждаете или просите другое. То, что вы видите, нарисовано тем же кодом, что рисует посты.' },
+  br_font_waiting: { he:'ההצעה מחכה לאישור שלכם. עד שתאשרו, הפוסטים ממשיכים להיות מצוירים בגופן שבו הם מצוירים היום.', en:'The proposal is waiting for your approval. Until you approve, posts keep being drawn in the font they are drawn in today.', fr:'La proposition attend votre validation. D’ici là, les posts restent dessinés dans la police actuelle.', ar:'الاقتراح بانتظار موافقتكم. إلى أن توافقوا تبقى المنشورات مرسومة بالخط الحالي.', ru:'Предложение ждёт вашего подтверждения. До тех пор посты рисуются нынешним шрифтом.' },
+  br_font_approved: { he:'אישרתם את הבחירה. כל פוסט מצויר בגופנים האלה.', en:'You approved this choice. Every post is drawn in these fonts.', fr:'Vous avez validé ce choix. Chaque post est dessiné avec ces polices.', ar:'وافقتم على هذا الاختيار. كل منشور يُرسم بهذه الخطوط.', ru:'Вы подтвердили этот выбор. Каждый пост рисуется этими шрифтами.' },
+  br_font_none: { he:'עוד אין לנו הצעת גופן להציג כאן.', en:'We have no font proposal to show here yet.', fr:'Nous n’avons pas encore de proposition de police à montrer ici.', ar:'لا يوجد لدينا اقتراح خط لعرضه هنا بعد.', ru:'Предложения по шрифту пока нет.' },
+  br_font_approve: { he:'לאשר את הגופן', en:'Approve the font', fr:'Valider la police', ar:'الموافقة على الخط', ru:'Подтвердить шрифт' },
+  br_font_other_btn: { he:'לבקש משהו אחר', en:'Ask for something else', fr:'Demander autre chose', ar:'طلب شيء آخر', ru:'Попросить другое' },
+  br_font_other_label: { he:'מה הייתם רוצים שיהיה אחרת? משפט אחד מספיק.', en:'What would you like to be different? One sentence is enough.', fr:'Que voudriez-vous de différent ? Une phrase suffit.', ar:'ما الذي تريدونه مختلفًا؟ جملة واحدة تكفي.', ru:'Что вы хотели бы иначе? Достаточно одной фразы.' },
+  br_font_other_send: { he:'לשלוח את הבקשה', en:'Send the request', fr:'Envoyer la demande', ar:'إرسال الطلب', ru:'Отправить запрос' },
   br_type_observed: { he:'מה שראינו עד עכשיו:', en:'What we have seen so far:', fr:'Ce que nous avons observé :', ar:'ما لاحظناه حتى الآن:', ru:'Что мы видели до сих пор:' },
-  br_fonts_sub: { he:'בוחרים גופן מהספרייה או מעלים גופן משלכם. הפוסטים מצוירים בגופן הזה בפועל — מה שרואים כאן הוא מה שיעלה.', en:'Choose a font from the library or upload your own. Posts are really drawn in it — what you see here is what goes out.', fr:'Choisissez une police dans la bibliothèque ou téléversez la vôtre. Les posts sont réellement dessinés avec — ce que vous voyez ici est ce qui sera publié.', ar:'اختاروا خطًا من المكتبة أو ارفعوا خطكم. المنشورات تُرسم به فعلًا — ما ترونه هنا هو ما سيُنشر.', ru:'Выберите шрифт из библиотеки или загрузите свой. Посты действительно рисуются им — что вы видите здесь, то и выйдет.' },
-  br_font_default: { he:'ברירת המחדל של המערכת', en:'The system default', fr:'Police par défaut', ar:'الخط الافتراضي', ru:'Шрифт по умолчанию' },
-  br_font_clear: { he:'חזרה לברירת המחדל', en:'Back to the default', fr:'Revenir au défaut', ar:'العودة للافتراضي', ru:'Вернуть по умолчанию' },
-  br_font_hebrew_slot: { he:'עברית — לצד גופן שאין בו עברית', en:'Hebrew — beside a font without Hebrew', fr:'Hébreu — à côté d’une police sans hébreu', ar:'العبرية — بجانب خط بلا عبرية', ru:'Иврит — в пару к шрифту без иврита' },
-  br_font_group_own: { he:'הגופנים שלכם', en:'Your own fonts', fr:'Vos polices', ar:'خطوطكم', ru:'Ваши шрифты' },
-  br_cat_sans: { he:'סנס־סריף (נקי)', en:'Sans serif', fr:'Sans empattement', ar:'بلا زوائد', ru:'Гротески' },
-  br_cat_serif: { he:'סריף (קלאסי)', en:'Serif', fr:'Avec empattement', ar:'بزوائد', ru:'Антиква' },
-  br_cat_display: { he:'תצוגה (לכותרות)', en:'Display', fr:'Titrage', ar:'عرض', ru:'Акцидентные' },
-  br_cat_handwriting: { he:'כתב יד', en:'Handwriting', fr:'Manuscrites', ar:'خط اليد', ru:'Рукописные' },
-  br_cat_monospace: { he:'רוחב קבוע', en:'Monospace', fr:'Chasse fixe', ar:'ثابت العرض', ru:'Моноширинные' },
-  br_font_weights: { he:'{n} משקלים', en:'{n} weights', fr:'{n} graisses', ar:'{n} أوزان', ru:'Начертаний: {n}' },
-  br_font_one_weight: { he:'משקל אחד', en:'One weight', fr:'Une graisse', ar:'وزن واحد', ru:'Одно начертание' },
-  br_font_no_bold_tag: { he:'בלי מודגש', en:'No bold', fr:'Sans gras', ar:'بلا عريض', ru:'Без жирного' },
-  br_font_no_bold: { he:'ל-{family} אין משקל מודגש — הכותרות יצוירו במשקל הכבד ביותר שיש לו. אנחנו לא מעבים גופן באופן מלאכותי.', en:'{family} has no bold — headlines are drawn in its heaviest weight. We never thicken a font artificially.', fr:'{family} n’a pas de gras — les titres seront dans sa graisse la plus épaisse. Nous n’épaississons jamais une police artificiellement.', ar:'{family} بلا وزن عريض — العناوين تُرسم بأثقل وزن له. لا نُسمّك الخط اصطناعيًا.', ru:'У {family} нет жирного — заголовки будут самым плотным из имеющихся. Искусственно мы шрифт не утолщаем.' },
-  br_font_switch: { he:'הקרוב ביותר עם מודגש: {family} — להחליף', en:'Closest with a bold: {family} — switch', fr:'Le plus proche avec gras : {family} — changer', ar:'الأقرب بوزن عريض: {family} — تبديل', ru:'Ближайший с жирным: {family} — заменить' },
-  br_font_other: { he:'גופן אחר? כתבו את שמו ולחצו Enter', en:'Another font? Type its name and press Enter', fr:'Une autre police ? Tapez son nom puis Entrée', ar:'خط آخر؟ اكتبوا اسمه واضغطوا Enter', ru:'Другой шрифт? Введите название и нажмите Enter' },
   br_font_own_title: { he:'גופן משלכם', en:'Your own font', fr:'Votre propre police', ar:'خطكم الخاص', ru:'Свой шрифт' },
   br_font_own_sub: { he:'למותג עם גופן שנרכש או עוצב במיוחד. קבצי TTF, OTF, WOFF או WOFF2. מיד אחרי ההעלאה נגיד לכם בדיוק מה יש בו ומה חסר. אפשר להעלות Regular ו-Bold אחד אחרי השני.', en:'For a brand with a purchased or custom typeface. TTF, OTF, WOFF or WOFF2. Right after the upload we tell you exactly what it has and what it lacks. Upload Regular and Bold one after the other.', fr:'Pour une marque avec une police achetée ou sur mesure. TTF, OTF, WOFF ou WOFF2. Juste après l’envoi, nous vous disons exactement ce qu’elle contient et ce qui manque. Envoyez Regular puis Bold.', ar:'لعلامة بخط مشترى أو مصمم خصيصًا. TTF أو OTF أو WOFF أو WOFF2. بعد الرفع مباشرة نخبركم بالضبط ما فيه وما ينقصه. ارفعوا Regular ثم Bold.', ru:'Для бренда с купленным или собственным шрифтом. TTF, OTF, WOFF или WOFF2. Сразу после загрузки скажем, что в нём есть и чего не хватает. Загрузите Regular, затем Bold.' },
   br_font_upload: { he:'העלאת קובץ גופן', en:'Upload a font file', fr:'Téléverser une police', ar:'رفع ملف خط', ru:'Загрузить файл шрифта' },
   br_font_checking: { he:'בודקים את הגופן…', en:'Checking the font…', fr:'Vérification de la police…', ar:'جارٍ فحص الخط…', ru:'Проверяем шрифт…' },
   br_font_rights_check: { he:'אני מאשר/ת שיש לי זכות להשתמש בגופן הזה בחומרים שמתפרסמים', en:'I confirm I have the right to use this font in published material', fr:'Je confirme avoir le droit d’utiliser cette police dans des contenus publiés', ar:'أؤكد أن لي حق استخدام هذا الخط في مواد منشورة', ru:'Подтверждаю право использовать этот шрифт в публикуемых материалах' },
   br_font_rights_btn: { he:'אישור זכות השימוש', en:'Confirm the right to use it', fr:'Confirmer le droit d’usage', ar:'تأكيد حق الاستخدام', ru:'Подтвердить право использования' },
-  br_font_use_head: { he:'לכותרות', en:'Use for headlines', fr:'Pour les titres', ar:'للعناوين', ru:'Для заголовков' },
-  br_font_use_body: { he:'לטקסט', en:'Use for body text', fr:'Pour le texte', ar:'للنص', ru:'Для текста' },
   br_font_latin_only: { he:'לטיני בלבד', en:'Latin only', fr:'Latin seulement', ar:'لاتيني فقط', ru:'Только латиница' },
-  br_font_not_installed: { he:'לא זמין כרגע', en:'Not available now', fr:'Indisponible', ar:'غير متاح الآن', ru:'Сейчас недоступен' },
-  br_font_pair_needed: { he:'בגופן הזה אין עברית — בחרו כאן את הגופן העברי שיופיע לצידו.', en:'This font has no Hebrew — choose here the Hebrew font that goes with it.', fr:'Cette police n’a pas d’hébreu — choisissez ici la police hébraïque qui l’accompagne.', ar:'هذا الخط بلا عبرية — اختاروا هنا الخط العبري الذي يرافقه.', ru:'В этом шрифте нет иврита — выберите здесь парный ивритский шрифт.' },
-  br_font_unsaved: { he:'הבחירה עוד לא נשמרה', en:'The choice is not saved yet', fr:'Choix non enregistré', ar:'الاختيار لم يُحفظ بعد', ru:'Выбор ещё не сохранён' },
-  br_save_type: { he:'שמירת הגופנים', en:'Save typefaces', fr:'Enregistrer les polices', ar:'حفظ الخطوط', ru:'Сохранить шрифты' },
   br_tone_title: { he:'הטון של המותג', en:'Brand tone', fr:'Ton de la marque', ar:'نبرة العلامة', ru:'Тон бренда' },
   br_tone_sub: { he:'מילים שמתארות איך המותג מדבר, ומה הוא לא אומר אף פעם.', en:'Words for how the brand speaks, and what it never says.', fr:'Les mots qui décrivent la voix de la marque, et ce qu’elle ne dit jamais.', ar:'كلمات تصف كيف تتحدث العلامة، وما لا تقوله أبدًا.', ru:'Слова о том, как говорит бренд, и чего он не говорит никогда.' },
   br_tone_says: { he:'כך המותג מדבר', en:'The brand says', fr:'La marque dit', ar:'العلامة تقول', ru:'Бренд говорит' },
@@ -13515,7 +13491,7 @@ async function govPost(path, body) {
 // palette (per audience variant — never flattened), typefaces and tone = its
 // text, logos = files in the client's own folder. Nothing here is a draft.
 const brUI = { data: null, busy: false, says: [], nots: [], colors: {}, variants: [],
-  fonts: { headline: '', body: '', hebrew: '' }, fontOpen: 'headline', fontReport: null, last: null, pkgOpen: '', pkgConfirm: '' };
+  fontOther: false, fontReport: null, last: null, pkgOpen: '', pkgConfirm: '' };
 const BR_ROLES_DEFAULT = { bg: '#FFFFFF', fg: '#111111', accent: '#333333', muted: '#8A8A8A' };
 function brNote(text) { const el = document.getElementById('brNotice'); if (el) el.textContent = text || ''; }
 function brTake(data) {
@@ -13527,7 +13503,6 @@ function brTake(data) {
   if (!variants.length) variants = [{ label: 'default', segment_label: '', roles: {} }];
   variants.forEach(v => { brUI.colors[v.label] = Object.assign({}, v.roles || {}); });
   brUI.variants = variants;
-  brUI.fonts = Object.assign({ headline: '', body: '', hebrew: '' }, (data.fonts || {}).chosen || {});
 }
 async function loadBrandPage() {
   const t = uallakI18n.t;
@@ -13623,9 +13598,9 @@ function brHeroHtml() {
   const chips = brUI.variants.map(v => { const r = brUI.colors[v.label] || {};
     const cells = ['bg', 'fg', 'accent', 'muted'].filter(k => /^#[0-9A-Fa-f]{6}$/.test(r[k] || '')).map(k => `<i style="background:${esc(r[k])}"></i>`).join('');
     return cells ? `<span class="br-hero-pal"><span class="soc-swatch" aria-hidden="true">${cells}</span><bdi dir="auto">${esc(v.label === 'default' ? t('br_default_variant') : v.label)}</bdi></span>` : ''; }).join('');
-  const chosen = f.chosen || {};
-  const fonts = ['headline', 'body'].filter(s => chosen[s] && (brFontInfo(chosen[s]) || {}).installed !== false)
-    .map(s => `<img class="br-hero-font" src="${esc(brSampleUrl(chosen[s]))}" alt="${esc(chosen[s])}" loading="lazy" onerror="this.remove()">`).join('');
+  const dir = f.direction || {};
+  const fonts = (dir.source === 'brief' ? dir.samples || [] : [])
+    .map(s => `<img class="br-hero-font" src="${esc(brSampleUrl(s.family, s.weight))}" alt="${esc(s.family)}" loading="lazy" onerror="this.remove()">`).join('');
   const open = Object.keys(d.gaps || {}).length;
   return `<div class="br-card wide br-hero" style="${ok('bg') ? `--brh-bg:${esc(roles.bg)};` : ''}${ok('fg') ? `--brh-fg:${esc(roles.fg)};` : ''}${ok('accent') ? `--brh-accent:${esc(roles.accent)};` : ''}">
     <div class="br-hero-mark">${logo && logo.format !== 'pdf' ? `<img src="${brFileUrl(logo.id)}" alt="${esc(logo.name)}" onerror="this.remove()">` : `<span>${esc(t('br_hero_no_logo'))}</span>`}</div>
@@ -13685,78 +13660,30 @@ function brColorsHtml() {
   return `<div class="br-card wide"><h3>${esc(t('br_colors_title'))}</h3><div class="br-sub">${esc(t('br_colors_sub'))}${hint ? '<br>' + esc(hint) : ''}</div>
     ${brGap('colors')}${blocks}${ADMIN_VIEW ? '' : `<button class="sugg-btn approve" data-br-save="colors">${esc(t('br_save_colors'))}</button>`}</div>`;
 }
-// ─── Fonts: the library picker, the client's own fonts, what the page must say ──
-// Every picture here (a font's sample, the preview above) is drawn by the slide
-// renderer on the server — the same code that draws posts. Nothing is CSS.
+// ─── Fonts: the SYSTEM's choice, shown as real samples ─────────────────────────
+// The client is not handed the library (it is the pool the system chooses from): the
+// page shows the ONE choice (core/brand_fonts.direction) with one line on why it fits,
+// and the client approves it or asks for something else. Their own font file is still
+// uploaded here — a fact about the brand, not a design choice. Every picture is drawn
+// by the slide renderer on the server — the same code that draws posts. Nothing is CSS.
 function brSampleUrl(family, weight) {
   return '/api/client/brand-identity/font-sample?family=' + encodeURIComponent(family) + (weight ? '&weight=' + weight : '');
 }
-function brFontInfo(family) {
-  const f = (brUI.data || {}).fonts || {};
-  const key = String(family || '').toLowerCase().replace(/\s+/g, '');
-  if (!key) return null;
-  const own = (f.own || []).find(o => String(o.family).toLowerCase().replace(/\s+/g, '') === key);
-  if (own) return Object.assign({ own: true, installed: true }, own);
-  for (const g of f.groups || []) {
-    const hit = g.families.find(x => x.family.toLowerCase().replace(/\s+/g, '') === key);
-    if (hit) return Object.assign({ hebrew: true, category: g.category }, hit);
-  }
-  return null;
-}
-function brFontsDirty() {
-  const c = ((brUI.data || {}).fonts || {}).chosen || {};
-  return ['headline', 'body', 'hebrew'].some(k => (brUI.fonts[k] || '') !== (c[k] || ''));
-}
-function brFontRow(f, slot, own) {
-  const t = uallakI18n.t;
-  const sel = String(brUI.fonts[slot] || '').toLowerCase() === String(f.family).toLowerCase();
-  const n = (f.weights || []).length;
-  const meta = n === 1 ? t('br_font_one_weight') : t('br_font_weights', { n: n });
-  const tags = (f.has_bold ? '' : `<span class="br-tag">${esc(t('br_font_no_bold_tag'))}</span>`)
-    + (own && f.latin_only ? `<span class="br-tag">${esc(t('br_font_latin_only'))}</span>` : '')
-    + (!own && f.installed === false ? `<span class="br-tag">${esc(t('br_font_not_installed'))}</span>` : '');
-  return `<button type="button" class="br-fontrow${sel ? ' sel' : ''}" data-br-font-choose="${esc(f.family)}" aria-pressed="${sel}">
-    ${f.installed === false ? '' : `<img src="${esc(brSampleUrl(f.family))}" alt="" loading="lazy" onerror="this.remove()">`}
-    <span><span class="br-fontname" dir="ltr">${esc(f.family)}</span>${tags}</span><span class="br-fontmeta">${esc(meta)}</span></button>`;
-}
-function brFontPanel(slot) {
-  const t = uallakI18n.t, f = brUI.data.fonts || {};
-  const own = (f.own || []).filter(o => slot !== 'hebrew' || o.hebrew);
-  const groups = (own.length ? `<h4>${esc(t('br_font_group_own'))}</h4><div class="br-fontlist">${own.map(o => brFontRow(o, slot, true)).join('')}</div>` : '')
-    + (f.groups || []).map(g => `<h4>${esc(t('br_cat_' + g.category))} · ${g.families.length}</h4>
-      <div class="br-fontlist">${g.families.map(x => brFontRow(x, slot, false)).join('')}</div>`).join('');
-  return `<div class="br-fontpanel" data-br-font-panel="${esc(slot)}">
-    ${slot === 'hebrew' ? `<div class="br-fontnote">${esc(t('br_font_pair_needed'))}</div>` : ''}${groups}
-    ${slot === 'hebrew' ? '' : `<label class="br-field" style="margin-top:12px"><span>${esc(t('br_font_other'))}</span>
-      <input type="text" maxlength="60" dir="ltr" data-br-font-name="${esc(slot)}" value="${brFontInfo(brUI.fonts[slot]) ? '' : esc(brUI.fonts[slot] || '')}"></label>`}</div>`;
-}
 function brFontsHtml() {
-  const t = uallakI18n.t, d = brUI.data, f = d.fonts || {}, tf = d.typefaces || {};
-  const needPair = ['headline', 'body'].some(s => { const i = brFontInfo(brUI.fonts[s]); return i && i.own && i.latin_only; });
-  const slots = ['headline', 'body'].concat(needPair || brUI.fonts.hebrew ? ['hebrew'] : []);
-  // the library is ALWAYS on the page: the slot buttons only choose which slot a click on a font sets
-  const open = slots.indexOf(brUI.fontOpen) !== -1 ? brUI.fontOpen : 'headline';
-  brUI.fontOpen = open;
-  const count = (f.groups || []).reduce((n, g) => n + g.families.length, 0);
-  const slotHtml = slots.map(slot => {
-    const family = brUI.fonts[slot] || '', info = brFontInfo(family);
-    const label = slot === 'hebrew' ? t('br_font_hebrew_slot') : t('br_type_' + slot);
-    return `<div class="br-fontslot"><span>${esc(label)}</span>
-      <button type="button" class="br-fontpick${open === slot ? ' sel' : ''}" data-br-font-open="${slot}" aria-pressed="${open === slot}" ${ADMIN_VIEW ? 'disabled' : ''}>
-        ${family && info && info.installed !== false ? `<img src="${esc(brSampleUrl(family))}" alt="" onerror="this.remove()">` : ''}
-        <span dir="${family ? 'ltr' : 'auto'}">${esc(family || t('br_font_default'))}</span></button>
-      ${family && !ADMIN_VIEW ? `<button type="button" class="media-chip" data-br-font-clear="${slot}">${esc(t('br_font_clear'))}</button>` : ''}</div>`;
-  }).join('');
-  // what the page must say: the server's notes on the SAVED choice, and at once — before saving — a headline family with no bold
-  const said = [];
-  if (!brFontsDirty()) (f.notes || []).forEach(n => said.push({ text: n.text, suggest: n.code === 'no_bold' ? n.suggest : '', slot: n.slot }));
-  else {
-    const info = brFontInfo(brUI.fonts.headline);
-    if (info && !info.own && info.has_bold === false) said.push({ text: t('br_font_no_bold', { family: info.family }), suggest: info.suggest || '', slot: 'headline' });
-    if (needPair && !brUI.fonts.hebrew) said.push({ text: t('br_font_pair_needed'), suggest: '', slot: 'hebrew' });
+  const t = uallakI18n.t, d = brUI.data, f = d.fonts || {}, tf = d.typefaces || {}, dir = f.direction || {}, fam = dir.families || {};
+  const shown = (dir.samples || []).map(s => `<div class="br-fontshow"><span>${esc(t('br_type_' + s.slot))} · <b dir="ltr">${esc(s.family)}</b></span>
+    <img src="${esc(brSampleUrl(s.family, s.weight))}" alt="${esc(s.family)}" loading="lazy" onerror="this.remove()"></div>`).join('');
+  const has = dir.state === 'approved' || dir.state === 'proposed';
+  let acts = '';
+  if (!ADMIN_VIEW && has) {
+    acts = brUI.fontOther
+      ? `<label class="br-field"><span>${esc(t('br_font_other_label'))}</span><textarea id="brFontOtherText" maxlength="400" rows="2" dir="auto"></textarea></label>
+        <div class="br-row"><button type="button" class="sugg-btn approve" data-br-font-other-send>${esc(t('br_font_other_send'))}</button>
+        <button type="button" class="media-chip" data-br-font-other-cancel>${esc(t('br_pkg_cancel'))}</button></div>`
+      : `<div class="br-row">${dir.state === 'proposed' ? `<button type="button" class="sugg-btn approve" data-br-font-approve>${esc(t('br_font_approve'))}</button>` : ''}
+        ${dir.asked ? '' : `<button type="button" class="media-chip" data-br-font-other>${esc(t('br_font_other_btn'))}</button>`}</div>`;
   }
-  const notes = said.map(n => `<div class="br-fontnote"><span>${esc(n.text)}</span>${n.suggest && !ADMIN_VIEW
-    ? `<button type="button" class="media-chip" data-br-font-suggest="${esc(n.slot + ':' + n.suggest)}">${esc(t('br_font_switch', { family: n.suggest }))}</button>` : ''}</div>`).join('');
+  const notes = (f.notes || []).map(n => `<div class="br-fontnote"><span>${esc(n.text)}</span></div>`).join('');
   const fresh = brUI.fontReport && brUI.fontReport.font ? brUI.fontReport.font.id : '';
   const own = (f.own || []).map(o => {
     const lines = fresh === o.id ? brUI.fontReport.report.lines : o.lines;
@@ -13766,17 +13693,16 @@ function brFontsHtml() {
       <ul>${(lines || []).map(l => `<li><bdi dir="auto">${esc(l)}</bdi></li>`).join('')}</ul>
       ${ADMIN_VIEW ? '' : `<div class="br-row">
         ${o.rights_confirmed ? '' : `<button type="button" class="sugg-btn approve" data-br-font-rights="${esc(o.id)}">${esc(t('br_font_rights_btn'))}</button>`}
-        <button type="button" class="media-chip" data-br-font-use="headline:${esc(o.family)}">${esc(t('br_font_use_head'))}</button>
-        <button type="button" class="media-chip" data-br-font-use="body:${esc(o.family)}">${esc(t('br_font_use_body'))}</button>
         <button type="button" class="media-chip" data-br-font-del="${esc(o.id)}">${esc(t('br_delete'))}</button></div>`}</div>`;
   }).join('');
   return `<div class="br-card wide" id="brFontsCard"><h3>${esc(t('br_type_title'))}</h3>
     <div class="br-sub">${esc(t('br_fonts_sub'))}${tf.note ? '<br>' + esc(t('br_type_observed')) + ' ' + esc(tf.note) : ''}</div>
-    ${brGap('fonts')}${notes}<div class="br-fontslots">${slotHtml}</div>
-    <div class="br-fontfor" role="status">${esc(t('br_font_library', { n: count }))} · ${esc(t('br_font_for', { slot: open === 'hebrew' ? t('br_font_hebrew_slot') : t('br_type_' + open) }))}</div>
-    ${brFontPanel(open)}
-    ${ADMIN_VIEW ? '' : `<div class="br-row" style="margin-bottom:16px"><button class="sugg-btn approve" data-br-save="typefaces">${esc(t('br_save_type'))}</button>
-      ${brFontsDirty() ? `<span class="br-file-meta">${esc(t('br_font_unsaved'))}</span>` : ''}</div>`}
+    ${brGap('fonts')}${notes}
+    ${has ? `<div class="br-fontchoice ${esc(dir.state)}"><div class="br-fontshows">${shown || `<b dir="ltr">${esc([fam.headline, fam.body].filter(Boolean).join(' · '))}</b>`}</div>
+      <p class="br-fontwhy"><bdi dir="auto">${esc(dir.reason || '')}</bdi></p>
+      <div class="br-fontstate">${esc(t(dir.state === 'approved' ? 'br_font_approved' : 'br_font_waiting'))}</div>
+      ${dir.asked ? `<div class="br-fontnote"><span>${esc(dir.asked)}</span></div>` : ''}${acts}</div>`
+      : `<div class="br-file-meta" style="margin-bottom:14px">${esc(t('br_font_none'))}</div>`}
     <h3>${esc(t('br_font_own_title'))}</h3><div class="br-sub">${esc(t('br_font_own_sub'))}</div>
     ${own}
     ${ADMIN_VIEW ? '' : `<label class="br-check"><input type="checkbox" id="brFontRights"><span>${esc(t('br_font_rights_check'))}</span></label>
@@ -13827,10 +13753,7 @@ function renderBrandPage() {
       : brGap('assets') || `<div class="br-file-meta">${esc(t('br_assets_empty'))}</div>`}
     <div class="br-row" style="margin-top:12px">${brUploadBtn('asset', 'br_assets_add', 'sugg-btn approve')}</div></div>`);
   parts.push(brPackageHtml());
-  const scroll = (root.querySelector('.br-fontpanel') || {}).scrollTop || 0;
   root.innerHTML = `<div class="br-grid">${parts.join('')}</div>`;
-  const panel = root.querySelector('.br-fontpanel');
-  if (panel) panel.scrollTop = scroll;
 }
 function brReadColors() {
   document.querySelectorAll('#brRoot [data-br-variant]').forEach(box => {
@@ -13880,13 +13803,6 @@ function brReadColors() {
   });
   root.addEventListener('keydown', ev => {
     const el = ev.target;
-    if (ev.key === 'Enter' && el.matches('[data-br-font-name]')) {   // a font we do not have, stated by name
-      ev.preventDefault();
-      brUI.fonts[el.getAttribute('data-br-font-name')] = el.value.trim();
-      brUI.fontOpen = '';
-      renderBrandPage();
-      return;
-    }
     if (ev.key !== 'Enter' || !el.matches('[data-br-chip-add]')) return;
     ev.preventDefault();
     const kind = el.getAttribute('data-br-chip-add'), word = el.value.trim();
@@ -13903,25 +13819,17 @@ function brReadColors() {
       const [kind, i] = btn.getAttribute('data-br-chip-del').split(':');
       brUI[kind].splice(Number(i), 1);
       renderBrandPage();
-    } else if (btn.hasAttribute('data-br-font-open')) {
-      const slot = btn.getAttribute('data-br-font-open');
-      brUI.fontOpen = slot;                                        // the library stays open: this only picks the slot
+    } else if (btn.hasAttribute('data-br-font-approve')) {        // the server approves ITS OWN choice: no name is sent
+      brJson('/api/client/brand-identity/typefaces/approve', {});
+    } else if (btn.hasAttribute('data-br-font-other') || btn.hasAttribute('data-br-font-other-cancel')) {
+      brUI.fontOther = btn.hasAttribute('data-br-font-other');
       renderBrandPage();
-    } else if (btn.hasAttribute('data-br-font-choose') || btn.hasAttribute('data-br-font-use') || btn.hasAttribute('data-br-font-suggest')) {
-      let slot = brUI.fontOpen, family = btn.getAttribute('data-br-font-choose');
-      const pair = btn.getAttribute('data-br-font-use') || btn.getAttribute('data-br-font-suggest');
-      if (pair) { slot = pair.slice(0, pair.indexOf(':')); family = pair.slice(pair.indexOf(':') + 1); }
-      if (!slot) return;
-      brUI.fonts[slot] = family;
-      const info = brFontInfo(family);
-      // a font without Hebrew is never taken silently: the Hebrew pairing is asked for at once
-      brUI.fontOpen = slot !== 'hebrew' && info && info.own && info.latin_only && !brUI.fonts.hebrew ? 'hebrew' : slot;
-      renderBrandPage();
-      const card = document.getElementById('brFontsCard');
-      if (pair && card) card.scrollIntoView({ block: 'nearest' });
-    } else if (btn.hasAttribute('data-br-font-clear')) {
-      brUI.fonts[btn.getAttribute('data-br-font-clear')] = '';
-      renderBrandPage();
+      const box = document.getElementById('brFontOtherText');
+      if (box) box.focus();
+    } else if (btn.hasAttribute('data-br-font-other-send')) {
+      const box = document.getElementById('brFontOtherText');
+      brJson('/api/client/brand-identity/typefaces/other', { text: box ? box.value.trim() : '' })
+        .then(ok => { if (!ok) return; brUI.fontOther = false; renderBrandPage(); if (brUI.last && brUI.last.message) brNote(brUI.last.message); });
     } else if (btn.hasAttribute('data-br-font-rights')) {
       brUI.fontReport = null;
       brJson('/api/client/brand-identity/font/' + encodeURIComponent(btn.getAttribute('data-br-font-rights')) + '/rights', {});
@@ -13957,11 +13865,6 @@ function brReadColors() {
     } else if (btn.getAttribute('data-br-save') === 'colors') {
       brReadColors();
       brJson('/api/client/brand-identity/colors', { variants: brUI.variants.map(v => ({ label: v.label, roles: brUI.colors[v.label] || {} })) });
-    } else if (btn.getAttribute('data-br-save') === 'typefaces') {
-      const other = root.querySelector('[data-br-font-name]');       // a name typed and not yet entered still counts
-      if (other && other.value.trim()) brUI.fonts[other.getAttribute('data-br-font-name')] = other.value.trim();
-      brUI.fontOpen = '';
-      brJson('/api/client/brand-identity/typefaces', { headline: brUI.fonts.headline || '', body: brUI.fonts.body || '', hebrew: brUI.fonts.hebrew || '' });
     } else if (btn.getAttribute('data-br-save') === 'tone') {
       root.querySelectorAll('[data-br-chip-add]').forEach(inp => {   // a word typed and not yet entered still counts
         const kind = inp.getAttribute('data-br-chip-add'), word = inp.value.trim();

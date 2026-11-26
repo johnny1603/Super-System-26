@@ -295,7 +295,7 @@ class ThePage(unittest.TestCase):
         self.assertIn('<div class="view" id="viewBrand">', self.html)
         self.assertIn("if (name === 'brand') loadBrandPage();", self.html)
         self.assertIn("brUI.variants.map(v => {", self.html)                         # one block per audience variant
-        for route in ("", "/colors", "/typefaces", "/tone", "/upload", "/file/{file_id}/delete", "/file/{file_id}",
+        for route in ("", "/colors", "/typefaces/approve", "/typefaces/other", "/tone", "/upload", "/file/{file_id}/delete", "/file/{file_id}",
                       "/assessment/dismiss"):
             self.assertIn(f'"/api/client/brand-identity{route}")', self.api)
         self.assertIn('"client_brand_identity"', _src("core", "admin_view.py"))       # staff see it read-only
