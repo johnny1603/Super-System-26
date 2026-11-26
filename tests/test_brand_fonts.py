@@ -613,13 +613,15 @@ class Page(Base):
     @NEEDS_RAQM
     def test_the_preview_is_a_real_slide_in_the_chosen_fonts(self):
         variant = bp.view(27, "he")["colors"]["variants"][0]["label"]    # client 27: one palette per audience
+        stored = copy.deepcopy(self.rows)                               # the brief as the page found it
         got = bf.preview_png(27, variant, {"headline": "Assistant", "body": "Assistant"}, {"bg": "#101010", "fg": "#FAFAFA"})
         self.assertEqual(got["png"][:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(got["fonts"], ["Assistant"])
         self.assertEqual(got["lines"], [])
-        self.assertEqual(brand_brief.current(27).get("text", ""), "")   # a preview saves nothing
         missing = bf.preview_png(27, variant, {"headline": "Totally Unknown Font"}, {}, "he")
         self.assertTrue(missing["lines"])
+        self.assertEqual(self.rows, stored)                             # a preview saves nothing: not the fonts, not the colours
+        self.assertEqual(bf.wanted(27), {"headline": "", "body": "", "hebrew": ""})
         sample = bf.sample_png(27, "Rubik", 700)
         self.assertEqual(sample[:8], b"\x89PNG\r\n\x1a\n")
         with self.assertRaises(bf.FontError):
