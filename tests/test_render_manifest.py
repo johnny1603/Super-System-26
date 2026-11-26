@@ -96,7 +96,7 @@ class TheManifest(Design):
         nobody = {}
         slide_design.preview_png(27, item["id"], 2, manifest=nobody)
         self.assertEqual(rm.characters(nobody), [])
-        self.assertIn('loader_for(client_id), character=s.get("character"), manifest=drawn)', _src("core", "slide_design.py"))
+        self.assertIn('loader_for(client_id), character=s.get("character"), manifest=drawn,', _src("core", "slide_design.py"))
 
     def test_the_disclosure_fires_if_and_only_if_something_generated_was_drawn(self):
         item = self.open()["item"]

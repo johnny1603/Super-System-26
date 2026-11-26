@@ -212,7 +212,15 @@ def loader_for(client_id: int):
     return load
 
 
-# ─── Spec, palette, checks ───────────────────────────────────────────────────
+# ─── Spec, palette, fonts, checks ────────────────────────────────────────────
+
+def fonts_for(client_id: int) -> dict:
+    """The client's brand fonts, resolved (core/brand_fonts): EVERY render of
+    a client's slide passes them, so the font on the card, in the preview and
+    in the file is the same one. Never raises."""
+    from core import brand_fonts
+    return brand_fonts.resolve(client_id)
+
 
 def default_name(palette: dict) -> str:
     return slide_templates.clean_name(f"carousel {slide_spec.variant_for(palette)}")
@@ -248,7 +256,8 @@ def check(client_id: int, spec: dict, palette: dict, slides: list, loader=None, 
     try:
         roles = slide_spec.palette_roles(client_id, label)
         slide_renderer.render_set(spec, roles, slides, loader or loader_for(client_id), encode=False,
-                                  warnings=warnings, on_slide=on_slide, manifests=manifests)
+                                  warnings=warnings, on_slide=on_slide, manifests=manifests,
+                                  fonts=fonts_for(client_id))
     except slide_spec.SpecInvalid as e:
         return [{"code": "bad_spec", "detail": d} for d in e.errors]
     except slide_renderer.RenderError as e:
@@ -724,7 +733,8 @@ def _finalize(client_id: int, item: dict, saved: dict) -> list:
     roles = slide_spec.palette_roles(client_id, label)
     manifests, made = [], []
     with render_manifest.tracing(client_id, d.get("post_id") or item.get("id"), "final"):
-        pngs = slide_renderer.render_set(spec, roles, d["slides"], loader_for(client_id), manifests=manifests)
+        pngs = slide_renderer.render_set(spec, roles, d["slides"], loader_for(client_id), manifests=manifests,
+                                         fonts=fonts_for(client_id))
         # The files are written ONLY when each one holds everything its slide declared
         lacking = [f"slide {s.get('n') or i} {w['type']} {w['id']}" for i, (s, drawn) in enumerate(zip(d["slides"], manifests), 1)
                    for w in render_manifest.missing(render_manifest.declared(s), drawn)]
@@ -781,7 +791,7 @@ def render_asset(client_id: int, brief, palette: dict) -> dict:
     warnings, drawn = [], {}
     png = slide_renderer.render_slide(spec, roles, brief.copy_headline, brief.copy_body, 1, 1, brief.role,
                                       loader_for(client_id), character=entry.get("character"), warnings=warnings,
-                                      manifest=drawn)
+                                      manifest=drawn, fonts=fonts_for(client_id))
     wanted = render_manifest.declared({**_slides_of([entry])[0], "copy_headline": brief.copy_headline,
                                        "copy_body": brief.copy_body})
     lacking = render_manifest.missing(wanted, drawn)
@@ -820,7 +830,8 @@ def preview_png(client_id: int, item_id: str, n: int, manifest: dict = None) -> 
     with render_manifest.tracing(client_id, d.get("post_id") or item_id, "preview"):
         png = slide_renderer.render_slide(d["spec"], roles, s.get("copy_headline", ""), s.get("copy_body", ""),
                                           int(s.get("n") or n), int(s.get("total") or len(slides)), s.get("role", ""),
-                                          loader_for(client_id), character=s.get("character"), manifest=drawn)
+                                          loader_for(client_id), character=s.get("character"), manifest=drawn,
+                                          fonts=fonts_for(client_id))
         for agent in [w["id"] for w in render_manifest.missing(render_manifest.declared(s), drawn) if w["type"] == "character"]:
             render_manifest.trace("composited", agent, "NOT DRAWN: the slide carries this character, the render has no character layer",
                                   s.get("n") or n, f"pose {(s.get('character') or {}).get('pose_id', '-')}")
@@ -888,12 +899,26 @@ def view(item: dict, lang: str) -> dict:
             "last_failure": problem_text(d["last_failure"], lang) if d.get("last_failure") else "",
             # declared in the brief and NOT in the render: the card fails, by name
             "missing_lines": [m.get("line", "") for m in d.get("missing") or [] if m.get("line")],
+            # the brief names a brand font and the render shows another drew the text: said on the
+            # card, from the manifest (core/render_manifest) — never a silent substitution
+            "font_lines": _font_lines(d.get("manifests"), lang),
+            "fonts_drawn": _fonts_drawn(d.get("manifests")),
             "blocked": social_queue.design_blocked(item),
             "blocked_text": pick(MISSING_TEXT["blocked"], lang) if social_queue.design_blocked(item) else "",
             "can_drop_character": any(m.get("type") == "character" for m in d.get("missing") or [])
             or any(s.get("wants_character") for s in slides),
             "based_on": d.get("based_on") or {}, "saved": d.get("saved") or {},
             "production": d.get("production") or {}, "stage_text": pick(TEXT["stage"], lang)}
+
+
+def _font_lines(manifests, lang: str) -> list:
+    from core import render_manifest
+    return render_manifest.font_lines(list(manifests or []), lang)
+
+
+def _fonts_drawn(manifests) -> list:
+    from core import render_manifest
+    return render_manifest.drawn_fonts(list(manifests or []))
 
 
 # ─── Chat line ───────────────────────────────────────────────────────────────

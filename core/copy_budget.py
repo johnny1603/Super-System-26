@@ -10,9 +10,15 @@ is right; it used to speak only AFTER the manager approved the copy ("עיצוב
                 the lines its block holds, about how many characters a line
                 takes and the word limit — MEASURED from the active template
                 (core/slide_design.base_spec: the client's template for this
-                palette variant, else the starter) with the bundled font at
-                the template's size/weight, never a guessed character count.
-                Bigger type in the template = a smaller budget, automatically.
+                palette variant, else the starter) with the font that will
+                DRAW it — the client's brand font (core/brand_fonts.resolve),
+                else the spec's bundled family — at the template's size and
+                weight, never a guessed character count. Bigger type in the
+                template = a smaller budget, automatically; a wider or
+                narrower brand font moves it too. Measurements are cached
+                per (client, fonts, template) and dropped when the client
+                changes a font (`invalidate`): a font change that does not
+                move the budget is a bug.
   for_prompt()  that budget for every palette variant, in the content
                 personas' data (support_agent._with_content_context).
   fit()         the EXACT check of the copy as written: the renderer's own
@@ -46,8 +52,23 @@ SAMPLE_HE = "המתנה שנשארת איתכם הרבה אחרי שהעטיפה
 WRAP_FILL = 0.88          # greedy word wrap never fills every line to the edge
 NEUTRAL = {"bg": "#FFFFFF", "fg": "#000000", "accent": "#000000", "muted": "#000000"}
 LENGTH_CODES = ("overflow", "headline_words", "overlap")
-_CACHE = OrderedDict()
+_CACHE = OrderedDict()            # fit():    (client, sha1 of template geometry + fonts + copy) -> result
+_BUDGETS = OrderedDict()          # budget(): (client, fonts signature, template, version, aspect, variant, spec) -> budget
 CACHE_MAX = 256
+
+
+def fonts_for(client_id: int) -> dict:
+    """The client's resolved brand fonts (core/brand_fonts) — what the
+    renderer draws with, so what the budget is measured with."""
+    from core import brand_fonts
+    return brand_fonts.resolve(client_id)
+
+
+def invalidate(client_id: int):
+    """The client changed a font: nothing measured with the old ones is kept."""
+    for cache in (_CACHE, _BUDGETS):
+        for key in [k for k in cache if k[0] == int(client_id)]:
+            cache.pop(key, None)
 
 
 def _five(he, en, fr, ar, ru):
@@ -121,11 +142,6 @@ CARD_TEXT = {
 
 # ─── The budget, measured from the template ──────────────────────────────────
 
-def _font(block: dict):
-    from core import slide_renderer
-    return slide_renderer._font(block["font_family"], block["size"], block["weight"])
-
-
 def _field_of(block: dict) -> tuple:
     """(copy field, fixed characters around it) — the field a block shows."""
     text = block.get("text")
@@ -140,16 +156,21 @@ def _field_of(block: dict) -> tuple:
     return "", 0
 
 
-def block_budget(spec: dict, block: dict) -> dict:
+def block_budget(spec: dict, block: dict, fonts: dict = None) -> dict:
     """One text block of a (role-resolved) spec: the lines it holds and about
-    how many characters, measured with the block's own font."""
+    how many characters, measured with the font that DRAWS it — the same
+    chain the renderer uses (`fonts` = the client's brand fonts; None = the
+    spec's own family)."""
     from core import slide_renderer
     H = spec["canvas"]["height"]
     m = slide_spec.margins(spec)
     frame = slide_renderer.layout_frame(spec)          # a vertical canvas: its safe box, like the renderer
-    font = _font(block)
+    with slide_renderer._LOCK:
+        kind = slide_renderer._type_for(block, fonts)
+        main = kind.primary(SAMPLE_HE, True)
+        ascent, descent = main["font"].getmetrics()
+        sample_w = slide_renderer._measure(kind, SAMPLE_HE, "rtl", "he")
     box_w = frame["w"] * float(block["max_width_pct"]) / 100
-    ascent, descent = font.getmetrics()
     lh = block["size"] * float(block.get("line_spacing") or 1.2)
     y = frame["y"] + frame["h"] * float(block["y_pct"]) / 100
     room = {"top": H - m["bottom"] - y, "bottom": y - m["top"],
@@ -157,24 +178,25 @@ def block_budget(spec: dict, block: dict) -> dict:
     if block.get("max_height_pct"):
         room = min(room, frame["h"] * float(block["max_height_pct"]) / 100)
     lines = max(0, int((room - ascent - descent) // lh) + 1) if room >= ascent + descent else 0
-    per_char = slide_renderer._measure(font, SAMPLE_HE, "rtl", "he") / len(SAMPLE_HE)
+    per_char = sample_w / len(SAMPLE_HE)
     per_line = max(1, int(box_w // per_char))
     field, fixed = _field_of(block)
     out = {"block": block["role"], "field": field, "lines": lines, "chars_per_line": per_line,
            "max_chars": max(0, int(per_line * lines * WRAP_FILL) - fixed),
-           "font": f"{block['font_family']} {block['size']}px/{block['weight']}"}
+           # the family and REAL weight that draw Hebrew in this block (never the one merely asked for)
+           "font": f"{main['face'].family} {block['size']}px/{main['weight']}"}
     if block["role"] == "headline":
         out["max_words"] = int((spec.get("guards") or {}).get("headline_max_words") or slide_renderer.HEADLINE_MAX_WORDS)
     return out
 
 
-def spec_budget(spec: dict, role: str = "") -> dict:
+def spec_budget(spec: dict, role: str = "", fonts: dict = None) -> dict:
     """{copy field: budget} for one slide role (role_overrides applied). Two
     blocks showing the same field = the tighter one."""
     spec = slide_spec.for_slide(slide_spec.validate(spec), role)
     out = {}
     for block in spec["text_blocks"]:
-        b = block_budget(spec, block)
+        b = block_budget(spec, block, fonts)
         if not b["field"]:
             continue
         have = out.get(b["field"])
@@ -189,11 +211,21 @@ def budget(client_id: int, palette: dict, aspect: str = "") -> dict:
     (by_role only for roles the template draws differently)."""
     from core import slide_design
     spec, name, based = slide_design.base_spec(client_id, palette, aspect)
+    fonts = fonts_for(client_id)
+    key = (int(client_id), fonts["signature"], name, (based or {}).get("version") or 0,
+           social_formats.slide_aspect(aspect), slide_spec.variant_for(palette),
+           hashlib.sha1(json.dumps(spec, sort_keys=True, ensure_ascii=False).encode()).hexdigest())
+    if key in _BUDGETS:
+        _BUDGETS.move_to_end(key)
+        return copy.deepcopy(_BUDGETS[key])
     out = {"template": name, "version": (based or {}).get("version") or 0, "aspect": social_formats.slide_aspect(aspect),
-           "variant": slide_spec.variant_for(palette), "all": spec_budget(spec)}
+           "variant": slide_spec.variant_for(palette), "fonts": fonts["signature"], "all": spec_budget(spec, fonts=fonts)}
     roles = [r for r in SLIDE_ROLES if r in (spec.get("role_overrides") or {})]
     if roles:
-        out["by_role"] = {r: spec_budget(spec, r) for r in roles}
+        out["by_role"] = {r: spec_budget(spec, r, fonts) for r in roles}
+    _BUDGETS[key] = copy.deepcopy(out)
+    while len(_BUDGETS) > CACHE_MAX:
+        _BUDGETS.popitem(last=False)
     return out
 
 
@@ -202,7 +234,8 @@ PROMPT_RULE = ("slide_copy_budget = how much copy each TEXT SLIDE holds in the c
                "for copy_headline and copy_body the lines, max_chars (about) and the headline's max_words. Write every "
                "text_slide within it — shorter is better. If an idea genuinely needs more room, do NOT write copy that "
                "can't be drawn: say so to the manager, and if you still propose it set that asset's \"needs_room\" to "
-               "one line on why. The budget follows the template: after a design change it is re-measured.")
+               "one line on why. The budget follows the template AND the client's brand font: after a design change "
+               "or a font change it is re-measured.")
 
 
 def for_prompt(client_id: int) -> dict:
@@ -244,11 +277,11 @@ def geometry_spec(spec: dict) -> dict:
     return out
 
 
-def _check_slide(spec: dict, s: dict, n: int, total: int) -> list:
+def _check_slide(spec: dict, s: dict, n: int, total: int, fonts: dict = None) -> list:
     from core import slide_renderer
     try:
         slide_renderer.render_slide(spec, NEUTRAL, s.get("copy_headline", ""), s.get("copy_body", ""), n, total,
-                                    s.get("role", ""), image_loader=lambda ref: b"", encode=False)
+                                    s.get("role", ""), image_loader=lambda ref: b"", encode=False, fonts=fonts)
     except slide_renderer.RenderError as e:
         return [p for p in e.problems if p.get("code") in LENGTH_CODES]
     return []
@@ -266,16 +299,18 @@ def fit(client_id: int, palette: dict, slides: list, lang: str = "he") -> dict:
         spec, name, based = slide_design.base_spec(client_id, palette, text[0][1].get("aspect_ratio") or "",
                                                    safe_zone=text[0][1].get("safe_zone") or "")
         geo = geometry_spec(slide_spec.validate(spec))
-        key = hashlib.sha1(json.dumps([geo, [(n, s.get("role"), s.get("copy_headline"), s.get("copy_body"))
-                                              for n, s in text], len(slides), lang],
-                                      sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        fonts = fonts_for(client_id)             # the fonts that will draw it: the fit is theirs
+        key = (int(client_id), hashlib.sha1(json.dumps(
+            [geo, fonts["signature"], [(n, s.get("role"), s.get("copy_headline"), s.get("copy_body"))
+                                       for n, s in text], len(slides), lang],
+            sort_keys=True, ensure_ascii=False).encode()).hexdigest())
         if key in _CACHE:
             _CACHE.move_to_end(key)
             return copy.deepcopy(_CACHE[key])
         out = {"template": name, "version": (based or {}).get("version") or 0, "checked": True, "over": [],
                "slides": {}}
         for n, s in text:
-            problems = _check_slide(geo, s, n, len(slides))
+            problems = _check_slide(geo, s, n, len(slides), fonts)
             out["slides"][s["asset_id"]] = {"n": n, "fits": not problems, "problems": problems,
                                            "lines": problem_lines([{**p, "slide": n} for p in problems], lang)}
             if problems:

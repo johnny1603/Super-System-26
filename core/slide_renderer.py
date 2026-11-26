@@ -40,7 +40,9 @@ an admin alert, and every render raises RendererUnavailable.
 """
 import io
 import os
+import re
 import threading
+import unicodedata
 from collections import OrderedDict
 
 try:
@@ -48,7 +50,7 @@ try:
 except ImportError:                     # a stdlib-only checkout (CI): every render refuses
     Image = ImageDraw = ImageFont = features = None
 
-from core import slide_spec
+from core import font_library, slide_spec
 from core.post_brief import HEBREW_RE
 
 SERVICE_NAME = "slide_renderer"
@@ -59,7 +61,7 @@ CONTRAST_MIN = 4.5
 CONTRAST_MIN_LARGE = 3.0
 CONTRAST_PERCENTILE = 0.05
 CONTRAST_SAMPLE = 64            # the measured region is reduced to at most 64 px a side
-FONT_CACHE_MAX = 48
+FONT_CACHE_MAX = 96
 COUNTER_SIZE = 30
 DEFAULT_SHADOW = 0.35
 CHARACTER_DEFAULTS = {"x_pct": 75, "y_pct": 100, "scale_pct": 55, "flip": False, "shadow": True}
@@ -122,12 +124,32 @@ def startup_check() -> dict:
             pass
     else:
         print(f"[{SERVICE_NAME}] raqm {status['raqm']} (fribidi {status['fribidi']}, harfbuzz {status['harfbuzz']}) ok")
-    return {**status, "missing_fonts": missing}
+    # The Hebrew font library is installed at BUILD time (scripts/fetch_hebrew_fonts.py,
+    # which fails the build on a missing pinned family). An image without it is a broken
+    # build: said loudly, and a client whose brand font is missing gets it on every card.
+    library = font_library.status()
+    if library["pinned"] and library["missing"]:
+        line = (f"FONT LIBRARY INCOMPLETE: {library['installed']} of {library['pinned']} pinned Hebrew families "
+                f"installed (missing: {', '.join(library['missing'][:8])}"
+                f"{' …' if len(library['missing']) > 8 else ''}) — a client who chose one gets a fallback font, "
+                f"flagged on the card, until the image is rebuilt")
+        print(f"[{SERVICE_NAME}] {line}")
+        if os.environ.get("K_SERVICE"):                # the deployed service only: a dev box has no library
+            try:
+                from core.agent_base import agent_alert
+                agent_alert(SERVICE_NAME, [line])
+            except Exception:
+                pass
+    else:
+        print(f"[{SERVICE_NAME}] font library: {library['installed']} Hebrew families installed")
+    return {**status, "missing_fonts": missing, "library": library}
 
 
 # ─── Fonts and colours ───────────────────────────────────────────────────────
 
 def _font(family: str, size: int, weight: int):
+    """A BUNDLED family at an exact weight of its variable axis (ValueError
+    outside it) — the spec's own families."""
     key = (family, int(size), int(weight))
     hit = _FONTS.get(key)
     if hit:
@@ -143,6 +165,207 @@ def _font(family: str, size: int, weight: int):
     while len(_FONTS) > FONT_CACHE_MAX:
         _FONTS.popitem(last=False)
     return font
+
+
+def _load(face, size: int, weight: int) -> tuple:
+    """(font, the weight that really draws) for any Face (core/font_library):
+    a bundled variable file at the asked weight inside its axis, a library or
+    client file at the family's NEAREST REAL weight. Bold is never synthesized
+    — no stroke, no thickening: a family without a bold draws its own heaviest
+    file and the manifest says which. FontUnavailable when the file can't be had."""
+    drawn = face.weight_for(weight)
+    if face.source == "bundled":
+        return _font(face.family, size, drawn), drawn
+    key = (face.key, int(size), drawn)
+    hit = _FONTS.get(key)
+    if hit:
+        _FONTS.move_to_end(key)
+        return hit, drawn
+    path = face.path(drawn)
+    try:
+        font = ImageFont.truetype(path, int(size), layout_engine=ImageFont.Layout.RAQM)
+    except OSError as e:
+        raise font_library.FontUnavailable("unreadable", f"{face.family} {drawn}: {str(e)[:80]}")
+    _FONTS[key] = font
+    while len(_FONTS) > FONT_CACHE_MAX:
+        _FONTS.popitem(last=False)
+    return font, drawn
+
+
+# ─── Which font draws which run ──────────────────────────────────────────────
+
+def slot_of(role: str) -> str:
+    """The brand's font slot a text block belongs to."""
+    return "headline" if role in ("headline", "kicker") else "body"
+
+
+def _bidi(ch: str) -> str:
+    kind = unicodedata.bidirectional(ch)
+    return "R" if kind in ("R", "AL") else kind if kind in ("L", "EN") else "N"
+
+
+def split_runs(text: str, rtl: bool) -> list:
+    """[(segment, "base" | "ltr")] in LOGICAL order — the direction runs of
+    one line, the way the bidi algorithm sees them: in a right-to-left line a
+    left-to-right run is a stretch of Latin letters with the digits that
+    follow them and whatever lies between two of them; everything else
+    (Hebrew, digits after Hebrew, punctuation and spaces at a boundary)
+    belongs to the base direction. A left-to-right line is one run."""
+    if not rtl:
+        return [(text, "ltr")] if text else []
+    kinds = [_bidi(ch) for ch in text]
+    strong = "R"
+    for i, k in enumerate(kinds):
+        if k in ("L", "R"):
+            strong = k
+        elif k == "EN":
+            kinds[i] = strong                      # a number continues the run it follows
+    i, n = 0, len(kinds)
+    while i < n:
+        if kinds[i] != "N":
+            i += 1
+            continue
+        j = i
+        while j < n and kinds[j] == "N":
+            j += 1
+        both = (kinds[i - 1] if i else "R") == "L" and (kinds[j] if j < n else "R") == "L"
+        kinds[i:j] = ["L" if both else "R"] * (j - i)
+        i = j
+    out, start = [], 0
+    for i in range(1, n + 1):
+        if i == n or kinds[i] != kinds[start]:
+            out.append((text[start:i], "ltr" if kinds[start] == "L" else "base"))
+            start = i
+    return out
+
+
+def _script(text: str) -> str:
+    kinds = {_bidi(ch) for ch in text}
+    return "hebrew" if "R" in kinds else "latin" if "L" in kinds else "neutral"
+
+
+class _Type:
+    """How ONE text block is set: its chain of faces (the client's brand font
+    for the block's slot, their Hebrew pairing, the spec's own family, the
+    bundled last resort) loaded at the block's size and weight, and the font
+    of every RUN of a line. The fallback is per run, never per glyph: a WORD
+    is drawn whole by the first face of the chain that has all its characters,
+    and neighbouring words of one face are one run."""
+
+    def __init__(self, chain: list, size: int, weight: int):
+        self.entries, self.skipped, self._runs = [], [], {}
+        for face in chain:
+            if any(e["face"].key == face.key for e in self.entries):
+                continue
+            try:
+                font, drawn = _load(face, size, weight)
+            except font_library.FontUnavailable as e:
+                self.skipped.append({"family": face.family, "reason": e.reason})
+                continue
+            self.entries.append({"face": face, "font": font, "weight": drawn})
+        if not self.entries:
+            raise RendererUnavailable("no font of the chain could be loaded, not even the bundled one")
+
+    def _pick(self, word: str) -> int:
+        for i, e in enumerate(self.entries):
+            if e["face"].covers(word):
+                return i
+        letters = "".join(ch for ch in word if ch.isalpha())
+        for i, e in enumerate(self.entries):
+            if letters and e["face"].covers(letters):
+                return i
+        return len(self.entries) - 1
+
+    def runs(self, text: str, rtl: bool) -> list:
+        """[{"text", "entry", "dir", "script"}] in logical order."""
+        key = (text, rtl)
+        hit = self._runs.get(key)
+        if hit is not None:
+            return hit
+        out = []
+        for segment, kind in split_runs(text, rtl):
+            direction = "rtl" if kind == "base" else "ltr"
+            for piece in re.findall(r"\s*\S+\s*|\s+", segment):
+                entry = self._pick(piece.strip()) if piece.strip() else (out[-1]["entry"] if out else 0)
+                if out and out[-1]["entry"] == entry and out[-1]["dir"] == direction:
+                    out[-1]["text"] += piece
+                else:
+                    out.append({"text": piece, "entry": entry, "dir": direction})
+        if len({r["entry"] for r in out}) <= 1:
+            # one face draws the whole line: ONE run, shaped and ordered by raqm as a whole
+            out = [{"text": text, "entry": out[0]["entry"] if out else 0, "dir": "rtl" if rtl else "ltr"}]
+        for r in out:
+            r["script"] = _script(r["text"])
+        if len(self._runs) > 4000:
+            self._runs.clear()
+        self._runs[key] = out
+        return out
+
+    def measure(self, text: str, direction: str, language: str) -> float:
+        runs = self.runs(text, direction == "rtl")
+        if len(runs) == 1:
+            return _measure(self.entries[runs[0]["entry"]]["font"], text, direction, language)
+        return sum(_measure(self.entries[r["entry"]]["font"], r["text"], r["dir"],
+                            language if r["dir"] == "rtl" else "en") for r in runs)
+
+    def primary(self, text: str, rtl: bool) -> dict:
+        """The entry that draws most of the text: its metrics are the line's."""
+        count = {}
+        for r in self.runs(text, rtl):
+            count[r["entry"]] = count.get(r["entry"], 0) + len(r["text"].strip())
+        return self.entries[max(count, key=lambda i: (count[i], -i))] if count else self.entries[0]
+
+
+def block_chain(block: dict, fonts: dict = None) -> list:
+    """The faces a block may be drawn with, first choice first: the client's
+    brand font for the block's slot and their Hebrew pairing (core/brand_fonts
+    — `fonts`), then the spec's own family, then the bundled last resort."""
+    chain = list(((fonts or {}).get("chains") or {}).get(slot_of(block["role"])) or [])
+    chain.append(font_library.bundled(block["font_family"]))
+    chain.append(font_library.bundled())
+    return chain
+
+
+def _type_for(block: dict, fonts: dict = None) -> _Type:
+    """The block's _Type. With no brand font for its slot the spec's family is
+    the design: a weight outside its axis is the spec's mistake (ValueError)."""
+    if not ((fonts or {}).get("chains") or {}).get(slot_of(block["role"])):
+        _font(block["font_family"], block["size"], block["weight"])
+    return _Type(block_chain(block, fonts), block["size"], block["weight"])
+
+
+def font_report(kind: _Type, lines: list, rtl: bool, block: dict, fonts: dict = None) -> tuple:
+    """(drawn, fallbacks) of one block, from the runs that were laid out:
+    drawn = [{"font", "source", "weight", "script", "chars"}] (one row per
+    font and script); fallbacks = the runs a font OTHER than the brand's drew
+    — [{"role", "wanted", "drew", "script", "reason"}]. A Hebrew run in the
+    client's own Hebrew pairing is their choice, not a fallback."""
+    rows, fallbacks = {}, {}
+    wanted = (fonts or {}).get("wanted") or {}
+    slot = slot_of(block["role"])
+    want, pair = wanted.get(slot) or "", wanted.get("hebrew") or ""
+    issues = (fonts or {}).get("issues") or {}
+    brand = next((e["face"] for e in kind.entries if font_library.norm(e["face"].family) == font_library.norm(want)), None)
+    for line in lines:
+        for r in kind.runs(line, rtl):
+            e = kind.entries[r["entry"]]
+            face = e["face"]
+            key = (face.family, r["script"])
+            row = rows.setdefault(key, {"font": face.family, "source": face.source, "weight": e["weight"],
+                                        "script": r["script"], "chars": 0})
+            row["chars"] += len(r["text"].strip())
+            if not want or font_library.norm(face.family) in (font_library.norm(want), font_library.norm(pair)):
+                continue
+            if brand is None:
+                reason = issues.get(slot) or next((s["reason"] for s in kind.skipped
+                                                   if font_library.norm(s["family"]) == font_library.norm(want)), "unavailable")
+            elif r["script"] == "hebrew" and not brand.hebrew:
+                reason = (issues.get("hebrew") or "hebrew_pairing_unavailable") if pair else "no_hebrew_pairing"
+            else:
+                reason = "missing_glyphs"
+            fallbacks.setdefault((face.family, r["script"], reason), {
+                "role": block["role"], "wanted": want, "drew": face.family, "script": r["script"], "reason": reason})
+    return list(rows.values()), list(fallbacks.values())
 
 
 def _rgb(hex_color: str) -> tuple:
@@ -175,6 +398,8 @@ def direction_of(text: str) -> tuple:
 
 
 def _measure(font, text: str, direction: str, language: str) -> float:
+    if isinstance(font, _Type):                  # a block's fonts: each run measured with its own
+        return font.measure(text, direction, language)
     return font.getlength(text, direction=direction, language=language)
 
 
@@ -278,7 +503,15 @@ def _corner_point(corner: str, size: tuple, m: dict) -> tuple:
     return x, y
 
 
-def _accent(img, accent: dict, size: tuple, m: dict, roles: dict, n: int, problems: list) -> dict:
+def _digits_font(slot: str, family: str, size: int, weight: int, text: str, fonts: dict = None) -> dict:
+    """The entry ({"face", "font", "weight"}) that draws a number (the badge,
+    the counter): the brand font of that slot when it has the digits, else
+    the bundled family."""
+    kind = _Type(list(((fonts or {}).get("chains") or {}).get(slot) or []) + [font_library.bundled(family)], size, weight)
+    return kind.entries[kind._pick(text)]
+
+
+def _accent(img, accent: dict, size: tuple, m: dict, roles: dict, n: int, problems: list, fonts: dict = None) -> dict:
     """Draws bar / corner_mark / number_badge. Returns the underline request
     (drawn after the text is laid out) and the accent's rectangle."""
     kind = (accent or {}).get("type") or "none"
@@ -322,7 +555,7 @@ def _accent(img, accent: dict, size: tuple, m: dict, roles: dict, n: int, proble
     rect = [box[0], box[2], box[1], box[3]]
     draw.ellipse(rect, fill=colour)
     ink = max((_rgb(roles["fg"]), _rgb(roles["bg"])), key=lambda c: contrast(c, colour))
-    font = _font("Rubik", max(16, int(s * 0.5)), 700)
+    font = _digits_font("headline", "Rubik", max(16, int(s * 0.5)), 700, str(n), fonts)["font"]
     draw.text(((rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2), str(n), font=font, fill=ink, anchor="mm")
     return {"rect": rect}
 
@@ -459,7 +692,7 @@ def layout_frame(spec: dict) -> dict:
 
 
 def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dict, problems: list,
-            frame: dict = None) -> dict:
+            frame: dict = None, fonts: dict = None) -> dict:
     W, H = size
     frame = frame or {"x": 0, "y": 0, "w": W, "h": H}
     FW, FH = frame["w"], frame["h"]
@@ -470,10 +703,12 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
         problems.append({"code": "hebrew_align", "block": index, "detail": f"{where}: Hebrew is never left-aligned"})
         align = "right"
     try:
-        font = _font(block["font_family"], block["size"], block["weight"])
+        kind = _type_for(block, fonts)
     except ValueError as e:
         problems.append({"code": "weight", "block": index, "detail": f"{where}: {e}"})
         return {}
+    # the line's metrics are those of the font that draws most of the text
+    font = kind.primary(text, direction == "rtl")["font"]
     box_w = FW * float(block["max_width_pct"]) / 100
     right = W - m["right"] - FW * float(block.get("x_pct") or 0) / 100
     left = right - box_w
@@ -482,7 +717,7 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
                          "detail": f"{where}: the box ({round(box_w)} px wide, {round(W - m['right'] - right)} px in "
                                    f"from the right margin) runs past the left margin"})
     try:
-        lines = wrap(text, font, box_w, direction, language)
+        lines = wrap(text, kind, box_w, direction, language)
     except _TooWide as e:
         problems.append({"code": "overflow", "block": index, "role": block["role"], "kind": "word", "word": str(e),
                          "detail": f"{where}: the word {str(e)!r} is wider than the box at {block['size']} px"})
@@ -510,7 +745,7 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
                          "lines": len(lines), "fit_lines": fits, "need_px": round(text_h), "have_px": max(0, round(room)), "text_chars": len(text),
                          "detail": f"{where}: the text ({round(top)}–{round(top + text_h)} px) leaves the safe area "
                                    f"({m['top']}–{H - m['bottom']} px)"})
-    widths = [_measure(font, ln, direction, language) for ln in lines]
+    widths = [_measure(kind, ln, direction, language) for ln in lines]
     widest = max(widths) if widths else 0
     if align == "right":
         x0 = right - widest
@@ -518,7 +753,7 @@ def _layout(block: dict, text: str, index: int, size: tuple, m: dict, roles: dic
         x0 = (left + right) / 2 - widest / 2
     else:
         x0 = left
-    return {"block": block, "index": index, "lines": lines, "widths": widths, "font": font, "lh": lh,
+    return {"block": block, "index": index, "lines": lines, "widths": widths, "font": font, "type": kind, "lh": lh,
             "ascent": ascent, "top": top, "text_h": text_h, "left": left, "right": right, "align": align,
             "direction": direction, "language": language, "colour": _rgb(roles[block["color_role"]]),
             "rect": [x0, top, x0 + widest, top + text_h], "where": where}
@@ -535,8 +770,41 @@ def _draw_text(draw, lay: dict):
             x = (lay["left"] + lay["right"]) / 2 + lay["widths"][i] / 2   # placed by its right edge
         else:
             x = lay["left"] + lay["widths"][i]
-        draw.text((x, baseline), line, font=lay["font"], fill=lay["colour"], anchor="rs",
-                  direction=lay["direction"], language=lay["language"])
+        _draw_line(draw, lay["type"], line, x, baseline, lay["colour"], lay["direction"], lay["language"])
+
+
+def _draw_line(draw, kind: _Type, line: str, right: float, baseline: float, colour: tuple, direction: str,
+               language: str):
+    """One line whose RIGHT edge is at `right`. One font = one string, shaped
+    and ordered by raqm as a whole. Several fonts = each run with its own
+    font, placed in the line's visual order: along a right-to-left line the
+    runs follow each other leftwards, and a stretch of left-to-right runs
+    inside it reads left to right."""
+    runs = kind.runs(line, direction == "rtl")
+    if len(runs) == 1:
+        draw.text((right, baseline), line, font=kind.entries[runs[0]["entry"]]["font"], fill=colour, anchor="rs",
+                  direction=direction, language=language)
+        return
+    cursor, i = right, 0
+    while i < len(runs):
+        j = i
+        while j < len(runs) and runs[j]["dir"] == runs[i]["dir"]:
+            j += 1
+        group = runs[i:j]
+        fonts = [kind.entries[r["entry"]]["font"] for r in group]
+        if group[0]["dir"] == "rtl":
+            for r, font in zip(group, fonts):
+                draw.text((cursor, baseline), r["text"], font=font, fill=colour, anchor="rs", direction="rtl",
+                          language=language)
+                cursor -= _measure(font, r["text"], "rtl", language)
+        else:
+            widths = [_measure(font, r["text"], "ltr", "en") for r, font in zip(group, fonts)]
+            x = cursor - sum(widths)
+            for r, font, w in zip(group, fonts, widths):
+                draw.text((x, baseline), r["text"], font=font, fill=colour, anchor="ls", direction="ltr", language="en")
+                x += w
+            cursor -= sum(widths)
+        i = j
 
 
 def _contrast_at(img, rect: list, colour: tuple) -> float:
@@ -561,14 +829,17 @@ def _intersects(a: list, b: list) -> bool:
 
 def render_slide(spec: dict, roles: dict, copy_headline: str = "", copy_body: str = "", n: int = 1,
                  total: int = 1, role: str = "", image_loader=None, encode: bool = True,
-                 character: dict = None, warnings: list = None, manifest: dict = None):
+                 character: dict = None, warnings: list = None, manifest: dict = None, fonts: dict = None):
     """PNG bytes of ONE slide (None when encode=False — a guard-only pass),
     or RenderError with every problem found. `character` = this slide's own
     agent/pose (merged over the spec's placement); `warnings` (a list) gets
     the character's overflow / text-collision warnings. `manifest` (a dict)
     is FILLED with what was actually drawn — every layer committed to the
     output (core/render_manifest): the only source for any statement about
-    the slide."""
+    the slide. `fonts` = the client's resolved brand fonts
+    (core/brand_fonts.resolve): each text block is drawn with the brand font
+    of its slot, run by run, and the manifest records which font drew what —
+    None = the spec's own bundled families."""
     require_raqm()
     spec = slide_spec.for_slide(slide_spec.validate(spec), role)
     ch = merge_character(spec.get("character"), character)
@@ -576,10 +847,11 @@ def render_slide(spec: dict, roles: dict, copy_headline: str = "", copy_body: st
         slide_spec.validate_character(ch)
     with _LOCK:
         return _render(spec, roles, copy_headline, copy_body, n, total, image_loader, encode, ch,
-                       warnings if warnings is not None else [], manifest)
+                       warnings if warnings is not None else [], manifest, fonts)
 
 
-def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=None, warnings=None, manifest=None):
+def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=None, warnings=None, manifest=None,
+            fonts=None):
     from core import render_manifest
     problems = []
     warnings = warnings if warnings is not None else []
@@ -590,7 +862,7 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
     img = _background(spec["background"], size, roles, loader, problems)
     render_manifest.layer(drawn, "background", kind=spec["background"].get("type"),
                           asset=spec["background"].get("image_asset_id") if spec["background"].get("type") == "image" else "")
-    accent = _accent(img, spec.get("accent") or {}, size, m, roles, n, problems)
+    accent = _accent(img, spec.get("accent") or {}, size, m, roles, n, problems, fonts)
     if accent.get("rect"):
         render_manifest.layer(drawn, "accent", kind=(spec.get("accent") or {}).get("type"), box=accent["rect"])
     char = _character(img, ch, size, loader, problems, warnings, frame, n) if ch else {}
@@ -610,10 +882,10 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
             problems.append({"code": "headline_words", "block": i, "role": "headline", "kind": "words",
                              "words": len(text.split()), "limit": limit,
                              "detail": f"text_blocks[{i}] (headline): {len(text.split())} words, the limit is {limit}"})
-        lay = _layout(block, text, i, size, m, roles, problems, frame)
+        lay = _layout(block, text, i, size, m, roles, problems, frame, fonts)
         if lay:
             layouts.append(lay)
-    counter = _counter_layout(spec.get("counter") or {}, size, m, roles, n, total)
+    counter = _counter_layout(spec.get("counter") or {}, size, m, roles, n, total, fonts)
     boxes = ([(lay["where"], lay["rect"], lay["block"]["role"]) for lay in layouts]
              + ([("counter", counter["rect"], "counter")] if counter else []))
     for i in range(len(boxes)):
@@ -656,13 +928,23 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
             x1 = head["left"] + width
         draw.rectangle([x1 - width, y0, x1, y0 + underline["size"]], fill=underline["colour"])
         render_manifest.layer(drawn, "accent", kind="underline", box=[x1 - width, y0, x1, y0 + underline["size"]])
+    fell = []
     for lay in layouts:
         _draw_text(draw, lay)
-        render_manifest.layer(drawn, "text", role=lay["block"]["role"], text="\n".join(lay["lines"]), box=lay["rect"])
+        # which font ACTUALLY drew each run of this block (never the one that was asked for)
+        used, fallbacks = font_report(lay["type"], lay["lines"], lay["direction"] == "rtl", lay["block"], fonts)
+        fell += fallbacks
+        main = max(used, key=lambda u: u["chars"]) if used else {}
+        render_manifest.layer(drawn, "text", role=lay["block"]["role"], text="\n".join(lay["lines"]), box=lay["rect"],
+                              font=main.get("font"), weight=main.get("weight"), weight_asked=lay["block"]["weight"],
+                              fonts=used)
+        if encode:
+            render_manifest.font_trace(n, lay["block"]["role"], used, fallbacks)
     if counter:
         _draw_counter(draw, counter)
         render_manifest.layer(drawn, "counter", text=counter.get("text") or f"{counter['n']}/{counter['total']}",
-                              box=counter["rect"])
+                              box=counter["rect"], font=counter.get("family"))
+    render_manifest.fonts(drawn, (fonts or {}).get("wanted"), fell)
     drawn["encoded"] = bool(encode)
     if manifest is not None:
         # only now: every layer above is committed to the image
@@ -675,7 +957,7 @@ def _render(spec, roles, copy_headline, copy_body, n, total, loader, encode, ch=
     return out.getvalue()
 
 
-def _counter_layout(counter: dict, size: tuple, m: dict, roles: dict, n: int, total: int) -> dict:
+def _counter_layout(counter: dict, size: tuple, m: dict, roles: dict, n: int, total: int, fonts: dict = None) -> dict:
     if not counter.get("show") or total <= 1:
         return {}
     style = counter.get("style") or "fraction"
@@ -685,17 +967,18 @@ def _counter_layout(counter: dict, size: tuple, m: dict, roles: dict, n: int, to
     if style == "dots":
         d, gap = 12, 10
         w, h = total * d + (total - 1) * gap, d
-        text, font = "", None
+        text, font, family = "", None, ""
     else:
-        font = _font("Assistant", COUNTER_SIZE, 600)
         text = f"{n}/{total}"
+        entry = _digits_font("body", "Assistant", COUNTER_SIZE, 600, text, fonts)
+        font, family = entry["font"], entry["face"].family
         w = _measure(font, text, "ltr", "en")
         ascent, descent = font.getmetrics()
         h = ascent + descent
     x0 = x - w if pos.endswith("right") else x
     y0 = y if pos.startswith("top") else y - h
     return {"style": style, "rect": [x0, y0, x0 + w, y0 + h], "colour": colour, "n": n, "total": total,
-            "text": text, "font": font, "bg": _rgb(roles["bg"])}
+            "text": text, "font": font, "family": family, "bg": _rgb(roles["bg"])}
 
 
 def _draw_counter(draw, c: dict):
@@ -731,7 +1014,7 @@ def slide_roles(roles: dict, colors: dict = None) -> dict:
 
 
 def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode: bool = True,
-               warnings: list = None, on_slide=None, manifests: list = None) -> list:
+               warnings: list = None, on_slide=None, manifests: list = None, fonts: dict = None) -> list:
     """Every slide of ONE set from ONE spec and ONE palette (the caller passes
     one of each — a set is never mixed). slides = [{"copy_headline",
     "copy_body", "role", "n"?, "total"?}] — n / total = the slide's place in
@@ -749,7 +1032,7 @@ def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode:
             out.append(render_slide(spec, slide_roles(roles, s.get("colors")), s.get("copy_headline", ""),
                                     s.get("copy_body", ""), n, total,
                                     s.get("role", ""), image_loader, encode, character=s.get("character"),
-                                    warnings=got, manifest=drawn))
+                                    warnings=got, manifest=drawn, fonts=fonts))
             if manifests is not None:
                 # what THIS slide's render committed (core/render_manifest), in slide order
                 manifests.append({"n": n, "asset_id": s.get("asset_id", ""), **drawn})
@@ -762,3 +1045,35 @@ def render_set(spec: dict, roles: dict, slides: list, image_loader=None, encode:
     if problems:
         raise RenderError(problems)
     return out
+
+
+# ─── A font shown as itself (the branding page's picker) ─────────────────────
+
+def render_sample(face, text: str, weight: int = 400, size: int = 44, width: int = 640, height: int = 112,
+                  fg: str = "#111111", bg: str = "#FFFFFF", pad: int = 20) -> bytes:
+    """PNG of `text` drawn by `face` and by nothing else — the same loader,
+    shaping and run logic as a slide. RenderError when the face cannot draw
+    the whole text itself (a sample never shows another font in its place).
+    The type is made smaller only to fit the strip: this is a specimen, not a slide."""
+    require_raqm()
+    direction, language = direction_of(text)
+    with _LOCK:
+        kind = None
+        for px in range(int(size), 15, -2):
+            try:
+                kind = _Type([face], px, weight)
+            except RendererUnavailable:
+                raise RenderError([{"code": "asset", "detail": f"{face.family} is not available"}])
+            if kind.measure(text, direction, language) <= width - 2 * pad:
+                break
+        if not face.covers(text):
+            raise RenderError([{"code": "asset", "detail": f"{face.family} lacks characters of the sample"}])
+        font = kind.entries[0]["font"]
+        ascent, descent = font.getmetrics()
+        img = Image.new("RGB", (width, height), _rgb(bg))
+        baseline = (height - ascent - descent) / 2 + ascent
+        right = width - pad if direction == "rtl" else pad + kind.measure(text, direction, language)
+        _draw_line(ImageDraw.Draw(img), kind, text, right, baseline, _rgb(fg), direction, language)
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()

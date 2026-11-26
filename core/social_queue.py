@@ -293,6 +293,9 @@ def add(client_id: int, file_id: str, kind: str, channels, caption: str = "", pl
         # source for what the card, the agents and the AI notice say about it
         item["manifest"] = {"canvas": list(manifest.get("canvas") or []), "encoded": bool(manifest.get("encoded")),
                             "layers": [l for l in manifest["layers"] if isinstance(l, dict)][:24]}
+        if isinstance(manifest.get("fonts"), dict):
+            # the brand font the brief names and every run another font drew instead
+            item["manifest"]["fonts"] = manifest["fonts"]
     queue.append(item)
     _save(client_id, queue)
     return item
@@ -1100,6 +1103,12 @@ def view(client_id: int, lang: str = None, offset: int = 0, limit: int = PAGE_SI
         shown_flags = true_flags(item)             # the AI notice from the manifest, never from the brief
         if shown_flags:
             extra["flags"] = [{"code": f, "text": pick(FLAG_TEXT[f], lang)} for f in shown_flags]
+        if item.get("manifest") is not None:
+            # the brand font was not what drew this file: said on its card, from its manifest
+            from core import render_manifest
+            fell = render_manifest.font_lines(item["manifest"], lang)
+            if fell:
+                extra["font_lines"] = fell
         if item.get("post_ref"):
             extra["post_ref"] = item["post_ref"]
         if item.get("real_asset"):
