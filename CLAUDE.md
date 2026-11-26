@@ -1020,6 +1020,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   the system lane only; overrides logged via the chat field `override_log` with the line the client reads; weekly sync (job
   `governance-weekly-sync`, client's Thu/Fri/Sat evening, silent 24 h → owner alert + email, owner may approve on behalf, client 27
   exempt); credits by lane on the main page, package size = setting `package_credits`, NO gate. `tests/test_governance.py`.
+- **Brand fonts (2026-11-26, docs/FONTS.md)**: the brief's typefaces are REAL fonts. `core/font_library` = bundled Rubik/Assistant +
+  the Hebrew library (62 Google Fonts families) + a client's upload, one shape (`Face`). The library files are NOT in git or the build
+  context (`assets/fonts/library/` ignored): the Dockerfile installs them from the pinned `assets/fonts/hebrew-fonts.lock.json`
+  (URL + SHA-256 per file, `scripts/fetch_hebrew_fonts.py --install`) and `--check`s the FINAL image — a missing, different or unpinned
+  file, or an empty lock, FAILS THE BUILD; never edit the lock by hand (`--refresh`). `core/brand_fonts`: `resolve(client_id)` (chain
+  per slot + `signature`), a client's own font (fonttools: Hebrew coverage, WOFF→TTF, variable → static weights, rights = a dated log,
+  never a gate; files in the client's Drive `brand` folder, record on the brief's row). A font without Hebrew is never the brand font
+  without a Hebrew pairing. Renderer: every `render_slide`/`render_set` outside it passes `fonts=`; fallback per RUN, weights are real
+  files (bold is never synthesized); the manifest names the font that drew and a brand font that did not draw is a line on the card
+  (`render_manifest.font_lines`) — never a silent Rubik. `copy_budget` measures with the client's font and is dropped on a font change.
+  The branding page's preview and font samples are pictures from the renderer, never CSS. `tests/test_brand_fonts.py` (CI installs
+  fonttools + brotli for it).
 - **Branding page "מיתוג" (2026-11-26, docs/BRAND-BRIEF.md §The client's branding page)**: `core/brand_page` is a VIEW of the brand
   brief, never a store — colours = the brief's palette PER audience variant (never flattened), typefaces/tone = fields in its text
   marked [stated], logos = files in the client's `brand` folder listed in `assets.logo_files`. The client's branding is accepted as it
