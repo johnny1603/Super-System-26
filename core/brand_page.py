@@ -663,7 +663,6 @@ def recent_work(client_id: int, lang: str = "he") -> list:
                               "approved" if all(i.get("status") in ("approved", "published") for i in rows) else "waiting",
                     # from the manifests only: "" = nothing was recorded about this file's colours
                     "colours": colours["label"] if colours["drawn"] else "", "swatches": colours["swatches"],
-                    "off_palette": bool(colours["custom"]),
                     "fonts": render_manifest.drawn_fonts(manifests),
                     "font_lines": render_manifest.font_lines(manifests, lang)})
     return out

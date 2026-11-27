@@ -200,9 +200,9 @@ def key(slot: str, n: int) -> str:
 
 def asset(slot: str, n: int, **fields) -> dict:
     """One manifest row. Fields a producer may set: file_id, link, source
-    (generated | derived | logo | real), palette_variant (a record, never
-    checked), drawn (its render manifest, with the measured colours), drawn_colors (every
-    colour CODE drew into the file), subject_box (fractions), youtube_url,
+    (generated | derived | logo | real), drawn (its render manifest, with the
+    colours MEASURED in the file — reported, never held against the brand
+    palette), subject_box (fractions), youtube_url,
     file_path, compress, crop."""
     row = {"slot": str(slot), "n": int(n)}
     row.update({k: v for k, v in fields.items() if v not in (None, "", [], {})})
@@ -250,9 +250,9 @@ def check_delivery(order: dict, delivered: dict, files: dict, probe=None) -> dic
     by_slot = {}
     for a in (delivered or {}).get("assets") or []:
         by_slot.setdefault(a.get("slot"), []).append(a)
-    variant = (order.get("palette") or {}).get("variant") or ""
-    roles = (order.get("palette") or {}).get("roles") or {}
-    allowed = {str(c).upper() for c in roles.values()}
+    # The brand palette is a RESOURCE the producer was given, not a rule the files are held to
+    # (the owner, 2026-11-29): nothing here compares a colour to it. What IS kept is the
+    # measurement — the colours each file actually holds, read from its pixels.
     measured = {}
     for row in order.get("required_assets") or []:
         good = 0
@@ -279,18 +279,9 @@ def check_delivery(order: dict, delivered: dict, files: dict, probe=None) -> dic
                                 found.append({"code": "crop", "aspect": c["aspect"],
                                               "pct": round(c["retained"] * 100)})
                 if row["kind"] == "image" and content:
-                    # The palette is MEASURED from the file (core/render_manifest), never read
-                    # from the variant name the producer wrote on the row
-                    got = render_manifest.measure_image(content)
-                    measured[key(a["slot"], a.get("n") or 0)] = got
-                    off = render_manifest.off_palette(got, roles)
-                    if off:
-                        found.append({"code": "palette_measured", "variant": variant,
-                                      "measured": off["background"] or "—", "nearest": off["nearest"] or "—",
-                                      "colors": ", ".join(sorted(allowed))})
-                outside = sorted({str(c).upper() for c in a.get("drawn_colors") or []} - allowed)
-                if outside:
-                    found.append({"code": "palette_colors", "variant": variant, "colors": ", ".join(outside)})
+                    # The colours are MEASURED from the file (core/render_manifest) and reported —
+                    # never taken from a name written on the row, and never a reason to fail
+                    measured[key(a["slot"], a.get("n") or 0)] = render_manifest.measure_image(content)
             if found:
                 problems += [{**_what(row, a.get("n")), **p} for p in found]
             else:
@@ -299,7 +290,7 @@ def check_delivery(order: dict, delivered: dict, files: dict, probe=None) -> dic
         if good < row["count"]:
             problems.append({**_what(row), "code": "missing", "have": good, "need": row["count"]})
     return {"complete": not problems, "problems": problems, "counts": counts, "measured": measured,
-            "palette": {"variant": variant, "roles": roles}, "checked_at": _now(), "warning": gaf.stale_line()}
+            "checked_at": _now(), "warning": gaf.stale_line()}
 
 
 def hand_over(client_id: int, order: dict, delivered: dict, files: dict, notify=None, store=True,
@@ -507,16 +498,6 @@ PROBLEM_TEXT = {
     "video_upload_failed": _five("{what}: ההעלאה ליוטיוב לא הצליחה.", "{what}: the upload to YouTube did not succeed.",
                                  "{what} : la mise en ligne sur YouTube a échoué.", "{what}: لم ينجح الرفع إلى يوتيوب.",
                                  "{what}: загрузка на YouTube не удалась."),
-    "palette_measured": _five("{what}: צבע הרקע שנמדד בקובץ הוא {measured} — לא אחד מצבעי פלטת המותג {variant} ({colors}).",
-                              "{what}: the background colour measured in the file is {measured} — not one of the {variant} brand palette's colours ({colors}).",
-                              "{what} : la couleur de fond mesurée dans le fichier est {measured} — pas une couleur de la palette de marque {variant} ({colors}).",
-                              "{what}: لون الخلفية المقاس في الملف هو {measured} — ليس من ألوان لوحة العلامة {variant} ({colors}).",
-                              "{what}: измеренный в файле цвет фона — {measured}, его нет в фирменной палитре {variant} ({colors})."),
-    "palette_colors": _five("{what}: יש בו צבעים שאינם בפלטת המותג {variant}: {colors}.",
-                            "{what}: it has colours outside the {variant} brand palette: {colors}.",
-                            "{what} : couleurs hors de la palette de marque {variant} : {colors}.",
-                            "{what}: فيه ألوان خارج لوحة العلامة {variant}: {colors}.",
-                            "{what}: есть цвета вне фирменной палитры {variant}: {colors}."),
     "over_max": _five("{what}: {have} — יותר מהמקסימום {limit}.", "{what}: {have} — over the maximum of {limit}.",
                       "{what} : {have} — au-delà du maximum de {limit}.", "{what}: {have} — أكثر من الحد الأقصى {limit}.",
                       "{what}: {have} — больше максимума {limit}."),

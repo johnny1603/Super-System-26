@@ -151,15 +151,16 @@ class ExplicitColours(Harness):
         one = pb.clean_colors({"requested": "רקע אדום", "slides": [{"bg": "#ff0000"}]}, 3)
         self.assertEqual(one["slides"], [{"bg": "#FF0000"}] * 3)              # one entry = every slide
         self.assertEqual(len(pb.clean_colors(COLOURS, 3)["slides"]), 3)
-        for bad in ({"slides": [{"bg": "#FF0000"}]},                           # no instruction = no override
-                    {"requested": "צבעוני", "slides": [{"bg": "red"}]},
+        free = pb.clean_colors({"slides": [{"bg": "#FF0000"}]}, 3)             # the agent's own choice: no reason asked
+        self.assertEqual((free["by"], free["requested"], len(free["slides"])), ("agent", "", 3))
+        for bad in ({"requested": "צבעוני", "slides": [{"bg": "red"}]},
                     {"requested": "צבעוני", "slides": [{"bg": "#FF0000"}, {"bg": "#00FF00"}]}):
             with self.assertRaises(ValueError):
                 pb.clean_colors(bad, 3)
 
     def test_carried_to_every_slide_and_announced(self):
         out = self.queue(colors=COLOURS)
-        self.assertIn("לבקשתך, הצבעים בפוסט הזה לא מפלטת המותג", out["line"])
+        self.assertIn("לבקשתך, הפוסט הזה בצבעים שביקשת", out["line"])
         self.assertIn(COLOURS["requested"], out["line"])
         item = out["queued"]
         self.assertEqual(item["post"]["colors"]["slides"][2], {"bg": "#34C759"})

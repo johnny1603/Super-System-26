@@ -1044,10 +1044,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   chooses the brand font from the library (`brand_fonts.direction` / `propose`), the page shows it as real samples with one line of
   why, the client approves (`/typefaces/approve`, no name is ever sent) or asks for something else (`/typefaces/other` → admin
   alert); their own uploaded font (rights confirmed) is the choice; every empty part states what it COSTS (`GAPS`, 5 languages — a new slot needs its line). The card's colour label
-  comes from the manifest's `palette` (`render_manifest.palette_view`), and a brief variant the render did not use FAILS the card
-  (docs/RENDER-MANIFEST.md §The palette). PALETTE DISCIPLINE: a colour the brand does not define needs a reason in the brief
-  (`colors.requested` / `colors.reason`) and lands on the design card as a named deviation the client approves or turns down
-  (`slide_design.decide_deviation`); no reason = the card fails. `core/brand_package`: the branding package = three DELIVERABLES (a logo, a branded website,
+  comes from the manifest's `palette` (`render_manifest.palette_view`), and names a variant only when the slide was drawn in it; a render that drew something other than what the slide
+  asked for FAILS the card (docs/RENDER-MANIFEST.md §The palette). THE PALETTE IS A RESOURCE, NOT A CAGE (owner, 2026-11-29): brand
+  colours are the language of the SITE; a post or an ad in other colours is a normal creative choice — never a failure, a deviation
+  or something to approve, and no reason is asked (the 2026-11-27 palette discipline and its deviation card are removed — do not
+  bring them back). What stays is the honesty: colours are measured from the pixels and the card reports those. `core/brand_package`: the branding package = three DELIVERABLES (a logo, a branded website,
   two landing pages for different purposes; typography + visual language are what the work establishes, never tiles of their own),
   ONE confirmed MOCKUP per section composed in code from THIS client's material — their logo file, palette variants, product photos
   from the media library, own copy (0 credits, never a model, never a generic template: no product photo = `needs_photos`, nothing
@@ -1063,8 +1064,8 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `CannotReachCap`). The handoff (`core/media_order`): Yoav issues the MEDIA ORDER (he decides the campaign type, never
   the look), text assets are COPY (`core/ad_copy` on `copy_budget.ads_budget` — never the same step as the images),
   Lior produces (`core/paid_media_production`: logos are the client's file, never generated), `hand_over` checks the
-  delivery FROM THE FILES (palette included: the background MEASURED by `render_manifest.measure_image`, the one
-  measurement the slide renderer shares, against the variant's colours — never the variant name on the row) and an
+  delivery FROM THE FILES (colours are MEASURED by `render_manifest.measure_image` — the one measurement the slide
+  renderer shares — and reported, never held against the brand palette) and an
   incomplete set raises `IncompleteDelivery` by name — Yoav is not told — then
   `yoav_verify` re-checks against the platform minimum on its own. Chat: ONE card `prepare_campaign`
   (`core/media_order_actions`, every param optional, **internal accounts only until a live run**, `STOP_FINISH`).

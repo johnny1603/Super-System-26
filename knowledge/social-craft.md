@@ -278,8 +278,10 @@ Copy rules:
   across the whole set.
 - **Grid and margins.** Identical on every slide. Nothing closer to the edge
   than the agreed margin.
-- **Palette.** Taken from the brand tokens. Two to three colours plus
-  neutrals. Accent colour used once per slide, not everywhere.
+- **Palette.** Two to three colours plus neutrals, the same across the set.
+  The brand tokens are a resource to draw on, not a limit (the owner,
+  2026-11-29): other colours are a normal creative choice. Accent colour used
+  once per slide, not everywhere.
 - **Contrast.** Text must pass a legibility check against its background. If
   the background is an image, it needs a scrim or an overlay.
 - **One typeface family** per brand, two weights.

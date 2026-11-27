@@ -178,81 +178,52 @@ class ThePaletteThatWasDrawn(Plain):
             slide_design._finalize(27, {**item, "design": d}, {"spec": d["spec"], "name": "t", "version": 1})
         self.assertEqual(self.uploads, [])
 
-    def teal(self, reason="", by="client"):
+    def teal(self, requested=""):
         slides = self._text_slides()
         slides[0]["colors"] = {"bg": "#0E3B43"}
         post = self._post_item()
-        if reason:
-            slides[0]["colors_reason"] = reason
-            post["post"]["colors"] = {"requested": reason, "reason": reason, "by": by}
+        if requested:
+            post["post"]["colors"] = {"requested": requested, "by": "client"}
         return self.open(slides, post)
 
-    def test_a_colour_outside_the_palette_with_a_reason_is_a_named_deviation_the_client_decides(self):
-        out = self.teal("a sea theme for the summer launch", by="agent")
-        design, item_id = out["item"]["design"], out["item"]["id"]
-        self.assertEqual((design["state"], design.get("missing") or []), ("ready", []))
-        self.assertEqual(out["manifests"][0]["palette"]["variant"], "")
-        self.assertEqual(out["manifests"][0]["palette"]["outside"], {"bg": "#0E3B43"})
-        self.assertEqual(out["manifests"][1]["palette"]["outside"], {})
-        d = self.card(item_id)["design"]
-        self.assertEqual((d["palette_custom"], d["deviation"]["state"]), ([1], "waiting"))
-        self.assertNotEqual(d["palette"], tsr.RED)
-        self.assertIn("#0E3B43", d["deviation"]["lines"][0])
-        self.assertIn("a sea theme for the summer launch", d["deviation"]["reason"])
-        self.assertIn("הסיבה שנכתבה בבריף", d["deviation"]["reason"])           # the agent's proposal, said as one
-        self.assertTrue(d["blocked"])                                           # never approved silently
-        with self.assertRaises(sq.QueueError) as ctx:
-            sq.approve(27, [item_id])
-        self.assertEqual(ctx.exception.code, "deviation_undecided")
-        slide_design.decide_deviation(27, item_id, "accept")
-        after = self.card(item_id)["design"]
-        self.assertEqual((after["deviation"]["state"], after["blocked"]), ("accepted", False))
-        self.assertEqual(sq.get(27, item_id)["design"]["deviation_accepted"]["by"], "client")
-        self.assertEqual(len(sq.approve(27, [item_id])), 1)
-
-    def test_the_client_can_turn_the_deviation_down_and_get_the_brand_colours(self):
-        out = self.teal("the client asked for teal")
-        item_id = out["item"]["id"]
-        self.assertIn("לבקשתכם", self.card(item_id)["design"]["deviation"]["reason"])
-        slide_design.decide_deviation(27, item_id, "brand")
-        d = sq.get(27, item_id)["design"]
-        self.assertTrue(all(m["palette"]["variant"] == tsr.RED and not m["palette"]["outside"] for m in d["manifests"]))
-        self.assertFalse(any(s.get("colors") for s in d["slides"]))
-        self.assertEqual(d["dropped"][-1]["type"], "palette")                   # the decision is recorded
-        card = self.card(item_id)["design"]
-        self.assertEqual((card["palette"], card["deviation"], card["blocked"]), (tsr.RED, {}, False))
-        with self.assertRaises(sq.QueueError):
-            slide_design.decide_deviation(27, item_id, "accept")                # nothing left to decide
-
-    def test_a_deviation_with_no_reason_fails_the_card_like_a_missing_character(self):
+    def test_a_colour_outside_the_palette_is_a_normal_choice_and_the_card_reports_it(self):
+        # the palette is a resource, not a cage (the owner, 2026-11-29): no reason, no deviation, no extra approval
         out = self.teal()
         design, item_id = out["item"]["design"], out["item"]["id"]
-        self.assertEqual(design["state"], "failed")
-        self.assertEqual([(m["type"], m["reason"], m["slide"]) for m in design["missing"]],
-                         [("palette", "deviation_unexplained", 1)])
+        self.assertEqual((design["state"], design.get("missing") or []), ("ready", []))
+        self.assertEqual(out["manifests"][0]["palette"]["variant"], "")         # still never called the brand variant
+        self.assertNotIn("outside", out["manifests"][0]["palette"])
+        d = self.card(item_id)["design"]
+        self.assertFalse(d["blocked"])
+        self.assertNotIn("deviation", d)
+        self.assertNotIn("can_use_brand_colours", d)
+        self.assertEqual(d["palette_custom"], [1])
+        self.assertNotEqual(d["palette"], tsr.RED)                              # the colours actually used, not a name
+        self.assertIn("#0E3B43", d["palette"])
+        self.assertEqual(len(sq.approve(27, [item_id])), 1)
+        self.assertFalse(any("design FAILED" in a for a in self.alerts))
+
+    def test_the_clients_own_words_are_quoted_beside_the_drawn_colours(self):
+        d = self.card(self.teal("make it teal")["item"]["id"])["design"]
+        self.assertIn("make it teal", d["palette_note"])
+        self.assertFalse(d["blocked"])
+
+    def test_a_failure_stored_under_the_old_rule_no_longer_blocks(self):
+        item_id = self.teal()["item"]["id"]
+        old = {"type": "palette", "id": tsr.RED, "slide": 1, "reason": "deviation_unexplained", "why": "no_reason",
+               "line": "old line"}
+        sq.update_design(27, item_id, {"missing": [old]})
         card = self.card(item_id)["design"]
-        self.assertIn("לא נכתבה סיבה", card["missing_lines"][0])
-        self.assertIn("#0E3B43", card["missing_lines"][0])
-        self.assertEqual(card["deviation"]["state"], "unexplained")
-        with self.assertRaises(sq.QueueError):
-            slide_design.decide_deviation(27, item_id, "accept")                # no reason = nothing to approve
-        with self.assertRaises(sq.QueueError):
-            sq.approve(27, [item_id])
-        self.assertTrue(any("design FAILED, declared and not drawn" in a for a in self.alerts))
-        slide_design.decide_deviation(27, item_id, "brand")                     # the one way out: the brand colours
-        self.assertEqual(sq.get(27, item_id)["design"]["state"], "ready")
+        self.assertEqual((card["blocked"], card["missing_lines"]), (False, []))
         self.assertEqual(len(sq.approve(27, [item_id])), 1)
 
-    def test_another_variants_colour_is_inside_the_palette(self):
-        gold = tsr.roles("black + gold")["accent"]
-        slides = self._text_slides()
-        slides[0]["colors"] = {"bg": tsr.roles(tsr.RED)["bg"], "accent": gold}
-        out = self.open(slides)
-        self.assertEqual(out["item"]["design"]["state"], "ready")
-        d = self.card(out["item"]["id"])["design"]
-        self.assertEqual((d["deviation"], d["blocked"]), ({}, False))           # the brand's own colour: no deviation
-        self.assertEqual(d["palette_custom"], [1])                              # …but not called "black + red" either
-
+    def test_the_deviation_machinery_is_gone(self):
+        for name in ("deviation", "decide_deviation", "DEVIATION_TEXT"):
+            self.assertFalse(hasattr(slide_design, name), name)
+        self.assertFalse(hasattr(sq, "deviation_undecided"))
+        self.assertNotIn("/design/deviation", _src("core", "api_server.py"))
+        page = _src("dashboard", "client", "index.html")
+        self.assertNotIn("deviation", page.lower())
 
 class ThePaletteRules(unittest.TestCase):
     ROLES = {"bg": "#0B0B0B", "fg": "#FFFFFF", "accent": "#E3262F", "muted": "#A6A6A6"}
@@ -277,25 +248,22 @@ class ThePaletteRules(unittest.TestCase):
         self.assertEqual(rm.missing(self.want(), self.drawn(mean="#55504A", kind="image")), [])   # a photo is not one colour
         self.assertEqual(rm.missing(self.want(), None)[0]["type"], "palette")            # nothing known to be drawn
 
-    def test_a_colour_the_brand_does_not_define_needs_a_reason(self):
+    def test_a_colour_the_brand_does_not_define_needs_no_reason(self):
         teal = {**self.ROLES, "bg": "#0E3B43"}
-        want = [{"type": "palette", "id": "black + red", "roles": teal, "allowed": sorted(self.ROLES.values()), "reason": ""}]
-        silent = rm.missing(want, self.drawn(teal, "#0E3B43"))
-        self.assertEqual((silent[0]["why"], silent[0]["outside"]), ("no_reason", {"bg": "#0E3B43"}))
-        want[0]["reason"] = "the client asked for teal"
-        self.assertEqual(rm.missing(want, self.drawn(teal, "#0E3B43")), [])      # stated = a deviation, not a failure
-        m = self.drawn(teal, "#0E3B43")
-        self.assertEqual(rm.mark_outside(m, self.ROLES.values()), {"bg": "#0E3B43"})
-        self.assertEqual(rm.mark_outside(self.drawn(), self.ROLES.values()), {})
+        want = [{"type": "palette", "id": "black + red", "roles": teal}]
+        self.assertEqual(rm.missing(want, self.drawn(teal, "#0E3B43")), [])      # asked for and drawn: nothing is missing
+        for gone in ("mark_outside", "off_palette", "PHOTO_TOLERANCE"):
+            self.assertFalse(hasattr(rm, gone), gone)
         from core import post_brief
-        with self.assertRaises(ValueError):
-            post_brief.clean_colors({"slides": [{"bg": "#0E3B43"}]}, 1)          # the brief refuses colours with no reason
-        own = post_brief.clean_colors({"reason": "a sea theme for the launch", "slides": [{"bg": "#0E3B43"}]}, 2)
-        self.assertEqual((own["by"], own["reason"], len(own["slides"])), ("agent", "a sea theme for the launch", 2))
+        own = post_brief.clean_colors({"slides": [{"bg": "#0E3B43"}]}, 2)        # no reason asked
+        self.assertEqual((own["by"], own["requested"], len(own["slides"])), ("agent", "", 2))
+        self.assertNotIn("reason", own)
         asked = post_brief.clean_colors({"requested": "make it teal", "slides": [{"bg": "#0E3B43"}]}, 1)
-        self.assertEqual((asked["by"], asked["reason"]), ("client", "make it teal"))
-        self.assertIn("PALETTE DISCIPLINE", _src("agents", "support_agent.py"))
-
+        self.assertEqual((asked["by"], asked["requested"]), ("client", "make it teal"))
+        agent = _src("agents", "support_agent.py")
+        self.assertNotIn("PALETTE DISCIPLINE", agent)
+        self.assertNotIn("fails the card", agent[agent.index("COLOURS: the brand palette"):][:900])
+        self.assertIn("unless drawn.palette says so", agent)                     # the honesty stays
     def test_the_label_is_the_variant_only_when_its_colours_were_drawn(self):
         same = self.drawn()
         self.assertEqual(rm.name_palette(same, "black + red", self.ROLES), "black + red")
@@ -306,7 +274,8 @@ class ThePaletteRules(unittest.TestCase):
         self.assertEqual((view["custom"], view["variant"]), ([1], ""))
         self.assertIn("#0E3B43", view["label"])
         alone = rm.palette_view([other], "he")["label"]
-        self.assertIn("לא פלטת המותג", alone)
+        self.assertIn("#0E3B43", alone)                                   # the colours used, with no verdict on them
+        self.assertNotIn("לא פלטת המותג", alone)
         self.assertNotIn("black + red", alone)
         for lang in ("he", "en", "fr", "ar", "ru"):
             for key, table in rm.PALETTE_TEXT.items():

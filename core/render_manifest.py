@@ -168,7 +168,6 @@ def palette(manifest, roles: dict, background: dict = None, mean: str = ""):
 
 # ─── Measuring a file's colours (THE one measurement: slides and ad images) ──
 
-PHOTO_TOLERANCE = 40          # per channel: a photographed / generated backdrop against a brand colour (judgment)
 BORDER_SHARE = 0.06           # the frame band whose colour is "the background" of a finished picture
 DOMINANT = 5
 
@@ -230,25 +229,11 @@ def _distance(a: str, b: str) -> int:
     return max(abs(x - y) for x, y in zip(pa, pb))
 
 
-def off_palette(got: dict, brand_roles: dict, tolerance: int = PHOTO_TOLERANCE) -> dict:
-    """The MEASURED background against a brand variant's colours: {} when it
-    is one of them (within `tolerance`), else {"background", "nearest",
-    "distance"}. No measurement = off (nothing was proven)."""
-    colors = [str(c).upper() for c in (brand_roles or {}).values() if c]
-    background = (got or {}).get("background") or ""
-    if not colors:
-        return {}
-    if not background:
-        return {"background": "", "nearest": "", "distance": 999}
-    nearest = min(colors, key=lambda c: _distance(background, c))
-    gap = _distance(background, nearest)
-    return {} if gap <= tolerance else {"background": background, "nearest": nearest, "distance": gap}
-
-
 def name_palette(manifest, variant: str, brand_roles: dict) -> str:
     """Writes on the manifest WHICH brand variant its drawn colours are: the
     variant's label when the four drawn role colours are that variant's, ""
-    when they are not (colours outside the brand palette). Returns it."""
+    when they are not — so a card can only ever say a variant's NAME when the
+    slide really was drawn in it. Other colours are no fault. Returns it."""
     drawn = ((manifest or {}).get("palette") or {}).get("roles")
     if not isinstance(drawn, dict):
         return ""
@@ -256,18 +241,6 @@ def name_palette(manifest, variant: str, brand_roles: dict) -> str:
                for r in ("bg", "fg", "accent", "muted"))
     manifest["palette"]["variant"] = str(variant or "") if same else ""
     return manifest["palette"]["variant"]
-
-
-def mark_outside(manifest, allowed) -> dict:
-    """Writes on the manifest which of its drawn role colours the brand does
-    NOT define: `palette.outside` = {role: hex} ({} = every colour is the
-    brand's). Returns it."""
-    drawn = ((manifest or {}).get("palette") or {}).get("roles")
-    if not isinstance(drawn, dict):
-        return {}
-    known = {str(c).upper() for c in allowed or []}
-    manifest["palette"]["outside"] = {r: v for r, v in drawn.items() if str(v).upper() not in known}
-    return manifest["palette"]["outside"]
 
 
 def for_asset(kind: str, out: dict) -> dict:
@@ -347,8 +320,9 @@ def missing(wanted: list, manifest) -> list:
                        for t in texts):
                 out.append({"type": "text", "id": w["id"]})
         elif w["type"] == "palette":
-            # the brief's palette variant (with the manager's explicit colours for this slide, if any)
-            # against the colours the render used — and, on a plain background, against the PIXELS
+            # the colours THIS SLIDE asked for (its own colours where it states any, else the post's
+            # palette variant) against the colours the render used — and, on a plain background,
+            # against the PIXELS. Render fidelity, not a palette rule: the slide may ask for any colour.
             got = (manifest or {}).get("palette") or {}
             drawn = got.get("roles") or {}
             off = [r for r in ("bg", "fg", "accent", "muted")
@@ -360,14 +334,8 @@ def missing(wanted: list, manifest) -> list:
             if off:
                 out.append({"type": "palette", "id": w["id"], "roles": off, "drawn": dict(drawn),
                             "mean": bg.get("mean", "")})
-            elif w.get("allowed") is not None and not str(w.get("reason") or "").strip():
-                # the declared colours WERE drawn — but some are not the brand's, and the brief
-                # gives no reason: a silent deviation fails, the same way a missing character does
-                known = {str(c).upper() for c in w["allowed"]}
-                outside = {r: v for r, v in drawn.items() if str(v).upper() not in known}
-                if outside:
-                    out.append({"type": "palette", "id": w["id"], "roles": sorted(outside), "drawn": dict(drawn),
-                                "mean": bg.get("mean", ""), "why": "no_reason", "outside": outside})
+            # Which colours those ARE is not judged here: a colour the brand does not define is a
+            # normal creative choice (the owner, 2026-11-29) — only "drawn ≠ what the slide asked for" fails
     return out
 
 
@@ -381,26 +349,24 @@ PALETTE_TEXT = {
     # the card's colour label, from the manifest
     "image": _five("{name} · על רקע תמונה", "{name} · on a picture background", "{name} · sur fond photo",
                          "{name} · على خلفية صورة", "{name} · на фоне фото"),
-    "custom": _five("לא פלטת המותג — רקע {bg}, טקסט {fg}, הדגשה {accent}",
-                          "Not the brand palette — background {bg}, text {fg}, accent {accent}",
-                          "Hors palette de marque — fond {bg}, texte {fg}, accent {accent}",
-                          "ليست لوحة العلامة — الخلفية {bg}، النص {fg}، التمييز {accent}",
-                          "Не палитра бренда — фон {bg}, текст {fg}, акцент {accent}"),
-    "custom_some": _five("{name} · שקופיות {slides} לא בפלטת המותג (רקע {bg})",
-                               "{name} · slides {slides} are not in the brand palette (background {bg})",
-                               "{name} · diapositives {slides} hors palette de marque (fond {bg})",
-                               "{name} · الشرائح {slides} ليست بلوحة العلامة (الخلفية {bg})",
-                               "{name} · слайды {slides} не в палитре бренда (фон {bg})"),
+    "custom": _five("רקע {bg}, טקסט {fg}, הדגשה {accent}", "Background {bg}, text {fg}, accent {accent}",
+                    "Fond {bg}, texte {fg}, accent {accent}", "الخلفية {bg}، النص {fg}، التمييز {accent}",
+                    "Фон {bg}, текст {fg}, акцент {accent}"),
+    "custom_some": _five("{name} · שקופיות {slides} בצבעים משלהן (רקע {bg})",
+                         "{name} · slides {slides} in colours of their own (background {bg})",
+                         "{name} · diapositives {slides} dans leurs propres couleurs (fond {bg})",
+                         "{name} · الشرائح {slides} بألوان خاصة بها (الخلفية {bg})",
+                         "{name} · слайды {slides} в собственных цветах (фон {bg})"),
     "requested": _five("לבקשתכם: \"{requested}\"", "As you asked: \"{requested}\"", "À votre demande : « {requested} »",
                              "بطلبكم: \"{requested}\"", "По вашей просьбе: «{requested}»"),
     "planned": _five("{name} (לפי הבריף — לא נבדק מול הקובץ)", "{name} (per the brief — not checked against the file)",
                      "{name} (selon le brief — non vérifié sur le fichier)", "{name} (حسب الموجز — لم يُتحقق من الملف)",
                      "{name} (по брифу — с файлом не сверено)"),
-    "planned_custom": _five("לא פלטת המותג, לבקשתכם: \"{requested}\" (לפי הבריף — לא נבדק מול הקובץ)",
-                            "Not the brand palette, as you asked: \"{requested}\" (per the brief — not checked against the file)",
-                            "Hors palette de marque, à votre demande : « {requested} » (selon le brief — non vérifié sur le fichier)",
-                            "ليست لوحة العلامة، بطلبكم: \"{requested}\" (حسب الموجز — لم يُتحقق من الملف)",
-                            "Не палитра бренда, по вашей просьбе: «{requested}» (по брифу — с файлом не сверено)"),
+    "planned_custom": _five("צבעים שביקשתם: \"{requested}\" (לפי הבריף — לא נבדק מול הקובץ)",
+                            "The colours you asked for: \"{requested}\" (per the brief — not checked against the file)",
+                            "Les couleurs demandées : « {requested} » (selon le brief — non vérifié sur le fichier)",
+                            "الألوان التي طلبتموها: \"{requested}\" (حسب الموجز — لم يُتحقق من الملف)",
+                            "Цвета по вашей просьбе: «{requested}» (по брифу — с файлом не сверено)"),
 }
 
 

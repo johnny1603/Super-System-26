@@ -232,7 +232,7 @@ class Craft(unittest.TestCase):
 
     def test_the_five_rules_are_there(self):
         for needle in ("Crop survival", "core/crop_survival", "Text belongs in text fields", "The 150 KB problem",
-                       "core/ad_compress", "Coverage beats polish", "Brand discipline", "core/google_ads_formats"):
+                       "core/ad_compress", "Coverage beats polish", "a resource, not a cage", "core/google_ads_formats"):
             self.assertIn(needle, self.text)
 
     def test_it_holds_no_numbers_of_its_own(self):

@@ -439,18 +439,16 @@ def validate_post(raw, client_id: int, request_text: str = "", lang: str = "he")
     return post
 
 
-# ─── An explicit colour instruction beats the brand palette (2026-11-25) ─────
+# ─── A post's own colours (2026-11-25; freed 2026-11-29) ─────────────────────
 #
-# The audience palette rule stops RANDOM palettes; it never overrides the
-# manager. When they explicitly ask for other colours ("colourful, not the
-# brand colours", "a different colour per slide"), the post carries
-# `colors`: {"requested": the manager's own words, "slides": [{bg, fg?,
-# accent?, muted?}, …]} — one entry for every slide, or one per slide in
-# order. The text slides render with them (slide_renderer.slide_roles) and
-# the agent says in one line that this post deviates from the brand palette
-# on request (post_pipeline TEXT["colors"]). Without "requested" there is no
-# override: an agent never swaps the palette on its own taste.
-
+# The brand palette is the language of the client's SITE and a resource for
+# everything else — never a limit on social or paid creative (the owner,
+# 2026-11-29). A post that wants colours of its own carries `colors`:
+# {"requested"?: the manager's own words when THEY asked, "slides": [{bg,
+# fg?, accent?, muted?}, …]} — one entry for every slide, or one per slide in
+# order. No reason is needed and nothing is approved separately. The text
+# slides render with them (slide_renderer.slide_roles); what the card says
+# about the colours comes from what was DRAWN (core/render_manifest).
 COLOR_HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 COLOR_KEYS = ("bg", "fg", "accent", "muted")
 
@@ -461,16 +459,10 @@ def clean_colors(raw, n_slides: int) -> dict:
         return {}
     if not isinstance(raw, dict):
         raise ValueError("colors must be an object: {requested, slides}")
-    # Palette discipline (2026-11-27): a post's colours come from the brand's defined
-    # palette variants. Leaving them needs a REASON in the brief — the client's own
-    # instruction quoted in `requested`, or the agent's `reason` — and it reaches the
-    # design card as a named deviation the client approves or turns down. Never silent.
+    # The brand palette is a resource, not a cage (the owner, 2026-11-29): a post states the
+    # colours it wants and that is all. `requested` is kept only when the client asked for
+    # colours in their own words — so the card can quote them — never as a condition.
     requested = _clean_text(raw.get("requested"), 200)
-    reason = _clean_text(raw.get("reason"), 300) or requested
-    if len(reason) < 3:
-        raise ValueError("colors needs a reason: \"requested\" (the client's explicit colour instruction, quoted) or "
-                         "\"reason\" (why this post must leave the brand palette) — without one the brand palette "
-                         "stays. The client sees it on the card as a deviation and decides.")
     entries = raw.get("slides")
     if isinstance(entries, dict):
         entries = [entries]
@@ -489,8 +481,8 @@ def clean_colors(raw, n_slides: int) -> dict:
         slides.append(entry)
     if len(slides) == 1:
         slides = slides * n_slides
-    # "requested" stays the one line every reader shows; "by" says whose words it is
-    return {"requested": requested or reason, "reason": reason, "by": "client" if requested else "agent", "slides": slides}
+    # "by" says whose choice the colours are: the client's words (quoted on the card) or the agent's own
+    return {"requested": requested, "by": "client" if requested else "agent", "slides": slides}
 
 
 def asset(entry: dict) -> AssetBrief:

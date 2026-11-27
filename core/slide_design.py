@@ -111,93 +111,12 @@ MISSING_TEXT = {
                      "Diapositive {n} : le post prévoit la palette « {name} », et la diapositive a d'autres couleurs (fond {bg}).",
                      "الشريحة {n}: المنشور يحدد لوحة \"{name}\"، والشريحة رُسمت بألوان أخرى (الخلفية {bg}).",
                      "Слайд {n}: для поста задана палитра «{name}», а слайд нарисован другими цветами (фон {bg})."),
-    "deviation": _five("שקופית {n}: צוירה בצבע שאינו בפלטת המותג ({colors}), ובבריף לא נכתבה סיבה לכך.",
-                       "Slide {n}: drawn in a colour that is not in the brand palette ({colors}), and the brief gives no reason for it.",
-                       "Diapositive {n} : dessinée dans une couleur hors palette de marque ({colors}), sans raison écrite dans le brief.",
-                       "الشريحة {n}: رُسمت بلون ليس في لوحة العلامة ({colors})، ولم يُكتب في الموجز سبب لذلك.",
-                       "Слайд {n}: нарисован цветом вне палитры бренда ({colors}), и в брифе не указана причина."),
     "blocked": _five("העיצוב הזה לא יכול להתאשר כמו שהוא: משהו שהוגדר לפוסט לא צויר.",
                      "This design cannot be approved as it is: something the post asked for was not drawn.",
                      "Ce design ne peut pas être validé tel quel : un élément prévu n'a pas été dessiné.",
                      "لا يمكن اعتماد هذا التصميم كما هو: عنصر مطلوب للمنشور لم يُرسم.",
                      "Этот дизайн нельзя одобрить как есть: заявленный элемент не нарисован."),
 }
-
-# A deviation from the brand palette WITH a reason: named on the card, decided by the client
-DEVIATION_TEXT = {
-    "slide": _five("שקופית {n}: {colors} — לא מפלטת המותג", "Slide {n}: {colors} — not from the brand palette",
-                   "Diapositive {n} : {colors} — hors palette de marque", "الشريحة {n}: {colors} — ليست من لوحة العلامة",
-                   "Слайд {n}: {colors} — не из палитры бренда"),
-    "reason_client": _five("לבקשתכם: \"{reason}\"", "As you asked: \"{reason}\"", "À votre demande : « {reason} »",
-                           "بطلبكم: \"{reason}\"", "По вашей просьбе: «{reason}»"),
-    "reason_agent": _five("הסיבה שנכתבה בבריף: {reason}", "The reason written in the brief: {reason}",
-                          "La raison écrite dans le brief : {reason}", "السبب المكتوب في الموجز: {reason}",
-                          "Причина, указанная в брифе: {reason}"),
-    "undecided": _five("לפני האישור צריך החלטה שלכם: לאשר את החריגה מפלטת המותג, או לצייר בצבעי המותג.",
-                       "Before approval we need your decision: approve the deviation from the brand palette, or draw in the brand colours.",
-                       "Avant validation, votre décision : valider l'écart par rapport à la palette, ou dessiner aux couleurs de la marque.",
-                       "قبل الاعتماد نحتاج قراركم: اعتماد الخروج عن لوحة العلامة، أو الرسم بألوان العلامة.",
-                       "Перед одобрением нужно ваше решение: одобрить отступление от палитры бренда или нарисовать в цветах бренда."),
-    "accepted": _five("אישרתם את החריגה מפלטת המותג.", "You approved the deviation from the brand palette.",
-                      "Vous avez validé l'écart par rapport à la palette.", "وافقتم على الخروج عن لوحة العلامة.",
-                      "Вы одобрили отступление от палитры бренда."),
-}
-
-
-def deviation(design: dict) -> dict:
-    """The design's deviation from the brand palette, from what was DRAWN
-    (each manifest's `palette.outside`): {} when every colour is the brand's,
-    else {"slides": [{"n", "colors": {role: hex}}], "key", "accepted": bool}.
-    `key` changes when the colours do — an approval of one deviation never
-    covers another."""
-    rows = [{"n": m.get("n") or i, "colors": dict((m.get("palette") or {}).get("outside") or {})}
-            for i, m in enumerate(design.get("manifests") or [], 1) if isinstance(m, dict)]
-    rows = [r for r in rows if r["colors"]]
-    if not rows:
-        return {}
-    key = ";".join(f"{r['n']}:" + ",".join(f"{k}={v}" for k, v in sorted(r["colors"].items())) for r in rows)
-    return {"slides": rows, "key": key, "accepted": (design.get("deviation_accepted") or {}).get("key") == key}
-
-
-def decide_deviation(client_id: int, item_id: str, decision: str, by: str = "client") -> dict:
-    """The client's decision on colours outside the brand palette. "accept" =
-    the named deviation is approved (recorded with who and when; the card can
-    then be approved). "brand" = the slides' own colours are dropped and the
-    set is drawn again in the brand palette (also the way out of a card that
-    failed for a deviation with no reason). QueueError when it isn't such a card."""
-    item = social_queue.get(client_id, item_id)
-    if not item or item.get("kind") != social_queue.DESIGN_KIND:
-        raise social_queue.QueueError("not_a_design")
-    d = item["design"]
-    found = deviation(d)
-    unexplained = [m for m in d.get("missing") or [] if m.get("reason") == "deviation_unexplained"]
-    if item["status"] != "waiting" or not (found or unexplained):
-        raise social_queue.QueueError("not_editable")
-    if decision == "accept":
-        if unexplained or not found:
-            raise social_queue.QueueError("not_editable")       # nothing to approve without a stated reason
-        changes = {"deviation_accepted": {"key": found["key"], "by": by, "at": _now()}}
-        return social_queue.update_design(client_id, item_id, changes) or item
-    if decision != "brand":
-        raise social_queue.QueueError("bad_decision")
-    slides = [{k: v for k, v in s.items() if k not in ("colors", "colors_reason")} for s in d.get("slides") or []]
-    again = _reaudit(client_id, {**item, "design": {**d, "missing": [m for m in d.get("missing") or []
-                                                                     if m.get("type") != "palette"]}},
-                     slides, _lang(client_id))
-    if not again:
-        raise social_queue.QueueError("not_editable")           # could not be drawn again here: nothing changes
-    changes = {"slides": slides, "rev": int(d.get("rev") or 1) + 1, "missing": again["missing"],
-               "manifests": again["manifests"], "deviation_accepted": {},
-               "dropped": (d.get("dropped") or []) + [{"type": "palette", "id": "colours outside the brand palette",
-                                                       "slides": [r["n"] for r in (found.get("slides") or [])]
-                                                       or [m.get("slide") for m in unexplained],
-                                                       "by": by, "at": _now()}]}
-    if not changes["missing"] and not d.get("problems"):
-        changes["state"] = "ready"
-    out = social_queue.update_design(client_id, item_id, changes)
-    _resolve_post(client_id, d.get("post_id", ""), unexplained)
-    return out or item
-
 
 STATE_TEXT = {
     "ready": _five("מוכן לבדיקה", "Ready for review", "Prêt à vérifier", "جاهز للمراجعة", "Готов к проверке"),
@@ -400,8 +319,6 @@ def _slides_of(entries: list) -> list:
             row["wants_character"] = dict(s["wants_character"])   # asked for, waiting for the client's pose approval
         if s.get("colors"):
             row["colors"] = dict(s["colors"])               # colours stated for this slide (post `colors`)
-            if s.get("colors_reason"):
-                row["colors_reason"] = str(s["colors_reason"])[:300]   # why they may leave the brand palette
         out.append(row)
     return out
 
@@ -515,23 +432,19 @@ def apply_approved_poses(client_id: int) -> list:
 
 def declared_for(client_id: int, label: str, slide: dict, drawn: dict = None) -> list:
     """What the BRIEF declared for one slide (core/render_manifest.declared)
-    plus its PALETTE: the role colours of the set's variant, with the
-    manager's explicit colours for this slide on top (post `colors`) — what
-    the render must have used. `drawn` (the slide's manifest) is marked with
-    the brand variant its colours are, or "" when they are not the brand's."""
+    plus the COLOURS it asked for: its own (post `colors`) where it states
+    any, else the role colours of the set's variant — what the render must
+    have used. `drawn` (the slide's manifest) is marked with the brand variant
+    its colours are, or "" when they are others.
+
+    The brand palette is a RESOURCE, not a cage (the owner, 2026-11-29): a
+    slide may ask for any colour, with no reason and no approval. Only a
+    render that drew something OTHER than what the slide asked for fails."""
     from core import render_manifest
     brand = slide_spec.palette_roles(client_id, label)
     render_manifest.name_palette(drawn, label, brand)
-    # PALETTE DISCIPLINE (2026-11-27): the colours a slide may be drawn with are the ones
-    # the brand DEFINES (every variant's values + this variant's resolved roles). A colour
-    # outside them is a DEVIATION: with a reason in the brief it is named on the card and
-    # the client decides; with no reason the card fails, like a missing character.
-    allowed = brand_brief.palette_colors(client_id) | {str(v).upper() for v in brand.values()}
-    render_manifest.mark_outside(drawn, allowed)
     return render_manifest.declared(slide) + [{"type": "palette", "id": label,
-                                               "roles": slide_renderer.slide_roles(brand, slide.get("colors")),
-                                               "allowed": sorted(allowed),
-                                               "reason": str(slide.get("colors_reason") or "").strip()}]
+                                               "roles": slide_renderer.slide_roles(brand, slide.get("colors"))}]
 
 
 def audit(client_id: int, spec: dict, palette: dict, slides: list, loader=None, on_slide=None) -> dict:
@@ -551,8 +464,6 @@ def audit(client_id: int, spec: dict, palette: dict, slides: list, loader=None, 
                 row = {"type": w["type"], "id": w["id"], "slide": s.get("n") or i, "asset_id": s.get("asset_id", "")}
                 if w["type"] == "palette":
                     row["drawn_bg"] = w.get("mean") or (w.get("drawn") or {}).get("bg", "")
-                    if w.get("why") == "no_reason":
-                        row["why"], row["outside"] = "no_reason", w.get("outside") or {}
                 missing.append(row)
     return {"problems": problems, "warnings": warnings, "manifests": manifests, "missing": missing}
 
@@ -585,16 +496,10 @@ def missing_rows(missing: list, failures: list, lang: str) -> list:
                 .replace("{name}", agent_characters.display_name(m["id"], lang))
             row["line"] = f"{line} {why['message']}" if why.get("message") else line
         elif m["type"] == "palette":
-            # the brief's palette variant is not what the render used: the card fails, by name
-            if m.get("why") == "no_reason":
-                # colours outside the brand palette and no reason in the brief: fails, by name
-                row["reason"] = "deviation_unexplained"
-                row["line"] = pick(MISSING_TEXT["deviation"], lang).replace("{n}", str(m.get("slide") or "")) \
-                    .replace("{colors}", ", ".join(dict.fromkeys((m.get("outside") or {}).values())) or "—")
-            else:
-                row["reason"] = "palette_not_used"
-                row["line"] = pick(MISSING_TEXT["palette"], lang).replace("{n}", str(m.get("slide") or "")) \
-                    .replace("{name}", str(m.get("id") or "")).replace("{bg}", str(m.get("drawn_bg") or "—"))
+            # the colours the slide asked for are not what the render used: the card fails, by name
+            row["reason"] = "palette_not_used"
+            row["line"] = pick(MISSING_TEXT["palette"], lang).replace("{n}", str(m.get("slide") or "")) \
+                .replace("{name}", str(m.get("id") or "")).replace("{bg}", str(m.get("drawn_bg") or "—"))
         else:
             row["reason"] = "no_text_block"
             row["line"] = pick(MISSING_TEXT["text"], lang).replace("{n}", str(m.get("slide") or "")) \
@@ -1028,24 +933,7 @@ def view(item: dict, lang: str) -> dict:
                                            planned=(d.get("palette") or {}).get("label", ""),
                                            requested=d.get("colors_requested", "") if any(
                                                s.get("colors") for s in slides) and d.get("colors_by") != "agent" else "")
-    # Colours the brand does not define: a NAMED deviation with its reason, which the client
-    # approves or turns down on the card (no reason = it is in `missing` and the card failed)
-    found = deviation(d)
-    reason = next((s.get("colors_reason") for s in slides if s.get("colors_reason")), "") or d.get("colors_requested", "")
-    off = {}
-    if found:
-        unexplained = any(m.get("reason") == "deviation_unexplained" for m in d.get("missing") or [])
-        off = {"lines": [pick(DEVIATION_TEXT["slide"], lang).replace("{n}", str(r["n"]))
-                         .replace("{colors}", ", ".join(dict.fromkeys(r["colors"].values()))) for r in found["slides"]],
-               "reason": "" if unexplained or not reason else pick(
-                   DEVIATION_TEXT["reason_agent" if d.get("colors_by") == "agent" else "reason_client"], lang)
-               .replace("{reason}", reason),
-               "state": "unexplained" if unexplained else "accepted" if found["accepted"] else "waiting",
-               "text": "" if unexplained else pick(DEVIATION_TEXT["accepted" if found["accepted"] else "undecided"], lang)}
-    can_brand = bool(found) and not found.get("accepted") or any(
-        m.get("reason") == "deviation_unexplained" for m in d.get("missing") or [])
     return {"template_name": d.get("template_name", ""), "rev": rev, "palette": colours["label"],
-            "deviation": off, "can_use_brand_colours": can_brand,
             "palette_drawn": colours["drawn"], "palette_custom": colours["custom"], "palette_note": colours["note"],
             "palette_swatches": colours["swatches"],
             "state": d.get("state", "ready"), "state_text": pick(STATE_TEXT.get(d.get("state", "ready"), STATE_TEXT["ready"]), lang),
@@ -1059,14 +947,13 @@ def view(item: dict, lang: str) -> dict:
             "problem_lines": _problem_lines(problems, lang),
             "last_failure": problem_text(d["last_failure"], lang) if d.get("last_failure") else "",
             # declared in the brief and NOT in the render: the card fails, by name
-            "missing_lines": [m.get("line", "") for m in d.get("missing") or [] if m.get("line")],
+            "missing_lines": [m.get("line", "") for m in social_queue.real_missing(d) if m.get("line")],
             # the brief names a brand font and the render shows another drew the text: said on the
             # card, from the manifest (core/render_manifest) — never a silent substitution
             "font_lines": _font_lines(d.get("manifests"), lang),
             "fonts_drawn": _fonts_drawn(d.get("manifests")),
             "blocked": social_queue.design_blocked(item),
-            "blocked_text": "" if not social_queue.design_blocked(item) else pick(
-                DEVIATION_TEXT["undecided"] if off.get("state") == "waiting" and not d.get("missing") else MISSING_TEXT["blocked"], lang),
+            "blocked_text": "" if not social_queue.design_blocked(item) else pick(MISSING_TEXT["blocked"], lang),
             "can_drop_character": any(m.get("type") == "character" for m in d.get("missing") or [])
             or any(s.get("wants_character") for s in slides),
             "based_on": d.get("based_on") or {}, "saved": d.get("saved") or {},

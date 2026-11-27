@@ -180,13 +180,13 @@ file exists and passes every check, then holds the count against the order:
   (`google_ads_formats.check_file` on the bytes);
 - crop survival (`crop_survival.check` on the bytes, for the row's crop targets);
 - a video is a YouTube URL (`video_file_not_url`, `video_bad_url`);
-- the palette, MEASURED (`palette_measured`, 2026-11-28): `render_manifest.measure_image`
-  reads the file's pixels — the background (the frame band), the mean, the
-  dominant colours — and `off_palette` holds the measured background against the
-  segment's variant colours (`PHOTO_TOLERANCE` = 40 per channel, a judgment). The
-  variant NAME the producer wrote on the row is a record and is never checked.
-  It is the same measurement the slide renderer records (`mean_color`); there is
-  no second one. Any colour code drew must also be in the variant (`palette_colors`).
+- colours are MEASURED and REPORTED, never checked (the owner, 2026-11-29: the
+  palette is a resource, not a cage). `render_manifest.measure_image` reads the
+  file's pixels — the background (the frame band), the mean, the dominant
+  colours — into the check's `measured`; it is the same measurement the slide
+  renderer records. No colour fails a delivery (`palette_measured` /
+  `palette_colors` are removed), nothing is regenerated for its colour, and the
+  producer's prompt no longer ties the backdrop to the brand palette.
   Logos are the client's own file and are not measured.
 
 Nothing the manifest says about its own files is read. An incomplete set

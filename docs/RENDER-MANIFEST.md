@@ -63,39 +63,36 @@ card kept saying the brand variant either way.
   from the pixels after the background layer}, "variant": the brand variant
   those colours ARE, "" when they are not}` (`render_manifest.palette`,
   `name_palette`).
-- Declared for a slide (`slide_design.declared_for`) = the brief's variant roles
-  with that slide's explicit colours on top. `render_manifest.missing` compares:
+- Declared for a slide (`slide_design.declared_for`) = the colours THAT SLIDE asked
+  for: its own (`post.colors`) where it states any, else the brief's variant roles.
+  This is render fidelity, not a palette rule. `render_manifest.missing` compares:
   other roles, or a solid background whose pixels are not the declared colour =
   `{"type": "palette"}` → the design card FAILS by name, cannot be approved,
   `_finalize` / `render_asset` write no file (`palette_not_used`).
 - The card's colour label, chips and note come from `render_manifest.palette_view`
   over the manifests: the variant's name only when its colours were drawn;
-  otherwise "not the brand palette" with the drawn hexes (and the manager's own
-  request beside it). Before a render (the copy stage) the label says it is the
+  otherwise the drawn hexes themselves (and the manager's own request beside
+  it) — never a variant or template name the slide was not drawn in. Before a render (the copy stage) the label says it is the
   brief's and unchecked. A file made before this date carries no palette: nothing
   is claimed about its colours.
-- Agents: `drawn.palette.brand_variant` ("" = not the brand palette), FACTS_RULE.
+- Agents: `drawn.palette.brand_variant` ("" = other colours), FACTS_RULE.
 
-**Palette discipline (same day).** A slide's colours are the DEFINED values of the
-brand's palette variants (`brand_brief.palette_colors` + the variant's resolved
-roles). `manifest.palette.outside` = the drawn role colours the brand does not
-define.
+**The palette is a resource, not a cage (the owner, 2026-11-29).** The palette
+discipline added on 2026-11-27 is REMOVED. Brand colours are the language of the
+client's site; social and paid creative are not limited to them.
 
-- Outside colours WITH a reason in the brief (`post.colors.requested` = the
-  client's own words, or `post.colors.reason` = the agent's; carried per slide
-  as `colors_reason`) = a NAMED DEVIATION on the design card: the slides, the
-  colours, the reason, whose it is. The card is blocked until the client decides
-  (`slide_design.decide_deviation`, `POST …/design/deviation?decision=accept|brand`):
-  `accept` records who and when (keyed to those exact colours); `brand` drops the
-  slides' own colours and draws the set again in the brand palette. Approving
-  while undecided = `deviation_undecided`.
-- Outside colours with NO reason = `missing` (`deviation_unexplained`): the card
-  FAILS like a missing character — no approve, no files; the one way out is
-  `brand`. `post_brief.clean_colors` also refuses `colors` with no reason.
-- A colour of ANOTHER variant of the same brand is inside the palette: no
-  deviation (the label still does not call it the declared variant).
-- Agent rule: PALETTE DISCIPLINE in `support_agent` (creativity inside the palette).
-
+- A colour the brand does not define is a normal creative choice: not a failure,
+  not a deviation, nothing to approve, no reason to give. `post.colors` needs only
+  its `slides`; `requested` is kept only to quote the client's own words.
+- Gone: `manifest.palette.outside`, `slide_design.deviation` / `decide_deviation`,
+  `POST …/design/deviation`, `deviation_undecided`, `deviation_unexplained`, the
+  card's deviation block and its two buttons, the agent's PALETTE DISCIPLINE rule.
+  A `missing` row of that kind stored on an older design is ignored
+  (`social_queue.real_missing`).
+- UNCHANGED — the honesty: the manifest still measures the colours actually drawn,
+  from the pixels; the card's label still comes from the manifest and names a
+  variant only when the slide was drawn in it; a render that drew something other
+  than what the slide asked for still fails (`palette_not_used`).
 ## The stage log
 
 `[character_trace] client=… post=… path=… slide=… character=… stage=… outcome=…` — one line per stage:

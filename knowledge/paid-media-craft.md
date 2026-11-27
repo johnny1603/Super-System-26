@@ -141,12 +141,13 @@ group, because it looks like work was done.
 Distinct means distinct. Five crops of one photograph are one concept, and
 the platform treats near-duplicates as one asset.
 
-### 2.5 Brand discipline applies here too
+### 2.5 The brand palette is a resource, not a cage
 
-Colours come from the brand palette variants — the same rule as social
-(social-craft §8, client-governance). The audience segment in the order picks
-the variant; paid media does not get its own palette, and "it is only an ad"
-is not a reason for a colour the brand does not define.
+Brand colours are the language of the client's SITE. Paid creative is not
+limited to them (the owner, 2026-11-29): the order carries the segment's
+palette variant as material to draw on, and the picture uses it, part of it
+or other colours — whatever serves the ad. No colour fails a delivery. What
+the file really holds is measured from its pixels and reported as it is.
 
 The same sourcing policy applies (social-craft §10): real client assets
 first; never fabricate a specific product and present it as one the customer
@@ -168,7 +169,6 @@ The logo is the client's logo file. It is never generated, redrawn or
 - Hebrew text produced by an image model.
 - A video delivered as a file instead of a YouTube URL on the client's
   channel.
-- Colours from outside the segment's brand palette variant.
 - A logo that is not the client's file.
 - Two "concepts" that are the same picture.
 - Ad copy and image copy that came out of the same step.

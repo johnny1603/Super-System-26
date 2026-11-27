@@ -141,9 +141,10 @@ class TheBrandOnRealWork(Base):
         work = bp.recent_work(27, "he")
         self.assertEqual([w["id"] for w in work], ["p5-1", "p4-1", "p3-1", "p2-1"])     # newest first, the cover slide
         self.assertEqual((work[0]["files"], work[0]["title"], work[0]["made_at"]), (3, "Launch", "2026-11-24"))
-        self.assertEqual((work[0]["colours"], work[0]["off_palette"]), ("black + red", False))
+        self.assertEqual(work[0]["colours"], "black + red")
+        self.assertNotIn("off_palette", work[0])
 
-    def test_a_post_drawn_outside_the_palette_says_so(self):
+    def test_a_post_in_other_colours_shows_those_colours(self):
         off = self.item(1, of=1)
         off["manifest"]["palette"].update(variant="", roles={"bg": "#0E3B43", "fg": "#FFFFFF", "accent": "#E3262F",
                                                               "muted": "#A6A6A6"})
@@ -151,7 +152,6 @@ class TheBrandOnRealWork(Base):
         del old["manifest"]["palette"]                                   # made before colours were recorded
         self.queue = [off, old]
         work = bp.recent_work(27, "he")
-        self.assertTrue(work[0]["off_palette"])
         self.assertIn("#0E3B43", work[0]["colours"])
         self.assertEqual(work[1]["colours"], "")                         # nothing recorded = nothing claimed
 

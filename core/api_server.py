@@ -7159,22 +7159,6 @@ def client_social_design_without_character(item_id: str, request: Request):
     log_activity(client_id, "social_queue", "design_without_character", {"item_id": item_id}, {})
     return {"success": True, "data": {"id": item.get("id", item_id), "state": (item.get("design") or {}).get("state")}}
 
-@app.post("/api/client/social/{item_id}/design/deviation")
-def client_social_design_deviation(item_id: str, request: Request, decision: str = ""):
-    # A design drawn in colours the brand does not define: the CLIENT decides —
-    # "accept" the named deviation (then the card can be approved) or "brand"
-    # (the set is drawn again in the brand palette). Nothing is generated.
-    client_id = _require_session(request)
-    _social_read_only(request)
-    from core import slide_design, social_queue
-    decision = str(decision or "")[:10]
-    try:
-        item = slide_design.decide_deviation(client_id, item_id, decision, by="client")
-    except social_queue.QueueError as e:
-        raise _social_error(e)
-    log_activity(client_id, "social_queue", "design_palette_deviation", {"item_id": item_id, "decision": decision}, {})
-    return {"success": True, "data": {"id": item.get("id", item_id), "state": (item.get("design") or {}).get("state")}}
-
 @app.get("/api/client/social/{item_id}/slide/{n}")
 def client_social_slide_preview(item_id: str, n: int, request: Request):
     # One slide of a design under review, DRAWN now from its spec (milliseconds,

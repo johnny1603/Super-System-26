@@ -598,19 +598,15 @@ def design_blocked(item: dict) -> bool:
     it cannot be approved as it is — a post never goes out claiming what it lacks."""
     d = (item or {}).get("design") or {}
     return (item or {}).get("kind") == DESIGN_KIND and (
-        bool(d.get("missing")) or any(s.get("wants_character") for s in d.get("slides") or [])
-        or deviation_undecided(item))
+        bool(real_missing(d)) or any(s.get("wants_character") for s in d.get("slides") or []))
 
 
-def deviation_undecided(item: dict) -> bool:
-    """A design drawn in colours the brand does not define, which the client
-    has not decided on yet (core/slide_design.deviation): approve the named
-    deviation, or draw in the brand colours — never approved silently."""
-    if (item or {}).get("kind") != DESIGN_KIND:
-        return False
-    from core import slide_design
-    found = slide_design.deviation(item.get("design") or {})
-    return bool(found) and not found["accepted"]
+def real_missing(design: dict) -> list:
+    """The design's `missing` rows that still stand. A row stored before
+    2026-11-29 for "a colour outside the brand palette with no reason" is no
+    longer a failure (the palette is a resource, not a rule) and is not counted."""
+    return [m for m in (design or {}).get("missing") or []
+            if not (m.get("reason") == "deviation_unexplained" or m.get("why") == "no_reason")]
 
 
 AI_CODES = ("ai_label", "ai_content")
@@ -829,9 +825,7 @@ def approve(client_id: int, ids, by: str = "client") -> list:
         except Exception as e:
             print(f"[{SERVICE_NAME}] client {client_id}: backup not queued ({type(e).__name__})")
     if blocked and not done:
-        only_colours = all(deviation_undecided(i) and not (i.get("design") or {}).get("missing")
-                           for i in queue if i["id"] in blocked)
-        raise QueueError("deviation_undecided" if only_colours else "element_missing")
+        raise QueueError("element_missing")
     return done
 
 
