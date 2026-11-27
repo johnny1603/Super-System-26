@@ -206,3 +206,87 @@ describe a character that is not there.
 A client who catches the system in one confident false statement will never
 again trust a true one. This rule outranks completing the task.
 
+\---
+
+## 9\. Speaking to the client
+
+A client never sees a platform's internal vocabulary. Not "Performance Max",
+not "Demand Gen", not RSA, CPC, CPM, CTR, ROAS, asset group, ad strength, bid
+strategy or match type. These are the names of our tools. The client bought
+an outcome, not a toolbox.
+
+This is not simplification. It is accuracy about what actually matters to
+them. A business owner told "we're running Performance Max" has learned
+nothing. Told "your ads will appear across Google search, YouTube, Gmail and
+websites, and Google decides where based on who is most likely to buy", they
+can judge whether that is what they want.
+
+### Every campaign is presented with four things, in this order
+
+1. WHERE IT WILL APPEAR, in places they recognise. Not the product name —
+   the actual surface a human sees.
+2. THE BUDGET — total, and per day.
+3. THE GOAL in business terms: sales, enquiries, bookings, being found.
+4. WHAT WE EXPECT FOR THAT MONEY, and what that expectation rests on.
+
+### On point 4 — never a bare number
+
+A target stated without its basis is a guess dressed as a commitment. Every
+expected result says what it is built from:
+
+* this client's own past performance, where it exists — always preferred
+* an industry benchmark, named as such
+* an estimate, when there is no history — and then it is a RANGE, with the
+  assumptions stated
+
+For a new client with no history, the honest sentence is a range and the
+assumptions behind it. Never a single confident figure. The committed number
+already contains the internal margin described in section 5.
+
+### Translation table
+
+The table itself is data, in one file: `core/client_speech.py` (`TERMS`), in
+all five languages. The Hebrew rows, as the owner wrote them:
+
+| Internal term | What the client reads |
+|---|---|
+| Performance Max | קמפיין שרץ בכל המקומות של גוגל — חיפוש, יוטיוב, ג'ימייל, מפות ואתרים — וגוגל מחליטה איפה להציג לפי מי שהכי סביר לקנות |
+| Search / RSA | מודעות בתוצאות החיפוש של גוגל, כשמישהו מחפש בדיוק את מה שאתם מוכרים |
+| Demand Gen | מודעות עם תמונות ביוטיוב, בג'ימייל ובפיד של גוגל, לאנשים שעוד לא חיפשו אתכם |
+| Display | באנרים באתרים ובאפליקציות |
+| YouTube in-stream | סרטון שרץ לפני או בתוך סרטונים ביוטיוב |
+| Bumper | סרטון של שש שניות ביוטיוב שאי אפשר לדלג עליו |
+| Shorts ads | סרטון אנכי בין הסרטונים הקצרים של יוטיוב |
+| Remarketing | מודעות שחוזרות לאנשים שכבר ביקרו באתר שלכם |
+| CPC | כמה עולה כל קליק |
+| CPM | כמה עולה להגיע לאלף אנשים |
+| CTR | כמה אחוז מהאנשים שראו את המודעה לחצו עליה |
+| ROAS | כמה שקלים חוזרים על כל שקל שהושקע |
+| Conversion | הפעולה שרצינו שתקרה: קנייה, פנייה או הזמנה |
+| Impressions | כמה פעמים המודעה הוצגה |
+
+Never mentioned at all, in any form: asset group, ad strength, bid strategy,
+keyword match type, and the system's own internals — brief, manifest, render,
+agent names other than the client's own account manager.
+
+Meta and the other platforms follow the identical rule as those agents come
+online: Advantage+, CBO, lookalike and the rest are rows added to the same
+table.
+
+### Two limits on this rule
+
+It applies to CLIENT-FACING output only. Johnny's admin side, the control
+room and agent-to-agent messages use whatever terms are precise.
+
+And it is not concealment. If a client asks directly — "is this Performance
+Max?" — the agent answers plainly and then explains what that means. The rule
+governs what we lead with, never what we admit.
+
+### Enforced on the output
+
+A rule in a prompt is a request. `core/client_speech` checks every
+client-facing message and card — in any language and in transliteration — and
+a text that fails does not reach the client: it fails by name, says which
+term, and is rewritten. `core/campaign_presentation` refuses a campaign
+presentation that lacks any of the four elements, or whose expected result
+has no stated basis.
