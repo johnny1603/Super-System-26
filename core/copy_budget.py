@@ -386,6 +386,39 @@ def problem_lines(problems: list, lang: str = "he", limit: int = 8) -> list:
     return out
 
 
+# ─── Ad text assets (Google Ads) — the same mechanism, the platform's constraint ─
+# A text slide's real constraint is what the template can draw, so its budget
+# is MEASURED from the template. An ad's headline is drawn by Google, and its
+# real constraint is Google's character limit — so the budget is READ from the
+# table (core/google_ads_formats) and the fit is counted the way Google counts.
+# Same three steps as a slide: the budget where the copy is written, the exact
+# check of the copy as written, the failure in plain words.
+
+ADS_PROMPT_RULE = ("ad_copy_budget = Google's limits for every text asset of this campaign type: max_chars per "
+                   "item, how many items (min / max), and `short` where at least `min` of them must be `max_chars` "
+                   "or fewer. Characters are counted the way Google counts (a Hebrew or Latin character is one). "
+                   "Write every item WITHIN its limit — a character over is a rejected asset, and an item is never "
+                   "cut to fit: rewrite it shorter.")
+
+
+def ads_budget(campaign_type: str) -> dict:
+    """{"rule", "campaign_type", "fields": {field: {"max_chars", "min", "max", "short"}}} for the copy step."""
+    from core import google_ads_formats
+    return {"rule": ADS_PROMPT_RULE, "campaign_type": campaign_type,
+            "fields": google_ads_formats.required_text(campaign_type)}
+
+
+def ads_fit(campaign_type: str, texts: dict, lang: str = "he") -> dict:
+    """The exact check of the ad copy as written: {"fits", "problems",
+    "lines"} — `lines` in the reader's language, one per problem."""
+    from core import google_ads_formats, media_order
+    problems = google_ads_formats.check_text(campaign_type, texts or {})
+    shaped = [{"slot": p["field"], "n": p.get("index") or None, "size": "", **{k: v for k, v in p.items()
+                                                                               if k not in ("field", "index")},
+               "code": "text_" + p["code"]} for p in problems]
+    return {"fits": not problems, "problems": problems, "lines": media_order.problem_lines(shaped, lang)}
+
+
 def card(fitted: dict, slides: list, lang: str = "he") -> dict:
     """The approval card's part: per slide {"fits", "lines"} and one summary."""
     if not fitted.get("checked"):

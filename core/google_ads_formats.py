@@ -339,13 +339,15 @@ def kb(size: int) -> int:
 def check_file(row: dict, content: bytes) -> list:
     """What is wrong with one produced image / logo / banner against its order
     row — every number MEASURED from the bytes: [{"code", "detail"}] ([] = it
-    is within its spec). Codes: unreadable | file_type | ratio | too_small |
-    size | file_size."""
+    is within its spec), each with the measured "width", "height", "bytes" and
+    "file_type". Codes: unreadable | file_type | ratio | too_small | size |
+    file_size."""
     out = []
     kind = file_type(content)
     w, h = measure(content)
     if not w or not h:
-        return [{"code": "unreadable", "detail": "the file is not a readable image"}]
+        return [{"code": "unreadable", "detail": "the file is not a readable image", "width": 0, "height": 0,
+                 "bytes": len(content or b""), "file_type": kind}]
     if kind not in row.get("file_types", ()):
         out.append({"code": "file_type", "detail": f"it is {kind.upper() or 'an unknown type'}; this slot takes "
                                                    f"{' / '.join(t.upper() for t in row.get('file_types', ()))}"})
@@ -361,6 +363,8 @@ def check_file(row: dict, content: bytes) -> list:
                                                        f"minimum"})
     if len(content) > row["max_bytes"]:
         out.append({"code": "file_size", "detail": f"{kb(len(content))} KB; the cap is {row['max_bytes'] // KB} KB"})
+    for problem in out:
+        problem.update(width=w, height=h, bytes=len(content), file_type=kind)
     return out
 
 

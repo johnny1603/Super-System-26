@@ -32,6 +32,7 @@ CLIENT_FACING = (
     "core/quarter_goals.py", "core/quarter_goals_actions.py", "core/organic_plan.py",
     "core/organic_plan_actions.py", "core/home_focus.py", "core/content_team.py", "core/content_team_actions.py",
     "core/branding_actions.py", "core/seo_report_actions.py", "core/competitor_watch_actions.py",
+    "core/media_order.py", "core/media_order_actions.py",
     "core/tiktok_uploads.py", "core/client_language.py", "core/email_service.py",
 )
 

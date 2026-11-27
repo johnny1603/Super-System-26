@@ -90,7 +90,7 @@ UNDO_BY_HAND = {
 # Spent or sent for good — said BEFORE it runs
 IRREVERSIBLE = {"send_outreach_email", "send_outreach_followup", "delete_landing_page", "approve_production_quote",
                 "clone_voice", "make_presenter_video", "create_presenter_from_photos", "send_tiktok_batch",
-                "produce_requested_content"}
+                "produce_requested_content", "prepare_campaign"}
 # action → the plain cost line (the client's own vendor credits, or a quoted price)
 COST = {
     "approve_production_quote": _five("זה עולה את המחיר שבהצעה.", "It costs the price on the quote.",
@@ -110,6 +110,11 @@ COST = {
                                           "Cela utilise des crédits de votre propre compte de l'outil vidéo.",
                                           "يستخدم ذلك رصيدًا من حسابكم في أداة الفيديو.",
                                           "Это расходует кредиты вашего аккаунта видеоинструмента."),
+    "prepare_campaign": _five("התמונות משתמשות בקרדיטים בחשבון שלכם בכלי התמונות.",
+                              "The images use credits on your own image tool account.",
+                              "Les images utilisent des crédits de votre propre compte de l'outil d'images.",
+                              "تستخدم الصور رصيدًا من حسابكم في أداة الصور.",
+                              "Изображения расходуют кредиты вашего аккаунта инструмента изображений."),
     "produce_requested_content": _five("זה משתמש בקרדיטים בחשבון שלכם בכלי התמונות והווידאו.",
                                        "It uses credits on your own image and video tool account.",
                                        "Cela utilise des crédits de votre propre compte de l'outil images et vidéo.",

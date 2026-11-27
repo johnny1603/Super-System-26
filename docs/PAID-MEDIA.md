@@ -125,3 +125,113 @@ so.
 
 PSNR is a stand-in for "no visible degradation", not a pair of eyes; 33 dB is
 a judgment call.
+
+## 3. The ליאור → יואב handoff — `core/media_order.py`
+
+Yoav (Google Ads) decides the campaign. Lior (media) decides how the creative
+looks. The copy step writes the words. Three steps, three modules, and none of
+them is handed another's half.
+
+| step | who | module | gets | returns |
+|---|---|---|---|---|
+| 1. media order | Yoav | `media_order.issue` (decision: `media_order_actions.decide`) | the client's ask + what we know | the order |
+| 2. text assets | copy | `ad_copy.write` | `copy_brief(order)` — no media row | texts within Google's limits |
+| 3. files | Lior | `paid_media_production.produce` | `media_brief(order)` — no text slot | delivery manifest + files |
+| 4. handover check | code | `media_order.hand_over` | order, manifest, the files' bytes | handed over, or `IncompleteDelivery` |
+| 5. cross-check | Yoav | `media_order.yoav_verify` → `verify_minimum` | the files' bytes + the texts | verified / rejected |
+
+### 3.1 The media order
+
+`campaign_type` (pmax | demand_gen | display | youtube | search), `objective`,
+`client_id`, `audience_segment`, `landing_page_url` (https only), `offer`,
+`required_assets`, `deadline` — plus `palette` (the ONE brand variant the
+segment resolves to, `post_brief.resolve_palette`; a segment that lands on no
+single variant = `OrderError("audience_unresolved")`, a question to the client,
+never a guess) and `specs` (the table's verification date and its stale
+warning).
+
+`required_assets` is `google_ads_formats.required_assets(...)` — nobody picks
+a size. Each concept (a distinct picture) is ordered in EVERY ratio the type
+takes; `DEFAULT_CONCEPTS = 3` is OUR choice (coverage, craft §2.4), capped by
+the table's per-ratio and total maximums.
+
+The decision call may return a landing page only if that address was in the
+data it was shown or in the client's words; anything else is dropped and the
+client is asked.
+
+### 3.2 Text assets are copy
+
+`core/copy_budget.ads_budget(type)` = Google's limits from the table, handed to
+the copy step where the copy is written; `ads_fit` = the exact check of the
+copy as written (same mechanism as a slide's budget; the constraint is the
+platform's limit instead of the template's). One repair round that feeds the
+named violations back, then `CopyFailed`. Copy is never cut to fit.
+`ad_copy.write` refuses a brief that carries media fields;
+`paid_media_production.produce` refuses one that carries text fields. Image
+prompts go through `post_brief.assert_no_hebrew`.
+
+### 3.3 The delivery manifest, checked from the files
+
+`check_delivery(order, manifest, files)` counts a manifest row only when its
+file exists and passes every check, then holds the count against the order:
+
+- present (`missing`, `no_file`) — by slot, "2 of 3";
+- within the size cap, the right ratio, minimum size, file type
+  (`google_ads_formats.check_file` on the bytes);
+- crop survival (`crop_survival.check` on the bytes, for the row's crop targets);
+- a video is a YouTube URL (`video_file_not_url`, `video_bad_url`);
+- the palette is the segment's variant (`palette_variant`), and any colour code
+  drew is in it (`palette_colors`).
+
+Nothing the manifest says about its own files is read. An incomplete set
+raises `IncompleteDelivery`: the order is stored `incomplete` with the named
+problems, `notify` is not called, nothing reaches Yoav. `problem_lines` says it
+in the client's language.
+
+How production fills it: one picture per concept in the widest ratio, on the
+client's own image tool; other ratios are cut from it when the centre crop is
+big enough and keeps the subject (measured), otherwise generated; each file is
+fitted, compressed to its cap and crop-checked; a failed crop check is
+regenerated within `RETRIES` (2) per order. Logos are the client's logo file,
+fitted with clear space — never generated; no logo file = no logo row, and the
+check names it.
+
+### 3.4 Yoav's own check
+
+`verify_minimum(campaign_type, delivered files, texts)` reads only the table's
+`minimum_to_serve`, the files' bytes and the texts — not the order's rows, not
+the manifest's check result. It runs only on a handed-over order.
+
+### 3.5 In the chat — `prepare_campaign` (`core/media_order_actions.py`)
+
+"תכינו קמפיין" → the manager (or Yoav / Lior) proposes `prepare_campaign`, every
+parameter optional. `prepare`: package, brand brief + craft library, Yoav's
+decision, the order is test-issued, the image tool is connected (else its one
+card). The card shows the decision and what will be made. One click runs
+order → copy → production → handover check → Yoav's check. Copy runs first: it
+costs no credits, and a campaign whose copy cannot be written must not spend
+them. The result line is built from the result: ready (counts), incomplete or
+rejected (each missing thing by name). Stop mode: `STOP_FINISH`.
+
+Storage: app_settings `media_orders:<client_id>` (newest 20, no bytes); files
+in the client's Drive media folder under `ads/<order id>/`.
+
+### Not built, not verified
+
+- **Nothing is uploaded to Google Ads.** No asset upload, no asset group, no
+  campaign. The chain ends at a verified set in Drive.
+- **Internal accounts only** (`internal_only: True`) until one live run; opening
+  it to paying clients is the owner's decision.
+- **Never run live**: not against the image tool, a real brand brief, Drive or
+  the model. Tests use fakes for all four.
+- **Video**: not produced. Uploads in this system are always Private, and an ad
+  needs a public or unlisted video, so a `youtube` order (and the optional
+  video of the other types) cannot be completed by the system — it fails by
+  name. There is no "attach a URL to the order" path yet.
+- **Uploaded banners** (the 150 KB sizes): the table, the compressor and the
+  checks cover them; nothing produces them, and the card never orders them.
+- **Palette check**: the variant is recorded by the producer and compared; code
+  draws no colours into these images, so there is no pixel-level palette
+  measurement of a generated photo.
+- The agents do not yet read orders back (`media_order.summary` exists, nothing
+  feeds it to `client_state`).

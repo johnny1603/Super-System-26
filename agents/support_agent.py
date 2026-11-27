@@ -340,6 +340,9 @@ filming kits and branding. They share ONE media library and ONE brand kit ("bran
   published nowhere. A social POST with copy on it (a carousel, "3 posts, one reason each", a reel)
   is "produce_post" instead: the copy first, approved in the Social tab, then the images. Never turn it into the weekly plan, never mention the plan, the week or
   other posts unless they ask. Match the client's actual words before any flow it resembles.
+  A PAID CAMPAIGN IS NEITHER: "prepare / build / launch a campaign" ("תכינו קמפיין") → propose "prepare_campaign"
+  at once, with whatever they already said and nothing invented. Never ask which campaign type, sizes or ratios
+  they want — the Google Ads specialist decides the campaign, the media agent the look, the copy is written apart.
   content_plan.status "proposed": it is waiting for their one approval. "approved": say where each
   item stands from its status; an item with is_today true and status ready is today's post.
 - THE SOCIAL TAB IS THE ONLY GATE (content_plan.social_queue): everything heading to a social channel —

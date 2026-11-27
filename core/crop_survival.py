@@ -198,7 +198,7 @@ def crops(content: bytes, slot: str, targets: tuple = None) -> dict:
 
 
 def line(result: dict) -> str:
-    """One log line for a result: `[crop_survival] landscape 1200x628 colour: 1:1 96% ok, 4:1 41% FAIL`."""
+    """One log line for a result: slot, measured size, method, then each crop's share and ok / FAIL."""
     parts = ", ".join(f"{c['aspect']} {round(c['retained'] * 100)}% {'ok' if c['ok'] else 'FAIL'}" for c in result["crops"])
     size = "x".join(str(v) for v in result["size"])
     return (f"[{SERVICE_NAME}] {result['slot']} {size} {result['method']}: "

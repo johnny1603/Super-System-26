@@ -1055,6 +1055,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   last pose never repeated. **No agent ever sets or rebuilds a character** (`set_reference` admin-only,
   `create_element` refuses; `report_element_weak` only). Background removal path NOT in the docs, NOT run
   live. `tests/test_agent_characters.py`.
+- **Paid media (2026-11-28, `docs/PAID-MEDIA.md`)**: `core/google_ads_formats` is THE table of Google Ads sizes, ratios,
+  character limits and file caps (verified 2026-11-28, re-verify by 2027-02-28; a literal anywhere else fails
+  `tests/test_google_ads_formats.py`); judgment in `knowledge/paid-media-craft.md`. Measured on the produced file:
+  `core/crop_survival` (the subject survives Google's centre crops) and `core/ad_compress` (to the cap, or
+  `CannotReachCap`). The handoff (`core/media_order`): Yoav issues the MEDIA ORDER (he decides the campaign type, never
+  the look), text assets are COPY (`core/ad_copy` on `copy_budget.ads_budget` — never the same step as the images),
+  Lior produces (`core/paid_media_production`: logos are the client's file, never generated), `hand_over` checks the
+  delivery FROM THE FILES and an incomplete set raises `IncompleteDelivery` by name — Yoav is not told — then
+  `yoav_verify` re-checks against the platform minimum on its own. Chat: ONE card `prepare_campaign`
+  (`core/media_order_actions`, every param optional, **internal accounts only until a live run**, `STOP_FINISH`).
+  NOTHING is uploaded to Google Ads; video and uploaded banners are not produced; never run live.
+  app_settings `media_orders:<id>`. `tests/test_media_order.py`, `tests/test_paid_media_checks.py`.
 - **Specialist replies (2026-11-22, `core/reply_guards.py`)**: after the model, in
   `support_agent._reply_guards`: a SPECIALIST's off-request content-plan talk and plan card are
   dropped (the manager, persona "general", still orchestrates); a sentence repeated in one reply

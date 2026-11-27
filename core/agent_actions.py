@@ -5782,6 +5782,9 @@ _CREATIVE_REFUSALS = {
 ACTIONS["clone_voice"]["refusals"] = _CREATIVE_REFUSALS
 ACTIONS["make_presenter_video"]["refusals"] = _CREATIVE_REFUSALS
 ACTIONS["produce_requested_content"]["refusals"] = {"missing_tool": _CREATIVE_REFUSALS["missing_tool"]}
+# A paid campaign as ONE card: order -> copy -> media -> checked handover -> verification (2026-11-28) — core/media_order_actions
+from core import media_order_actions as _media_order_actions
+ACTIONS.update(_media_order_actions.build(_sys.modules[__name__]))
 # The Social-tab gate refused at the send itself (core/social_queue.check):
 # the item was not approved there, or its approval was taken back meanwhile
 _NOT_APPROVED = _txt(
@@ -6819,7 +6822,7 @@ STOP_DISCARD = {"advance_organic_plan", "approve_organic_keywords", "build_seo_r
 STOP_JOB = {"send_tiktok_to_inbox"}
 STOP_FINISH = {"configure_conversion", "revert_conversion", "publish_youtube_from_media", "update_site_items",
                "update_site_items_without_backup", "clone_voice", "make_presenter_video",
-               "create_presenter_from_photos", "produce_requested_content"}
+               "create_presenter_from_photos", "produce_requested_content", "prepare_campaign"}
 
 STOPPED_MIDWAY = _txt(
     "עצרתי ✓ \"{title}\" לא ימשיך: שום דבר חדש לא יוצג, לא יישלח ולא יעלה לאוויר. אם חלק מהעבודה כבר נשמר, הוא נשאר טיוטה שרק אתם רואים.",
