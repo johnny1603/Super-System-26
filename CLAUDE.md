@@ -1067,7 +1067,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   incomplete set raises `IncompleteDelivery` by name — Yoav is not told — then
   `yoav_verify` re-checks against the platform minimum on its own. Chat: ONE card `prepare_campaign`
   (`core/media_order_actions`, every param optional, **internal accounts only until a live run**, `STOP_FINISH`).
-  NOTHING is uploaded to Google Ads; video and uploaded banners are not produced; never run live.
+  A video row is a YouTube URL: the order's `youtube_url`, or one clip uploaded UNLISTED via
+  `youtube_content_agent.publish` (`purpose: "ad"`, the Social gate included — a held order continues with `order`);
+  `upload_video_stream(privacy_status=)` defaults to private and the client card `publish_youtube_from_media` STILL
+  uploads Private; the result reports the status YouTube answered; the check asks `youtube_service.public_video_state`
+  (reachable, not private). NOTHING is uploaded to Google Ads; uploaded banners are not produced; never run live.
   app_settings `media_orders:<id>`. `tests/test_media_order.py`, `tests/test_paid_media_checks.py`.
 - **Specialist replies (2026-11-22, `core/reply_guards.py`)**: after the model, in
   `support_agent._reply_guards`: a SPECIALIST's off-request content-plan talk and plan card are

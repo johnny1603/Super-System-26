@@ -24,7 +24,9 @@ PRICING MODEL (business decision, 2026-07-23 handoff, CONFIRMED same day at
   reflects the connection/upload/engagement OPERATIONAL work, same
   principle as every other platform management fee in PRICING.
 
-Publishing philosophy: uploads land PRIVATE by default (privacy_status=
+Publishing philosophy (an AD video is the one exception since 2026-11-28: purpose
+'ad' uploads UNLISTED, and the result reports the status YouTube answered):
+uploads land PRIVATE by default (privacy_status=
 'private') — a human flips it public/unlisted in YouTube Studio. Same
 final-tap principle as PAUSED ad campaigns, WordPress drafts, and TikTok's
 Upload-to-Inbox — never auto-published anywhere.
@@ -34,6 +36,7 @@ list (2 quota units total per check, not search.list's 100) — no comment
 CONTENT reading in v1 (matches the TikTok agent's own honest limit; adding
 it would need the commentThreads endpoint, a bigger scope ask, deferred).
 """
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -259,6 +262,7 @@ def run_channel_detection_scan() -> dict:
 # (core/agent_actions publish_youtube_from_media) stop at this many per client
 # per UTC day; every upload path counts toward it.
 DAILY_UPLOADS_PER_CLIENT = 3
+AD_PRIVACY = "unlisted"         # a video an ad references: reachable by its URL, not listed on the channel
 
 
 def uploads_today(client_id: int) -> int:
@@ -292,6 +296,10 @@ def publish(client_id: int, spec: dict) -> dict:
 
     drive_file_id = (spec.get("drive_file_id") or "").strip()
     title = (spec.get("title") or "").strip()
+    # An AD video is uploaded UNLISTED (an ad cannot reference a private video); everything
+    # else stays private until the owner publishes it in YouTube Studio. Nothing here can ask
+    # for public, and the purpose is set by code (core/media_order_actions), never by a model.
+    privacy = AD_PRIVACY if spec.get("purpose") == "ad" else "private"
     if not drive_file_id:
         return {"success": False, "errors": ["drive_file_id is required"]}
     if not title:
@@ -327,19 +335,33 @@ def publish(client_id: int, spec: dict) -> dict:
                 lambda offset, length: drive.read_range(drive_file_id, offset, length),
                 int(meta["size"]), title, spec.get("description", ""), mime_type=mime,
                 tags=spec.get("tags") or [], category_id=spec.get("category_id", ""),
-                default_language=spec.get("default_language", "")))
+                default_language=spec.get("default_language", ""),
+                **({"privacy_status": privacy} if privacy != "private" else {})))
     except Exception as e:
         agent_alert(AGENT_NAME, [f"YouTube publish failed for client {client_id} "
                                  f"(file {drive_file_id}): {e}"])
         return {"success": False, "errors": [str(e)]}
 
     video_id = result.get("id", "")
+    # What YouTube ANSWERED, never what we asked for. An answer that names no status is
+    # reported as unknown — it is not assumed to be the status we sent.
+    api_status = result.get("status") if isinstance(result.get("status"), dict) else {}
+    actual = str(api_status.get("privacyStatus") or "")
+    mismatch = actual != privacy
+    if mismatch:
+        agent_alert(AGENT_NAME, [f"YouTube upload for client {client_id} (video {video_id}): asked for "
+                                 f"{privacy}, the API answered status={json.dumps(api_status, ensure_ascii=False)[:400]} "
+                                 f"(keys in the response: {sorted(result)[:12]})"])
     log_activity(client_id, AGENT_NAME, "content_published",
-                {"drive_file_id": drive_file_id, "title": title},
-                {"video_id": video_id, "privacy_status": "private"})
-    social_queue.mark_delivered(client_id, "youtube", "private", file_id=drive_file_id)
-    return {"success": True, "video_id": video_id,
-            "note": "uploaded as PRIVATE - review and publish it in YouTube Studio"}
+                {"drive_file_id": drive_file_id, "title": title, "privacy_requested": privacy},
+                {"video_id": video_id, "privacy_status": actual or "unknown"})
+    social_queue.mark_delivered(client_id, "youtube", actual if actual in ("private", "unlisted") else
+                                ("done" if actual == "public" else privacy), file_id=drive_file_id)
+    return {"success": True, "video_id": video_id, "url": f"https://www.youtube.com/watch?v={video_id}" if video_id else "",
+            "privacy_requested": privacy, "privacy_status": actual or "unknown", "privacy_mismatch": mismatch,
+            "api_status": api_status,
+            "note": ("uploaded as PRIVATE - review and publish it in YouTube Studio" if actual == "private"
+                     else f"uploaded; YouTube reports privacyStatus={actual or 'unknown'}")}
 
 
 # ─── Engagement ─────────────────────────────────────────────────────────────

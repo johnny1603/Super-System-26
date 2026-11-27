@@ -222,6 +222,40 @@ rejected (each missing thing by name). Stop mode: `STOP_FINISH`.
 Storage: app_settings `media_orders:<client_id>` (newest 20, no bytes); files
 in the client's Drive media folder under `ads/<order id>/`.
 
+### 3.6 Video: a YouTube URL, unlisted (2026-11-28)
+
+Private was OUR choice in `youtube_service.upload_video_stream`, not a
+platform rule. The function now takes `privacy_status` (private | unlisted |
+public; default private). `youtube_content_agent.publish` sends `unlisted`
+only for `purpose: "ad"` — set by code, never by a model — and nothing can ask
+for public. **The client card `publish_youtube_from_media` is unchanged and
+still uploads Private**: the Google verification material and the frozen
+privacy policy describe it that way; changing it is the owner's call.
+
+The result reports what YouTube ANSWERED (`privacy_status` from the returned
+resource, `api_status`, `privacy_mismatch`); an answer different from the
+request raises an admin alert carrying the API's own status object — no
+assumption about why.
+
+The order: `youtube_url` (a video already on the client's channel; it orders
+the video row). Without one, `paid_media_production.video_asset` makes one
+short clip on the client's tool and uploads it through `publish` — the
+Social-tab gate included. Not approved there → the clip is queued, the row is
+`video_waiting_approval`, the order is `incomplete` (Yoav not told) and keeps
+`video_file_id`; `prepare_campaign` with `order` continues it with the SAME
+clip after the approval.
+
+The delivery check on a video row (`media_order.video_problems`): a YouTube
+URL, never a file; then `youtube_service.public_video_state(url)` — YouTube's
+public oEmbed endpoint, asked as an outsider, no token and no API quota —
+must answer that the video opens (`video_private` / `video_unreachable` /
+`video_unverified` otherwise; no answer is not a pass). Yoav's check asks
+again on its own.
+
+Quota: one upload is 1,600 of the project's 10,000 daily YouTube Data API
+units, shared by every client; raising that needs the compliance audit. The
+existing brakes apply (`DAILY_UPLOAD_LIMIT`). Nothing here hit it — nothing
+here has run.
 ### Not built, not verified
 
 - **Nothing is uploaded to Google Ads.** No asset upload, no asset group, no
@@ -230,10 +264,8 @@ in the client's Drive media folder under `ads/<order id>/`.
   it to paying clients is the owner's decision.
 - **Never run live**: not against the image tool, a real brand brief, Drive or
   the model. Tests use fakes for all four.
-- **Video**: not produced. Uploads in this system are always Private, and an ad
-  needs a public or unlisted video, so a `youtube` order (and the optional
-  video of the other types) cannot be completed by the system — it fails by
-  name. There is no "attach a URL to the order" path yet.
+- **Video** (2026-11-28, §3.6): built, never run live — no upload has come back
+  from YouTube at all, unlisted or otherwise.
 - **Uploaded banners** (the 150 KB sizes): the table, the compressor and the
   checks cover them; nothing produces them, and the card never orders them.
 - **Palette check**: what is compared is the BACKGROUND colour of the file. A

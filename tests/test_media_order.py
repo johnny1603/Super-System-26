@@ -39,6 +39,7 @@ LANGS = ("he", "en", "fr", "ar", "ru")
 TODAY = date(2026, 11, 28)
 ROLES = {"bg": "#F4F1DE", "fg": "#1F3A5F", "accent": "#E07A5F", "muted": "#8D99AE"}
 TEAL = (0, 128, 128)
+YT = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 FACTS = {"palette_variants": []}
 DECISION = {"campaign_type": "pmax", "objective": "sales", "audience_segment": "home bakers",
             "landing_page_url": "https://example.com/shop", "offer": "ערכת אפייה ביתית"}
@@ -258,9 +259,27 @@ class Delivery(unittest.TestCase):
                         (mo.asset("video", 1, youtube_url="https://vimeo.com/1"), "video_bad_url")):
             problems = mo.check_delivery(o, mo.manifest(o, [a]), {})["problems"]
             self.assertIn(code, {p["code"] for p in problems})
-        good = mo.asset("video", 1, youtube_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-        result = mo.check_delivery(o, mo.manifest(o, [good]), {})
-        self.assertEqual([p for p in result["problems"] if p["slot"] == "video"], [])
+        good = mo.asset("video", 1, youtube_url=YT)
+        for state, code in (("ok", None), ("private", "video_private"), ("not_found", "video_unreachable"),
+                            ("unknown", "video_unverified")):
+            result = mo.check_delivery(o, mo.manifest(o, [good]), {}, probe=lambda url, s=state: {"state": s, "http": 403})
+            self.assertEqual({p["code"] for p in result["problems"]}, {code, "missing"} if code else set(), state)
+        # nobody asked YouTube = nothing was proven = not counted
+        self.assertIn("video_unverified", {p["code"] for p in mo.check_delivery(o, mo.manifest(o, [good]), {})["problems"]})
+        # the upload's own claim is not the check: it says unlisted, an outsider is refused
+        claims = mo.asset("video", 1, youtube_url=YT, privacy_status="unlisted")
+        problems = mo.check_delivery(o, mo.manifest(o, [claims]), {}, probe=lambda u: {"state": "private", "http": 401})
+        self.assertIn("video_private", {p["code"] for p in problems["problems"]})
+
+    def test_the_order_carries_the_youtube_url(self):
+        o = order(campaign_type="youtube", youtube_url=YT)
+        self.assertEqual((o["youtube_url"], mo.media_brief(o)["youtube_url"]), (YT, YT))
+        self.assertTrue(any(r["kind"] == "video" for r in order(youtube_url=YT)["required_assets"]))   # pmax + a video
+        for change in ({"campaign_type": "youtube", "youtube_url": "https://vimeo.com/1"},
+                       {"campaign_type": "search", "youtube_url": YT}):
+            with self.assertRaises(mo.OrderError) as caught:
+                order(**change)
+            self.assertEqual(caught.exception.code, "youtube_url")
 
     def test_every_problem_reads_in_five_languages(self):
         for code, table in mo.PROBLEM_TEXT.items():
@@ -435,6 +454,105 @@ class Production(unittest.TestCase):
         source = _src("core", "paid_media_production.py")
         self.assertNotIn("generate(", source[source.index("def fit_logo"):source.index("# ─── The order")])
 
+
+class YouTubeOrder(unittest.TestCase):
+    """A youtube campaign order through the card's own run(), end to end, on fakes."""
+
+    def setUp(self):
+        from core import agent_actions as aa
+        self.aa, self.run = aa, aa.ACTIONS["prepare_campaign"]["run"]
+        self.store, self.alerts, self.posted, self.made, self.uploaded = {}, [], [], [], []
+        self.saved = [(mo, n, getattr(mo, n)) for n in ("save", "get", "_palette")]
+        self.saved += [(aa, n, getattr(aa, n)) for n in ("_client", "_alert", "_post_client_message", "_lang")]
+        mo.save = lambda cid, o: self.store.__setitem__(o["id"], {**o})
+        mo.get = lambda cid, oid: dict(self.store.get(oid) or {})
+        mo._palette = lambda cid, audience, facts, roles: {"variant": "default", "segment": "", "roles": ROLES}
+        aa._client = lambda cid: {"id": cid, "language": "he", "billing_exempt": True, "business_name": "קפה נועה"}
+        aa._alert = self.alerts.append
+        aa._lang = lambda cid: "he"
+        aa._post_client_message = lambda cid, persona, text: self.posted.append((persona, text))
+        self.params = {**DECISION, "campaign_type": "youtube"}
+        self.upload_answer = {"url": YT, "privacy_status": "unlisted", "privacy_requested": "unlisted",
+                              "api_status": {"privacyStatus": "unlisted", "uploadStatus": "uploaded"}}
+        self.probe_state = "ok"
+
+    def tearDown(self):
+        for module, name, value in self.saved:
+            setattr(module, name, value)
+
+    def tools(self):
+        return {"make_video": lambda cid, brief: self.made.append(brief["id"]) or {"file_id": "driveVideo1234"},
+                "upload_video": lambda cid, fid, brief: self.uploaded.append(fid) or dict(self.upload_answer),
+                "probe": lambda url: {"state": self.probe_state, "http": {"ok": 200, "private": 403}.get(self.probe_state, 0)}}
+
+    def test_with_the_clients_own_video_it_completes_in_one_run(self):
+        result = self.run(27, {**self.params, "youtube_url": YT}, None, production=self.tools())
+        self.assertEqual((result["status"], result["video_url"]), ("verified", YT))
+        self.assertEqual((self.made, self.uploaded), ([], []))                    # nothing generated, nothing uploaded
+        self.assertEqual(self.store[result["order"]]["status"], "verified")
+        self.assertEqual([p for p, _t in self.posted], ["google"])
+
+    def test_generated_uploaded_unlisted_checked_handed_over_verified(self):
+        result = self.run(27, self.params, None, production=self.tools())
+        self.assertEqual(result["status"], "verified", result)
+        self.assertEqual((len(self.made), self.uploaded), (1, ["driveVideo1234"]))
+        self.assertEqual(result["video_privacy"], "unlisted")
+        order_ = self.store[result["order"]]
+        row = order_["delivery"]["manifest"]["assets"][0]
+        self.assertEqual((row["youtube_url"], row["privacy_status"]), (YT, "unlisted"))
+        self.assertTrue(order_["verification"]["can_serve"])
+        line = self.aa.ACTIONS["prepare_campaign"]["done_message"](result, "he")
+        self.assertIn(YT, line)
+        self.assertIn("לא רשום", line)
+        self.assertEqual(self.alerts, [])
+
+    def test_the_social_gate_holds_the_order_and_it_continues_with_the_same_clip(self):
+        self.upload_answer = {"waiting_approval": True}
+        first = self.run(27, self.params, None, production=self.tools())
+        self.assertEqual((first["status"], first["waiting_video"]), ("incomplete", True))
+        self.assertEqual(self.posted, [])                                        # Yoav was not told
+        self.assertEqual(self.store[first["order"]]["video_file_id"], "driveVideo1234")
+        line = self.aa.ACTIONS["prepare_campaign"]["done_message"](first, "he")
+        self.assertIn(first["order"], line)
+        self.assertIn("סושיאל", line)
+        self.upload_answer = {"url": YT, "privacy_status": "unlisted", "privacy_requested": "unlisted"}
+        second = self.run(27, {"order": first["order"]}, None, production=self.tools())
+        self.assertEqual((second["status"], second["order"]), ("verified", first["order"]))
+        self.assertEqual(len(self.made), 1)                                      # the SAME clip, not a second one
+        self.assertEqual(self.uploaded, ["driveVideo1234", "driveVideo1234"])
+        with self.assertRaises(self.aa.ActionFailed) as caught:
+            self.run(27, {"order": first["order"]}, None, production=self.tools())   # no longer waiting
+        self.assertEqual(caught.exception.code, "order_gone")
+
+    def test_an_upload_that_comes_back_private_is_reported_as_the_api_answered(self):
+        self.upload_answer = {"url": YT, "privacy_status": "private", "privacy_requested": "unlisted",
+                              "api_status": {"privacyStatus": "private", "uploadStatus": "uploaded"}}
+        self.probe_state = "private"
+        result = self.run(27, self.params, None, production=self.tools())
+        self.assertEqual(result["status"], "incomplete")
+        self.assertIn("video_private", {p["code"] for p in result["problems"]})
+        self.assertEqual(self.posted, [])
+        told = " | ".join(self.alerts)
+        self.assertIn("asking for unlisted and YouTube answered private", told)
+        self.assertIn('"uploadStatus": "uploaded"', told)                      # the API's own status object
+        source = _src("core", "media_order_actions.py") + _src("agents", "youtube_content_agent.py")
+        self.assertNotIn("unverified API project", source)                       # no assumed policy in the report
+
+    def test_youtube_not_answering_is_not_a_pass(self):
+        self.probe_state = "unknown"
+        result = self.run(27, self.params, None, production=self.tools())
+        self.assertEqual(result["status"], "incomplete")
+        self.assertIn("video_unverified", {p["code"] for p in result["problems"]})
+
+    def test_the_real_upload_goes_through_the_one_publisher_and_its_gate(self):
+        source = _src("core", "paid_media_production.py")
+        body = source[source.index("def _default_upload_video"):source.index("def video_asset")]
+        self.assertIn("youtube_content_agent.publish(", body)
+        self.assertIn('"purpose": "ad"', body)
+        self.assertIn('out.get("not_approved")', body)
+        self.assertNotIn("upload_video_stream", source)                          # never around the gate
+        agent = _src("agents", "youtube_content_agent.py")
+        self.assertLess(agent.index("social_queue.check("), agent.index("yt.upload_video_stream("))
 
 class Wiring(unittest.TestCase):
     def setUp(self):

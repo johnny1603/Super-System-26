@@ -154,13 +154,36 @@ class Upload(unittest.TestCase):
         for size in server.chunk_sizes[:-1]:
             self.assertEqual(size % (256 * 1024), 0)
 
-    def test_always_private_and_no_privacy_parameter_exists(self):
+    def test_private_unless_asked_and_only_a_known_status(self):
+        # 2026-11-28: private is OUR default, not a platform rule; an ad video asks for unlisted
         _, server = self.run_upload(CHUNK)
         self.assertEqual(server.metadata["status"]["privacyStatus"], "private")
         self.assertEqual(server.init_headers["X-Upload-Content-Length"], str(CHUNK))
         params = inspect.signature(yt.upload_video_stream).parameters
-        self.assertFalse([p for p in params if "privacy" in p.lower()])
+        self.assertEqual(params["privacy_status"].default, "private")
         self.assertFalse(hasattr(yt, "upload_video"))     # the whole-file version is gone
+        server = FakeYouTube(CHUNK)
+        FAKE_HTTPX.post, FAKE_HTTPX.put = server.post, server.put
+        yt.upload_video_stream("refresh", pattern, CHUNK, "Ad", _sleep=self.sleeps.append, privacy_status="unlisted")
+        self.assertEqual(server.metadata["status"], {"privacyStatus": "unlisted", "selfDeclaredMadeForKids": False})
+        with self.assertRaises(yt.UploadFailed):
+            yt.upload_video_stream("refresh", pattern, CHUNK, "Ad", _sleep=self.sleeps.append, privacy_status="friends")
+
+    def test_an_outsiders_view_of_a_video(self):
+        class R:
+            def __init__(self, code):
+                self.status_code = code
+        asked = []
+        for code, state in ((200, "ok"), (401, "private"), (403, "private"), (404, "not_found"), (500, "unknown")):
+            got = yt.public_video_state("https://youtu.be/dQw4w9WgXcQ",
+                                        _get_url=lambda u, params, c=code: asked.append((u, params)) or R(c))
+            self.assertEqual((got["state"], got["http"]), (state, code))
+        self.assertEqual(asked[0][0], yt.OEMBED_URL)
+        self.assertNotIn("key", asked[0][1])                # no token, no API key, no quota
+
+        def down(u, params):
+            raise TimeoutError()
+        self.assertEqual(yt.public_video_state("https://youtu.be/dQw4w9WgXcQ", _get_url=down)["state"], "unknown")
 
     def test_metadata_goes_in_the_snippet_and_status_stays_private(self):
         server = FakeYouTube(CHUNK)
@@ -376,6 +399,32 @@ class Publish(unittest.TestCase):
         self.assertEqual(args[2], 300 * MiB)                         # total size from Drive
         self.assertEqual(args[1](CHUNK, 10), pattern(CHUNK, 10))     # reader = Drive range reads
         self.assertNotIn("privacy_status", kwargs)
+        self.assertEqual(result["privacy_requested"], "private")
+
+    def test_an_ad_video_asks_for_unlisted_and_reports_what_youtube_answered(self):
+        self.metas["v"] = {"mimeType": "video/mp4", "size": str(MiB)}
+        stub = sys.modules["core.youtube_service"]
+        saved = stub.upload_video_stream
+        try:
+            for answered, mismatch in (({"privacyStatus": "unlisted"}, False), ({"privacyStatus": "private"}, True),
+                                       (None, True)):
+                self.uploads.clear()
+                stub.upload_video_stream = lambda *a, **k: self.uploads.append((a, k)) or {
+                    "id": "vid9", **({"status": answered} if answered else {})}
+                result = self.agent.publish(40, {"drive_file_id": "v", "title": "T", "purpose": "ad"})
+                (_args, kwargs), = self.uploads
+                self.assertEqual(kwargs["privacy_status"], "unlisted")
+                self.assertEqual(result["privacy_requested"], "unlisted")
+                self.assertEqual(result["privacy_status"], (answered or {}).get("privacyStatus", "unknown"))
+                self.assertEqual(result["privacy_mismatch"], mismatch)
+                self.assertEqual(result["api_status"], answered or {})
+                self.assertEqual(result["url"], "https://www.youtube.com/watch?v=vid9")
+        finally:
+            stub.upload_video_stream = saved
+        # nothing can ask for public, and a model-supplied privacy field is ignored
+        self.uploads.clear()
+        self.agent.publish(40, {"drive_file_id": "v", "title": "T", "privacy_status": "public"})
+        self.assertNotIn("privacy_status", self.uploads[0][1])
 
     def test_over_the_limit_or_not_a_video_is_refused_before_uploading(self):
         self.metas.update({"big": {"mimeType": "video/mp4", "size": str(vl.VIDEO_UPLOAD_MAX_BYTES + 1)},

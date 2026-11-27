@@ -26,8 +26,15 @@ Logos are the CLIENT'S logo file, fitted to each logo slot — never generated,
 redrawn or "improved". No logo file = no logo row in the manifest, and the
 handover check names it.
 
-Video and uploaded banners are NOT produced here (see docs/PAID-MEDIA.md
-§Not built): their rows stay empty and the handover check names them.
+A VIDEO row (2026-11-28) is a YouTube URL, never a file (`video_asset`): the
+URL the order already carries (a video on the client's channel), or one short
+clip made on the client's tool, uploaded to THEIR channel as UNLISTED through
+agents/youtube_content_agent.publish — the Social-tab gate included: a clip
+the owner has not approved there is queued and the row says it is waiting.
+The row records the privacy status YouTube ANSWERED, never the one asked for.
+
+Uploaded banners are NOT produced here (docs/PAID-MEDIA.md §Not built): their
+rows stay empty and the handover check names them.
 
 Nothing here decides whether the set is complete. That is
 media_order.check_delivery, from the files — the producer does not approve
@@ -147,6 +154,65 @@ def _default_store(client_id: int):
     return lambda order_id, name, content, mime: store(client_id, order_id, name, content, mime)
 
 
+# ─── The video row ───────────────────────────────────────────────────────────
+
+def _default_make_video(client_id: int, brief: dict) -> dict:
+    from agents import media_agent
+    ask = (f"A short video ad. What is advertised: {brief['offer']}. Objective: {brief['objective']}. "
+           f"Audience: {brief['audience_segment']}. No on-screen text.")
+    out = media_agent.generate_video(client_id, ask, "youtube")
+    if out.get("success") and out.get("file_id"):
+        return {"file_id": out["file_id"], "link": out.get("link", "")}
+    if media_agent._NO_ACCOUNT_ERROR in (out.get("errors") or []):
+        raise ProductionBlocked("missing_tool")
+    return {"error": "; ".join(str(e) for e in out.get("errors") or [])[:200] or "the video was not produced"}
+
+
+def _default_upload_video(client_id: int, file_id: str, brief: dict) -> dict:
+    """The clip → the client's channel, UNLISTED, through the one publisher
+    (and its Social-tab gate). Not approved there yet = queued for the owner."""
+    from agents import youtube_content_agent
+    from core import social_queue
+    out = youtube_content_agent.publish(client_id, {
+        "drive_file_id": file_id, "title": brief["offer"][:90], "description": brief["landing_page_url"],
+        "purpose": "ad"})
+    if out.get("not_approved"):
+        if not any(i.get("file_id") == file_id for i in social_queue.items(client_id)):
+            social_queue.add_safely(client_id, file_id, "video", ["youtube"], producer="media", source="chat",
+                                    title=brief["offer"][:120], lane="client")
+        return {"waiting_approval": True}
+    if not out.get("success") or not out.get("url"):
+        return {"error": "; ".join(str(e) for e in out.get("errors") or [])[:200] or "no video id came back"}
+    return {"url": out["url"], "privacy_status": out.get("privacy_status"),
+            "privacy_requested": out.get("privacy_requested"), "api_status": out.get("api_status")}
+
+
+def video_asset(client_id: int, brief: dict, make=None, upload=None) -> dict:
+    """ONE manifest row for the order's video: always a YouTube URL when it
+    succeeds. make(client_id, brief) -> {"file_id"} | {"error"};
+    upload(client_id, file_id, brief) -> {"url", "privacy_status", ...} |
+    {"waiting_approval": True} | {"error"}."""
+    if brief.get("youtube_url"):
+        return media_order.asset("video", 1, youtube_url=brief["youtube_url"], source="client")
+    file_id = brief.get("video_file_id") or ""
+    if not file_id:
+        made = (make or _default_make_video)(client_id, brief)
+        file_id = made.get("file_id") or ""
+        if not file_id:
+            return media_order.asset("video", 1, source="generated", upload_error=made.get("error") or "not produced")
+    out = (upload or _default_upload_video)(client_id, file_id, brief)
+    if out.get("waiting_approval"):
+        return media_order.asset("video", 1, source="generated", file_id=file_id, waiting_approval=True)
+    if not out.get("url"):
+        return media_order.asset("video", 1, source="generated", file_id=file_id,
+                                 upload_error=out.get("error") or "upload failed")
+    print(f"[{SERVICE_NAME}] client {client_id}: order {brief['id']} video uploaded — asked "
+          f"{out.get('privacy_requested')}, YouTube answered {out.get('privacy_status')}")
+    return media_order.asset("video", 1, source="generated", file_id=file_id, youtube_url=out["url"],
+                             privacy_status=out.get("privacy_status"), privacy_requested=out.get("privacy_requested"),
+                             api_status=out.get("api_status"))
+
+
 # ─── One file to its slot ────────────────────────────────────────────────────
 
 def _open(content: bytes):
@@ -214,7 +280,7 @@ def fit_logo(row: dict, content: bytes) -> bytes:
 # ─── The order ───────────────────────────────────────────────────────────────
 
 def produce(client_id: int, brief: dict, generate=None, craft=None, load_logos=None, store=None,
-            stopped=None) -> tuple:
+            stopped=None, make_video=None, upload_video=None) -> tuple:
     """(manifest, files) for one order. The four callables are the real tools
     by default and fakes in the tests: generate(prompt, aspect) -> bytes;
     craft(brief, concept, earlier_prompts) -> prompt; load_logos(client_id) ->
@@ -318,8 +384,9 @@ def produce(client_id: int, brief: dict, generate=None, craft=None, load_logos=N
                 notes.append(f"{row['slot']}: not produced ({type(e).__name__}: {str(e)[:120]})")
     for row in rows:
         if row["kind"] == "video":
-            notes.append("video: not produced here — a video goes to the client's YouTube channel first and is "
-                         "attached to the order by its URL")
+            if stopped():
+                raise ProductionBlocked("stopped")
+            assets.append(video_asset(client_id, brief, make_video, upload_video))
         elif row["kind"] == "banner":
             notes.append(f"{row['slot']}: uploaded banners are not produced automatically")
     return media_order.manifest(brief, assets, notes), files

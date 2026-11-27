@@ -47,9 +47,10 @@ OBJECTIVES = ("sales", "leads", "website_traffic", "awareness")
 DEFAULT_CONCEPTS = 3          # distinct images per ratio (ours, not Google's): each one in EVERY ratio of the type
 DEFAULT_LEAD_DAYS = 3         # a deadline nobody stated
 STATUSES = ("ordered", "in_production", "incomplete", "handed_over", "verified", "rejected")
+VIDEO_OK = "ok"               # youtube_service.public_video_state: an outsider can open it (public or unlisted)
 ISSUER, PRODUCER = "yoav", "lior"
 MEDIA_KEYS = ("id", "client_id", "campaign_type", "objective", "audience_segment", "palette", "landing_page_url",
-              "offer", "required_assets", "deadline", "concepts", "specs")
+              "offer", "required_assets", "deadline", "concepts", "specs", "youtube_url", "video_file_id")
 COPY_KEYS = ("id", "client_id", "campaign_type", "objective", "audience_segment", "landing_page_url", "offer",
              "required_text", "deadline", "specs")
 URL_RE = re.compile(r"^https://[^\s/$.?#][^\s]*$", re.IGNORECASE)
@@ -116,7 +117,8 @@ def _palette(client_id: int, audience: str, facts, palette_roles) -> dict:
 def issue(client_id: int, decision: dict, facts: dict = None, today: date = None, palette_roles=None) -> dict:
     """Yoav's decision → a MEDIA ORDER. `decision`: {"campaign_type",
     "objective", "audience_segment", "landing_page_url", "offer", "deadline"?
-    (YYYY-MM-DD), "concepts"?, "banners"?, "video"?}. OrderError names the
+    (YYYY-MM-DD), "concepts"?, "banners"?, "video"?, "youtube_url"? (a video
+    already on the client's channel — it orders the video row)}. OrderError names the
     field that is wrong; nothing is stored here (see `save`)."""
     today = today or date.today()
     raw = decision or {}
@@ -148,15 +150,20 @@ def issue(client_id: int, decision: dict, facts: dict = None, today: date = None
         raise OrderError("concepts", "a number")
     ceiling = gaf.max_concepts(campaign_type)
     concepts = max(1, min(concepts, ceiling)) if ceiling else 0
+    youtube_url = str(raw.get("youtube_url") or "").strip()
+    if youtube_url and not gaf.youtube_id(youtube_url):
+        raise OrderError("youtube_url", "a YouTube video address (watch / shorts / youtu.be)")
+    if youtube_url and not gaf.campaign(campaign_type)["video"]:
+        raise OrderError("youtube_url", f"a {campaign_type} campaign takes no video")
     try:
         rows = gaf.required_assets(campaign_type, concepts=concepts or 1, banners=str(raw.get("banners") or "none"),
-                                   video=bool(raw.get("video")) or None)
+                                   video=bool(raw.get("video") or youtube_url) or None)
     except ValueError as e:
         raise OrderError("required_assets", str(e))
     return {"id": uuid.uuid4().hex[:12], "client_id": int(client_id), "campaign_type": campaign_type,
             "objective": objective, "audience_segment": audience,
             "palette": _palette(client_id, audience, facts, palette_roles),
-            "landing_page_url": url, "offer": offer, "required_assets": rows,
+            "landing_page_url": url, "offer": offer, "required_assets": rows, "youtube_url": youtube_url,
             "required_text": gaf.required_text(campaign_type), "deadline": deadline, "concepts": concepts,
             "issued_by": ISSUER, "issued_at": _now(), "status": "ordered",
             "specs": {"verified": gaf.VERIFIED, "reverify_by": gaf.REVERIFY_BY, "stale": gaf.stale(today),
@@ -205,7 +212,29 @@ def _what(row: dict, n=None) -> dict:
     return {"slot": row["slot"], "n": n, "size": f"{row.get('width')}x{row.get('height')}" if row.get("width") else ""}
 
 
-def check_delivery(order: dict, delivered: dict, files: dict) -> dict:
+def video_problems(a: dict, probe=None) -> list:
+    """A video row: a YouTube URL (never a file), REACHABLE and NOT PRIVATE —
+    asked of YouTube now (`probe(url)` → {"state", "http"},
+    youtube_service.public_video_state), never taken from what the upload
+    was asked to do. No probe / no answer = not proven = a problem."""
+    found = [{"code": "video_" + p["code"]} for p in gaf.video_reference_problems(a)]
+    if found:
+        if a.get("waiting_approval"):
+            return [{"code": "video_waiting_approval"}]
+        if a.get("upload_error"):
+            return [{"code": "video_upload_failed", "detail": str(a["upload_error"])[:200]}]
+        return found
+    state = (probe(a["youtube_url"]) if probe else None) or {"state": "unknown", "http": 0}
+    if state.get("state") != VIDEO_OK:
+        code = {"private": "video_private", "not_found": "video_unreachable"}.get(state.get("state"), "video_unverified")
+        found.append({"code": code, "http": state.get("http") or "—", "url": a["youtube_url"][:120]})
+    if str(a.get("privacy_status") or "") == "private" and not found:
+        # we uploaded it and the API answered private, yet an outsider can open it: say so, do not guess
+        found.append({"code": "video_private", "http": "api", "url": a["youtube_url"][:120]})
+    return found
+
+
+def check_delivery(order: dict, delivered: dict, files: dict, probe=None) -> dict:
     """The manifest against the order, from the FILES (`files` = {key(slot, n):
     bytes}): {"complete", "problems": [{"slot", "n", "code", ...}],
     "counts": {slot: {"have", "need"}}, "checked_at", "warning"}.
@@ -226,7 +255,7 @@ def check_delivery(order: dict, delivered: dict, files: dict) -> dict:
         for a in sorted(by_slot.get(row["slot"], []), key=lambda x: int(x.get("n") or 0)):
             found = []
             if row["kind"] == "video":
-                found += [{"code": "video_" + p["code"]} for p in gaf.video_reference_problems(a)]
+                found += video_problems(a, probe)
             else:
                 content = (files or {}).get(key(a["slot"], a.get("n") or 0))
                 if not content:
@@ -269,12 +298,13 @@ def check_delivery(order: dict, delivered: dict, files: dict) -> dict:
             "palette": {"variant": variant, "roles": roles}, "checked_at": _now(), "warning": gaf.stale_line()}
 
 
-def hand_over(client_id: int, order: dict, delivered: dict, files: dict, notify=None, store=True) -> dict:
+def hand_over(client_id: int, order: dict, delivered: dict, files: dict, notify=None, store=True,
+              probe=None) -> dict:
     """Lior's delivery → Yoav, ONLY when it is complete. Incomplete: the order
     is marked `incomplete` with what is missing, `notify` is NOT called and
     IncompleteDelivery is raised. Complete: marked `handed_over`, then
     `notify(order)` — the first moment Yoav hears of it."""
-    result = check_delivery(order, delivered, files)
+    result = check_delivery(order, delivered, files, probe)
     order["delivery"] = {"manifest": delivered, "check": result}
     if not result["complete"]:
         order["status"] = "incomplete"
@@ -295,7 +325,7 @@ def hand_over(client_id: int, order: dict, delivered: dict, files: dict, notify=
 
 # ─── Yoav's own check: the platform minimum ──────────────────────────────────
 
-def verify_minimum(campaign_type: str, delivered: list, texts: dict) -> dict:
+def verify_minimum(campaign_type: str, delivered: list, texts: dict, probe=None) -> dict:
     """Can this set SERVE? Deliberately blind to the order's rows and to the
     manifest's check: only the table's minimum_to_serve, the delivered files
     themselves (`delivered` = [{"slot", "content": bytes} | {"slot": "video",
@@ -311,7 +341,7 @@ def verify_minimum(campaign_type: str, delivered: list, texts: dict) -> dict:
         if not row:
             continue                                  # not something this campaign type takes (a banner): not counted
         if row["kind"] == "video":
-            ok = not gaf.video_reference_problems(item)
+            ok = not video_problems({"youtube_url": item.get("youtube_url")}, probe)     # asked again, by him
         else:
             ok = bool(item.get("content")) and not gaf.check_file(row, item["content"])
         if ok:
@@ -341,7 +371,7 @@ def verify_minimum(campaign_type: str, delivered: list, texts: dict) -> dict:
             "minimum_source": c["minimum_source"], "warning": gaf.stale_line()}
 
 
-def yoav_verify(client_id: int, order: dict, files: dict, texts: dict, store=True) -> dict:
+def yoav_verify(client_id: int, order: dict, files: dict, texts: dict, store=True, probe=None) -> dict:
     """The cross-check on a HANDED-OVER order: `verified` (uploadable) or
     `rejected`, with what the platform would refuse. Refuses to run on an
     order that was never handed over — there is nothing of Lior's to verify."""
@@ -350,7 +380,7 @@ def yoav_verify(client_id: int, order: dict, files: dict, texts: dict, store=Tru
     assets = ((order.get("delivery") or {}).get("manifest") or {}).get("assets") or []
     delivered = [{"slot": a["slot"], "content": (files or {}).get(key(a["slot"], a.get("n") or 0)),
                   "youtube_url": a.get("youtube_url")} for a in assets]
-    result = verify_minimum(order["campaign_type"], delivered, texts)
+    result = verify_minimum(order["campaign_type"], delivered, texts, probe)
     order["verification"] = {**result, "verified_by": ISSUER, "verified_at": _now()}
     order["status"] = "verified" if result["can_serve"] else "rejected"
     if store:
@@ -455,6 +485,29 @@ PROBLEM_TEXT = {
     "video_bad_url": _five("{what}: הקישור אינו קישור לסרטון YouTube.", "{what}: the link is not a YouTube video link.",
                            "{what} : le lien n'est pas un lien de vidéo YouTube.", "{what}: الرابط ليس رابط فيديو على YouTube.",
                            "{what}: ссылка не ведёт на видео YouTube."),
+    "video_private": _five("{what}: הסרטון ביוטיוב פרטי (או שאי אפשר להציג אותו מחוץ ליוטיוב), ומודעה לא יכולה להשתמש בו. תשובת יוטיוב: {http}.",
+                           "{what}: the YouTube video is private (or cannot be shown outside YouTube), and an ad cannot use it. YouTube answered: {http}.",
+                           "{what} : la vidéo YouTube est privée (ou ne peut pas être affichée hors de YouTube) ; une annonce ne peut pas l'utiliser. Réponse de YouTube : {http}.",
+                           "{what}: الفيديو على يوتيوب خاص (أو لا يمكن عرضه خارج يوتيوب)، ولا يمكن لإعلان استخدامه. ردّ يوتيوب: {http}.",
+                           "{what}: видео на YouTube закрытое (или его нельзя показывать вне YouTube), реклама не может его использовать. Ответ YouTube: {http}."),
+    "video_unreachable": _five("{what}: הקישור לא מוביל לסרטון קיים ביוטיוב. תשובת יוטיוב: {http}.",
+                               "{what}: the link does not lead to an existing YouTube video. YouTube answered: {http}.",
+                               "{what} : le lien ne mène pas à une vidéo YouTube existante. Réponse de YouTube : {http}.",
+                               "{what}: الرابط لا يقود إلى فيديو موجود على يوتيوب. ردّ يوتيوب: {http}.",
+                               "{what}: ссылка не ведёт на существующее видео YouTube. Ответ YouTube: {http}."),
+    "video_unverified": _five("{what}: לא הצלחתי לוודא מול יוטיוב שהסרטון נגיש ולא פרטי (תשובה: {http}), אז הוא לא נספר.",
+                              "{what}: I could not confirm with YouTube that the video is reachable and not private (answer: {http}), so it was not counted.",
+                              "{what} : impossible de confirmer auprès de YouTube que la vidéo est accessible et non privée (réponse : {http}) ; elle n'a pas été comptée.",
+                              "{what}: لم أتمكن من التأكد من يوتيوب أن الفيديو متاح وغير خاص (الرد: {http})، فلم يُحتسب.",
+                              "{what}: не удалось подтвердить у YouTube, что видео доступно и не закрыто (ответ: {http}), поэтому оно не засчитано."),
+    "video_waiting_approval": _five("{what}: הופק ומחכה לאישור שלכם בלשונית סושיאל. בלי האישור הזה שום דבר לא עולה לערוץ שלכם.",
+                                    "{what}: produced and waiting for your approval in the Social tab. Nothing goes to your channel without it.",
+                                    "{what} : produite, en attente de votre validation dans l'onglet Social. Rien n'est envoyé sur votre chaîne sans elle.",
+                                    "{what}: أُنتج وينتظر موافقتكم في تبويب السوشيال. لا يُرفع شيء إلى قناتكم بدونها.",
+                                    "{what}: готово и ждёт вашего одобрения во вкладке «Соцсети». Без него на ваш канал ничего не загружается."),
+    "video_upload_failed": _five("{what}: ההעלאה ליוטיוב לא הצליחה.", "{what}: the upload to YouTube did not succeed.",
+                                 "{what} : la mise en ligne sur YouTube a échoué.", "{what}: لم ينجح الرفع إلى يوتيوب.",
+                                 "{what}: загрузка на YouTube не удалась."),
     "palette_measured": _five("{what}: צבע הרקע שנמדד בקובץ הוא {measured} — לא אחד מצבעי פלטת המותג {variant} ({colors}).",
                               "{what}: the background colour measured in the file is {measured} — not one of the {variant} brand palette's colours ({colors}).",
                               "{what} : la couleur de fond mesurée dans le fichier est {measured} — pas une couleur de la palette de marque {variant} ({colors}).",

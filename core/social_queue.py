@@ -100,6 +100,11 @@ DELIVERY_TEXT = {
     "private": _five("הועלה כפרטי — מחכה לפרסום שלכם", "Uploaded as private — waiting for you to publish it",
                      "Mis en ligne en privé — en attente de votre publication", "رُفع كخاص — بانتظار نشركم له",
                      "Загружено как приватное — ждёт вашей публикации"),
+    "unlisted": _five("הועלה כ״לא רשום״ — נגיש רק למי שיש לו את הקישור, בשביל המודעה",
+                      "Uploaded as unlisted — reachable only with the link, for the ad",
+                      "Mis en ligne en non répertorié — accessible uniquement avec le lien, pour l'annonce",
+                      "رُفع كغير مدرج — متاح فقط لمن لديه الرابط، من أجل الإعلان",
+                      "Загружено как «доступ по ссылке» — только по ссылке, для рекламы"),
     "done": _five("פורסם ✓", "Published ✓", "Publié ✓", "نُشر ✓", "Опубликовано ✓"),
 }
 TEXT = {
@@ -1064,7 +1069,7 @@ def delivery(item: dict, modes: dict) -> dict:
         how = ((item.get("delivered") or {}).get(c) or {}).get("how")
         if item["status"] == "published" or how == "done":
             out[c] = "done"
-        elif how in ("drafts", "private"):
+        elif how in ("drafts", "private", "unlisted"):
             out[c] = how
         else:
             mode = modes.get(c, "not_connected")

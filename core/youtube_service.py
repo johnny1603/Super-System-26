@@ -41,6 +41,8 @@ from core.google_ads_service import exchange_code as _google_exchange_code
 
 API_BASE = "https://www.googleapis.com/youtube/v3"
 UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3"
+OEMBED_URL = "https://www.youtube.com/oembed"
+PRIVACY_STATUSES = ("private", "unlisted", "public")
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/youtube/callback"
 # What YouTube NEEDS — a slice of THE one list (core/google_scopes; the
@@ -138,7 +140,7 @@ def _snippet(title: str, description: str, tags, category_id: str, default_langu
 def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: str,
                         description: str = "", mime_type: str = "video/mp4",
                         tags: list = None, category_id: str = "", default_language: str = "",
-                        _sleep=None) -> dict:
+                        _sleep=None, privacy_status: str = "private") -> dict:
     """STREAMED resumable upload (videos.insert, uploadType=resumable):
     initiate with the metadata and the total size, then PUT the bytes in
     UPLOAD_CHUNK_BYTES pieces, each with `Content-Range: bytes a-b/total`.
@@ -157,14 +159,20 @@ def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: 
     is initiated once more without it — the upload never fails over that one
     field. selfDeclaredMadeForKids is always false.
 
-    Always PRIVATE: there is no privacy parameter — a human makes the video
-    public in YouTube Studio (same final-tap principle as PAUSED campaigns,
-    WordPress drafts, TikTok's inbox)."""
+    `privacy_status` (2026-11-28): "private" by default — a human makes the
+    video public in YouTube Studio (same final-tap principle as PAUSED
+    campaigns, WordPress drafts, TikTok's inbox). "unlisted" is for a video an
+    AD will reference (agents/youtube_content_agent.publish, purpose "ad").
+    Private is OUR choice on the default path, not a platform rule: what the
+    API answered is in the returned resource's status.privacyStatus, and the
+    caller reports THAT, never what it asked for."""
     import time
     from core.video_limits import UPLOAD_CHUNK_BYTES, fits
     sleep = _sleep or time.sleep
     if not fits(total_size):
         raise UploadFailed(f"video size {total_size} is outside the upload limit")
+    if privacy_status not in PRIVACY_STATUSES:
+        raise UploadFailed(f"unknown privacy status {privacy_status!r}")
     count = increment_call_counter("youtube", window_days=1)
     if count > DAILY_UPLOAD_LIMIT:
         raise RuntimeError(f"YouTube daily upload brake reached ({DAILY_UPLOAD_LIMIT}) - refusing upload")
@@ -177,9 +185,8 @@ def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: 
                      "Content-Type": "application/json; charset=UTF-8",
                      "X-Upload-Content-Type": mime_type,
                      "X-Upload-Content-Length": str(total_size)},
-            # Private, always — there is no way to pass anything else in
             json={"snippet": snippet,
-                  "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False}},
+                  "status": {"privacyStatus": privacy_status, "selfDeclaredMadeForKids": False}},
             timeout=TIMEOUT)
 
     snippet = _snippet(title, description, tags, category_id, default_language)
@@ -236,6 +243,26 @@ def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: 
             return status.json()
         if status is not None and status.status_code == 308:
             offset = _received_up_to(status)
+
+
+def watch_url(video_id: str) -> str:
+    return f"https://www.youtube.com/watch?v={video_id}"
+
+
+def public_video_state(url: str, _get_url=None) -> dict:
+    """Can someone who is NOT the owner open this video? Asked the way an
+    outsider would: YouTube's public oEmbed endpoint, no token, no API quota.
+    {"state": "ok" (public or unlisted) | "private" (exists, refused: private,
+    or embedding switched off) | "not_found" | "unknown" (could not ask),
+    "http": status}. An ad can only reference a video in state "ok"."""
+    get = _get_url or (lambda u, params: httpx.get(u, params=params, timeout=TIMEOUT, follow_redirects=True))
+    try:
+        response = get(OEMBED_URL, {"url": url, "format": "json"})
+    except Exception as e:
+        return {"state": "unknown", "http": 0, "detail": type(e).__name__}
+    code = int(getattr(response, "status_code", 0) or 0)
+    state = "ok" if code == 200 else "private" if code in (401, 403) else "not_found" if code in (400, 404) else "unknown"
+    return {"state": state, "http": code}
 
 
 def list_recent_uploads(refresh_token: str, uploads_playlist_id: str,
