@@ -339,7 +339,7 @@ def build(aa) -> dict:
         if clean.get("why"):                            # model-written: the table's words, or no line at all
             try:
                 clean["why"] = client_speech.enforce(clean["why"], lang, where=f"client {client_id} campaign why",
-                                                     alert=aa._alert)
+                                                     alert=aa._alert, agent="campaign_decision")
             except client_speech.Blocked:
                 clean.pop("why")
         for k in ("deadline", "youtube_url", "video_file_id", "budget_total", "days"):

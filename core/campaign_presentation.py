@@ -270,7 +270,8 @@ def render(p: dict, lang: str = "he") -> str:
     assumptions = ""
     if basis["kind"] == "estimate":
         try:                                   # model-written: the table's words, or it does not go out
-            assumptions = client_speech.enforce(basis["assumptions"], lang, where="campaign estimate assumptions").rstrip(". ")
+            assumptions = client_speech.enforce(basis["assumptions"], lang, where="campaign estimate assumptions",
+                                                agent="campaign_decision").rstrip(". ")
         except client_speech.Blocked:
             raise PresentationIncomplete(["assumptions_missing"], "the assumptions used internal vocabulary")
     low = expected["low"] if expected["low"] < expected["high"] else None

@@ -1649,6 +1649,7 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
     # A term the CLIENT used is theirs to hear back, plainly explained (governance §9)
     from core import client_speech
     client_speech.allow_from(message)
+    client_speech.speak_for(client_id)                  # their own action words ("מכירות", not a generic label)
     while True:
         # Every LLM cost of this turn is labelled with it (core/cost_tracker);
         # an article draft started inside it relabels its own calls
@@ -1682,7 +1683,8 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
         try:
             result["reply"] = client_speech.enforce(
                 result["reply"], speech_lang, rewrite=client_speech.model_rewriter(client_id, speech_lang),
-                where=f"chat reply to client {client_id} ({persona})", alert=agent_actions._alert)
+                where=f"chat reply to client {client_id} ({persona})", alert=agent_actions._alert,
+                agent=persona or "general")             # counted per agent: /admin/connections/
         except client_speech.Blocked as e:
             from core import chat_fallback
             agent_actions._alert(f"chat reply to client {client_id} ({persona}) BLOCKED — a fallback line was sent: {e}"[:600])
@@ -3127,6 +3129,14 @@ def admin_youtube_quota(request: Request):
     _require_admin(request)
     from core import youtube_quota
     return {"success": True, "data": youtube_quota.status()}
+
+@app.get("/api/admin/client-speech/net")
+def admin_client_speech_net(request: Request, days: int = 30):
+    # READ-ONLY: how often an agent's text failed the client-language check and the automatic
+    # replacement (the last-resort net) went out, per agent (core/client_speech.net_report).
+    _require_admin(request)
+    from core import client_speech
+    return {"success": True, "data": client_speech.net_report(max(1, min(int(days or 30), 90)))}
 
 _RECONNECT_PRODUCTS = {"gtm": "core.gtm_service", "youtube": "core.youtube_service"}
 

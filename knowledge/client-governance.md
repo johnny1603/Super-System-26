@@ -272,8 +272,21 @@ the term stands alone. An explanation is never put where a noun belongs:
 | CPM | עלות לאלף חשיפות | כמה עולה להגיע לאלף אנשים |
 | CTR | אחוז ההקלקות | כמה אחוז מהאנשים שראו את המודעה לחצו עליה |
 | ROAS | החזר על ההוצאה | כמה שקלים חוזרים על כל שקל שהושקע |
-| Conversion | פעולות של לקוחות | הפעולה שרצינו שתקרה: קנייה, פנייה או הזמנה |
+| Conversion | the client's ACTUAL action — מכירות / פניות / הזמנות; "המרות" only when their campaigns mix several kinds | הפעולה שרצינו שתקרה: קנייה, פנייה או הזמנה |
 | Impressions | חשיפות | כמה פעמים המודעה הוצגה |
+A campaign type's short form also says what it does for THIS client
+("קמפיין בכל המקומות של גוגל להבאת מכירות"), from the same known action —
+never a generic label.
+
+The automatic replacement is a last-resort net, and it is MEASURED, not
+perfected: it does not fix gender or number around the phrase. Each time it
+fires is counted per agent and shown to the owner (`/admin/connections/`). If
+it fires often the model is ignoring the rule, and that is what gets fixed.
+
+Known gap: the French, Arabic and Russian short forms were written without a
+native speaker (`UNREVIEWED_LANGS`). They must be checked before the first
+client in any of those languages.
+
 Never mentioned at all, in any form: asset group, ad strength, bid strategy,
 keyword match type, and the system's own internals — manifest, render, and
 internal CODE names (media_agent, social_queue and the like).

@@ -6289,16 +6289,19 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
         from core import client_speech
         where = f"card {row.get('action')} (client {row.get('client_id')})"
         own = (ACTIONS.get(row.get("action")) or {}).get("speech_allow") or ()
+        client_speech.speak_for(row.get("client_id"))
+        who = f"card_{row.get('persona') or 'general'}"         # counted per agent (client_speech.net_report)
         for key in ("title", "what", "result", "blocked"):
             if isinstance(out.get(key), str):
                 try:
-                    out[key] = client_speech.enforce(out[key], lang, allowed=own, where=f"{where} {key}", alert=_alert)
+                    out[key] = client_speech.enforce(out[key], lang, allowed=own, where=f"{where} {key}", alert=_alert,
+                                                         agent=who)
                 except client_speech.Blocked as e:
                     _alert(f"{where} {key} BLOCKED — not shown to the client: {e}"[:600])
                     out[key] = ""
         if isinstance(out.get("progress"), dict) and isinstance(out["progress"].get("text"), str):
             try:
-                out["progress"]["text"] = client_speech.enforce(out["progress"]["text"], lang, where=f"{where} progress")
+                out["progress"]["text"] = client_speech.enforce(out["progress"]["text"], lang, where=f"{where} progress", agent=who)
             except client_speech.Blocked:
                 out["progress"]["text"] = ""
     return out

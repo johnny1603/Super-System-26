@@ -1082,7 +1082,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   the plain words in 5 languages in TWO forms — `SHORT` = a noun phrase used inside a sentence, long = the explanation,
   used standing alone (`words(key, lang, form)`; an explanation is never put where a noun belongs) — `None` = never
   mentioned) — a new platform = new rows in both, never a prompt line. Agent NAMES (Lior, Maya, Yoav) are the product
-  and are said; only internal code names are hidden.
+  and are said; only internal code names are hidden. "Conversion" is said as the client's ACTUAL action (מכירות /
+  פניות, from their confirmed `conversion_types` via `speak_for(client_id)`; "המרות" only when mixed or unknown) and a
+  campaign type's short form adds what it does for them (`PURPOSE`). The automatic replacement is a last-resort net
+  that is MEASURED, never given grammar: `enforce(agent=)` counts failed / net / blocked per agent
+  (api_call_counters `speech_*`), `net_report` → `GET /api/admin/client-speech/net` → `/admin/connections/`. Do not
+  build agreement fixing. fr/ar/ru forms are `UNREVIEWED_LANGS` — a native check before the first such client.
   Enforced on the OUTPUT: `client_speech.enforce` (named failure → the caller's model rewrite once → the table's
   words → `Blocked`) runs on the chat reply (`_client_chat_answer`, with `allow_from(message)`: a term the client
   used is answered plainly), on every non-admin `agent_actions.card`, and inside `client_agent.log_communication`

@@ -154,10 +154,74 @@ SHORT = {
     "ctr": _five("אחוז ההקלקות", "click rate", "taux de clics", "نسبة النقر", "доля кликов"),
     "roas": _five("החזר על ההוצאה", "return on ad spend", "retour sur les dépenses publicitaires",
                   "العائد على الإنفاق الإعلاني", "окупаемость рекламы"),
-    "conversion": _five("פעולות של לקוחות", "customer actions", "actions de clients", "إجراءات العملاء", "целевые действия"),
+    # only when the client's campaigns mix several kinds of action, or the kind is not known —
+    # otherwise the ACTUAL action is said (ACTION_WORDS below). "המרות" is standard Hebrew.
+    "conversion": _five("המרות", "conversions", "conversions", "تحويلات", "конверсии"),
     "impressions": _five("חשיפות", "times shown", "affichages", "مرات الظهور", "показы"),
 }
 FORMS = ("short", "long")
+
+# NOT REVIEWED BY A NATIVE SPEAKER (known gap, the owner, 2026-11-29): every French, Arabic and
+# Russian SHORT form, ACTION_WORDS and PURPOSE entry in this file was written without one.
+# They MUST be checked before the first client in any of those languages. When a language has
+# been reviewed, remove it from this tuple — the admin page shows what is still on it.
+UNREVIEWED_LANGS = ("fr", "ar", "ru")
+
+# What "a conversion" IS for this client (the owner, 2026-11-29): never a generic label — the
+# action their campaigns actually bring, known from their own conversion choice
+# (core/conversion_types). Several kinds, or not known = SHORT["conversion"].
+ACTION_WORDS = {
+    "sales": _five("מכירות", "sales", "ventes", "مبيعات", "продажи"),
+    "leads": _five("פניות", "enquiries", "demandes", "استفسارات", "заявки"),
+    "bookings": _five("הזמנות", "bookings", "réservations", "حجوزات", "заказы"),      # no source sets this yet
+}
+# ...and a campaign type's short form says what it does FOR THEM: appended to its SHORT row.
+PURPOSE = {
+    "sales": _five(" להבאת מכירות", " to bring in sales", " pour générer des ventes", " لجلب مبيعات", " для продаж"),
+    "leads": _five(" להבאת פניות", " to bring in enquiries", " pour générer des demandes", " لجلب استفسارات", " для заявок"),
+    "bookings": _five(" להבאת הזמנות", " to bring in bookings", " pour générer des réservations", " لجلب حجوزات",
+                      " для заказов"),
+}
+CAMPAIGN_ROWS = ("pmax", "search", "demand_gen", "display", "youtube", "bumper", "shorts_ads", "remarketing")
+_client = contextvars.ContextVar("uallak_client_speech_client", default=None)
+_ACTION_TTL = 120
+_action_cache = {}
+
+
+def action_of(types) -> str:
+    """The ONE kind of action a client's conversion choice means: "sales" |
+    "leads"; "" when it mixes kinds (or is empty)."""
+    kinds = {"sales" if t == "store_sales" else "leads" for t in types or []}
+    return kinds.pop() if len(kinds) == 1 else ""
+
+
+def _read_action(client_id) -> str:
+    import importlib
+    got = importlib.import_module("core.conversion_types").get(int(client_id))
+    # only the client's own CONFIRMED choice: a default nobody chose is not knowledge
+    return action_of(got["types"]) if got.get("stored") and got.get("confirmed") else ""
+
+
+def speak_for(client_id) -> None:
+    """For the rest of this turn the text is for THIS client: their action
+    words are used. Nothing is read until a term needs them."""
+    _client.set(client_id)
+
+
+def _action() -> str:
+    import time
+    client_id = _client.get()
+    if client_id in (None, ""):
+        return ""
+    hit = _action_cache.get(client_id)
+    if hit and hit[0] > time.time() - _ACTION_TTL:
+        return hit[1]
+    try:
+        kind = _read_action(client_id)
+    except Exception:
+        return ""                                   # not cached: the next term tries again
+    _action_cache[client_id] = (time.time(), kind)
+    return kind
 if set(SHORT) != {key for key, row in TERMS.items() if row[1] is not None} or not all(
         (SHORT[key].get(lang) or "").strip() and (TERMS[key][1].get(lang) or "").strip() for key in SHORT for lang in LANGS):
     raise RuntimeError("client_speech: every term with plain words needs a short AND a long form in all five languages")
@@ -169,7 +233,69 @@ def words(key: str, lang: str = "he", form: str = "short") -> str:
     if not row or row[1] is None:
         return ""
     lang = lang if lang in LANGS else "he"
-    return (SHORT[key] if form == "short" else row[1])[lang]
+    if form != "short":
+        return row[1][lang]
+    kind = _action()
+    if key == "conversion" and kind in ACTION_WORDS:
+        return ACTION_WORDS[kind][lang]                        # the actual action, not a label for it
+    if key in CAMPAIGN_ROWS and kind in PURPOSE:
+        return SHORT[key][lang] + PURPOSE[kind][lang]          # what it does for this client
+    return SHORT[key][lang]
+
+
+# ─── The net is MEASURED, not perfected (the owner, 2026-11-29) ──────────────
+# The automatic replacement is a last resort: the model is supposed to write the
+# plain words itself. It does not fix gender or number around the phrase, on
+# purpose — a grammar engine for five languages is a trap. Instead every time it
+# fires is COUNTED per agent (api_call_counters, one row per agent per day) and
+# shown on /admin/connections/. Often = the model ignores the rule, and THAT is
+# what gets fixed. Rarely = a clumsy sentence is the accepted price.
+#   failed   the text an agent wrote failed the check
+#   net      ...and the table's automatic words went out (no model rewrite, or it failed too)
+#   blocked  ...and nothing clean was left: it did not reach the client
+COUNTED = ("failed", "net", "blocked")
+_PREFIX = "speech_"
+
+
+def _count(kind: str, agent: str) -> None:
+    """Fails open and never raises: a counter must not cost a client their message."""
+    try:
+        from core.api_call_counters import increment_call_counter
+        name = re.sub(r"[^a-z0-9_\-]", "_", str(agent or "unknown").lower())[:40] or "unknown"
+        increment_call_counter(f"{_PREFIX}{kind}:{name}", window_days=1)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] net counter not written ({type(e).__name__})")
+
+
+def net_report(days: int = 30, rows=None) -> dict:
+    """How often the check failed and the net fired, per agent, over `days`:
+    {"known", "days", "agents": [{"agent", "failed", "net", "blocked",
+    "last"}], "total": {...}, "unreviewed_languages"}. `known` False = the
+    counters could not be read (never a guessed zero)."""
+    from datetime import date, timedelta
+    since = (date.today() - timedelta(days=int(days) - 1)).isoformat()
+    known = True
+    if rows is None:
+        try:
+            from core import api_call_counters
+            rows = (api_call_counters._db().table("api_call_counters").select("platform,call_date,count")
+                    .like("platform", f"{_PREFIX}%").gte("call_date", since).execute().data or [])
+        except Exception as e:
+            print(f"[{SERVICE_NAME}] net counters unreadable ({type(e).__name__})")
+            rows, known = [], False
+    agents = {}
+    for row in rows:
+        kind, _sep, agent = str(row.get("platform") or "")[len(_PREFIX):].partition(":")
+        if kind not in COUNTED or str(row.get("call_date") or "") < since:
+            continue
+        entry = agents.setdefault(agent or "unknown", {"agent": agent or "unknown", "failed": 0, "net": 0, "blocked": 0, "last": ""})
+        entry[kind] += int(row.get("count") or 0)
+        entry["last"] = max(entry["last"], str(row.get("call_date") or ""))
+    ordered = sorted(agents.values(), key=lambda a: (-a["net"], -a["failed"], a["agent"]))
+    return {"known": known, "days": int(days), "agents": ordered,
+            "total": {kind: sum(a[kind] for a in ordered) for kind in COUNTED},
+            "unreviewed_languages": list(UNREVIEWED_LANGS),
+            "source": "our own count of checks (api_call_counters), written when a text fails; it fails open"}
 
 # ─── Matching ────────────────────────────────────────────────────────────────
 _HE_PREFIX = r"(?:[ושה]?[בלמכ]?ה?)"
@@ -357,11 +483,12 @@ def plain(text: str, lang: str = None, allowed=()) -> str:
         done.append("".join(out) + sentence[last:])
     return "".join(done)
 
-def enforce(text: str, lang: str = None, allowed=(), rewrite=None, where: str = "", alert=None) -> str:
+def enforce(text: str, lang: str = None, allowed=(), rewrite=None, where: str = "", alert=None, agent: str = "") -> str:
     """The text a client may read. Clean text comes back untouched. Otherwise
     the failure is reported BY NAME, `rewrite(text, problem_lines)` (a model,
     when the caller has one) gets one try, then the table's own words; a text
-    that still fails raises Blocked."""
+    that still fails raises Blocked. `agent` = who wrote it: each failure, each
+    time the automatic words went out and each block is counted for them."""
     text = str(text or "")
     if not text.strip():
         return text
@@ -369,6 +496,7 @@ def enforce(text: str, lang: str = None, allowed=(), rewrite=None, where: str = 
     found = problems(text, lang, allowed)
     if not found:
         return text
+    _count("failed", agent)
     lines = problem_lines(found)
     print(f"[{SERVICE_NAME}] {where or 'client text'} failed: {'; '.join(lines)[:500]}")
     if alert:
@@ -386,7 +514,9 @@ def enforce(text: str, lang: str = None, allowed=(), rewrite=None, where: str = 
     fixed = plain(text, lang, allowed)
     left = problems(fixed, lang, allowed)
     if left or not fixed.strip():
+        _count("blocked", agent)
         raise Blocked(left or found)
+    _count("net", agent)                            # the last-resort words went out: measured, not polished
     return fixed
 
 
@@ -446,14 +576,16 @@ def model_rewriter(client_id: int, lang: str, call=None):
     return rewrite
 
 
-def outbound(text: str, where: str = "") -> str:
+def outbound(text: str, where: str = "", client_id=None, agent: str = "") -> str:
     """The backstop on a stored message to a client (client_agent.log_communication):
     no model, the table's own words. '' = blocked — the caller stores nothing."""
     def alert(line):
         from core.agent_base import agent_alert
         agent_alert(SERVICE_NAME, [line])
+    if client_id is not None:
+        speak_for(client_id)
     try:
-        return enforce(text, where=where or "outbound message", alert=alert)
+        return enforce(text, where=where or "outbound message", alert=alert, agent=agent or "stored_message")
     except Blocked as e:
         alert(f"{where or 'outbound message'} BLOCKED — it did not reach the client: {e}"[:600])
         return ""

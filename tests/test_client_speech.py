@@ -23,6 +23,10 @@ def _src(*parts) -> str:
         return f.read()
 
 
+COUNTS = []
+cs._count = lambda kind, agent: COUNTS.append((kind, agent))      # no database in tests: the counter is observed
+
+
 def keys(text, lang=None, allowed=()):
     return sorted({hit["key"] for hit in cs.find(text, lang, allowed)})
 
@@ -111,6 +115,134 @@ class Expectations(unittest.TestCase):
         # a report of what happened is not a promise
         for text in ("קיבלתם 40 פניות החודש", "היעד שסיכמנו: 40 פניות", "Last month you got 40 leads."):
             self.assertEqual(cs.expectation_problems(text), [], text)
+
+
+class TheClientsOwnAction(unittest.TestCase):
+    def setUp(self):
+        self.saved = cs._read_action
+        cs._action_cache.clear()
+        self.addCleanup(lambda: (setattr(cs, "_read_action", self.saved), cs.speak_for(None), cs._action_cache.clear()))
+
+    def speak(self, kind, client_id=27):
+        cs._action_cache.clear()
+        cs._read_action = lambda cid: kind
+        cs.speak_for(client_id)
+
+    def test_a_conversion_is_said_as_the_campaigns_actual_action(self):
+        self.speak("sales")
+        self.assertEqual(cs.enforce("היו 12 קונברז'נים החודש.", "he"), "היו 12 מכירות החודש.")
+        self.speak("leads")
+        self.assertEqual(cs.enforce("היו 12 קונברז'נים החודש.", "he"), "היו 12 פניות החודש.")
+        self.speak("")                                                           # several kinds: standard Hebrew
+        self.assertEqual(cs.enforce("היו 12 קונברז'נים החודש.", "he"), "היו 12 המרות החודש.")
+        cs.speak_for(None)                                                       # nobody to speak for: the same
+        self.assertEqual(cs.words("conversion", "he"), "המרות")
+        self.assertNotIn("פעולות של לקוחות", _src("core", "client_speech.py"))   # the generic label is gone
+        self.assertEqual((cs.action_of(["store_sales"]), cs.action_of(["form_submit", "phone_click"]),
+                          cs.action_of(["form_submit", "store_sales"]), cs.action_of([])), ("sales", "leads", "", ""))
+
+    def test_a_campaign_type_says_what_it_does_for_this_client(self):
+        self.speak("sales")
+        self.assertEqual(cs.enforce("אנחנו מריצים Performance Max.", "he"), "אנחנו מריצים קמפיין בכל המקומות של גוגל להבאת מכירות.")
+        self.speak("leads")
+        self.assertEqual(cs.words("search", "he"), "מודעות בחיפוש של גוגל להבאת פניות")
+        self.assertEqual(cs.words("ctr", "he"), "אחוז ההקלקות")                 # a number is not a campaign
+        self.assertEqual(cs.words("pmax", "he", "long"), cs.TERMS["pmax"][1]["he"])
+        for kind in cs.PURPOSE:
+            for lang in LANGS:
+                self.speak(kind)
+                for key in cs.CAMPAIGN_ROWS + ("conversion",):
+                    self.assertEqual(cs.problems(cs.words(key, lang), lang), [], (kind, key, lang))
+
+    def test_only_a_confirmed_choice_is_knowledge_and_a_failed_read_is_not_cached(self):
+        import types
+        fake = types.ModuleType("core.conversion_types")
+        answers = [{"types": ["store_sales"], "confirmed": False, "stored": True},
+                   {"types": ["store_sales"], "confirmed": True, "stored": True}]
+        fake.get = lambda cid: answers.pop(0)
+        saved = sys.modules.get("core.conversion_types")
+        sys.modules["core.conversion_types"] = fake
+        try:
+            self.assertEqual(self.saved(27), "")                                 # a default nobody chose
+            self.assertEqual(self.saved(27), "sales")
+        finally:
+            if saved is None:
+                del sys.modules["core.conversion_types"]
+            else:
+                sys.modules["core.conversion_types"] = saved
+
+        def boom(cid):
+            raise RuntimeError("db down")
+        cs._read_action = boom
+        cs.speak_for(27)
+        self.assertEqual(cs.words("conversion", "he"), "המרות")
+        self.assertNotIn(27, cs._action_cache)
+
+
+class TheNetIsMeasured(unittest.TestCase):
+    def setUp(self):
+        COUNTS.clear()
+        cs.speak_for(None)
+
+    def test_each_failure_net_and_block_is_counted_for_its_agent(self):
+        cs.enforce("הקמפיין עלה לאוויר.", "he", agent="yoav")                    # clean: nothing counted
+        self.assertEqual(COUNTS, [])
+        cs.enforce("ה-CPC ירד.", "he", agent="yoav")                             # no model: the net went out
+        self.assertEqual(COUNTS, [("failed", "yoav"), ("net", "yoav")])
+        COUNTS.clear()
+        cs.enforce("ה-CPC ירד.", "he", agent="maya", rewrite=lambda text, lines: "העלות לקליק ירדה.")
+        self.assertEqual(COUNTS, [("failed", "maya")])                           # the model fixed it: the net did not fire
+        COUNTS.clear()
+        with self.assertRaises(cs.Blocked):
+            cs.enforce("נביא לכם 40 פניות", "he", agent="lior")
+        self.assertEqual(COUNTS, [("failed", "lior"), ("blocked", "lior")])
+        # the grammar is NOT corrected — measured instead, on purpose
+        self.assertEqual(cs.plain("ה-CPC ירד.", "he"), "עלות לקליק ירד.")
+
+    def test_the_report_is_per_agent_and_never_a_guessed_zero(self):
+        from datetime import date
+        today = date.today().isoformat()
+        rows = [{"platform": "speech_net:yoav", "call_date": today, "count": 4},
+                {"platform": "speech_failed:yoav", "call_date": today, "count": 9},
+                {"platform": "speech_failed:maya", "call_date": today, "count": 2},
+                {"platform": "speech_blocked:card_general", "call_date": today, "count": 1},
+                {"platform": "speech_net:yoav", "call_date": "2020-01-01", "count": 50},      # outside the window
+                {"platform": "youtube", "call_date": today, "count": 7}]
+        got = cs.net_report(30, rows)
+        self.assertEqual([a["agent"] for a in got["agents"]], ["yoav", "maya", "card_general"])
+        self.assertEqual((got["agents"][0]["net"], got["agents"][0]["failed"]), (4, 9))
+        self.assertEqual(got["total"], {"failed": 11, "net": 4, "blocked": 1})
+        self.assertEqual(got["unreviewed_languages"], ["fr", "ar", "ru"])
+        saved = sys.modules.get("core.api_call_counters")
+        sys.modules["core.api_call_counters"] = None                             # unreadable
+        try:
+            self.assertFalse(cs.net_report(30)["known"])
+        finally:
+            if saved is None:
+                del sys.modules["core.api_call_counters"]
+            else:
+                sys.modules["core.api_call_counters"] = saved
+
+    def test_wired_per_agent_and_shown_to_the_owner(self):
+        server = _src("core", "api_server.py")
+        route = server[server.index('@app.get("/api/admin/client-speech/net")'):][:600]
+        self.assertIn("_require_admin(request)", route)
+        self.assertIn("client_speech.net_report(", route)
+        self.assertIn('agent=persona or "general"', server)
+        self.assertIn("client_speech.speak_for(client_id)", server)
+        actions = _src("core", "agent_actions.py")
+        self.assertIn("agent=who", actions)
+        self.assertIn('client_speech.speak_for(row.get("client_id"))', actions)
+        self.assertIn('agent=f"stored_{channel}"', _src("agents", "client_agent.py"))
+        page = _src("dashboard", "admin", "connections", "index.html")
+        self.assertIn('api("/api/admin/client-speech/net")', page)
+        self.assertIn("d.unreviewed_languages", page)
+
+    def test_the_unreviewed_languages_are_flagged_in_the_file(self):
+        self.assertEqual(cs.UNREVIEWED_LANGS, ("fr", "ar", "ru"))
+        source = _src("core", "client_speech.py")
+        self.assertIn("NOT REVIEWED BY A NATIVE SPEAKER", source)
+        self.assertIn("before the first client in any of those languages", source)
 
 
 class Enforce(unittest.TestCase):

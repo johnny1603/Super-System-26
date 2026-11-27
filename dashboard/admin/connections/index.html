@@ -87,6 +87,13 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
     <div class="muted">ספירה שלנו, לא נתון מגוגל. היום מתחלף בחצות לפי שעון החוף המערבי (Pacific), כמו אצל גוגל. הגדלה דורשת את ביקורת התאימות של YouTube API.</div>
     <div id="ytQuotaOut" class="muted" style="margin-top:10px;">טוען…</div>
   </div>
+  <!-- How agents speak to clients: READ-ONLY (GET /api/admin/client-speech/net). How often an agent's
+       text failed the client-language check and the automatic replacement went out. OUR count. -->
+  <div class="card" id="speechNet">
+    <h2>שפה מול הלקוח — כמה פעמים הרשת האוטומטית הופעלה (30 יום)</h2>
+    <div class="muted">ההחלפה האוטומטית של מונח היא מוצא אחרון ולא מתקנת דקדוק. הרבה הפעלות אצל סוכן = המודל מתעלם מהכלל, וזה מה שמתקנים. ספירה שלנו.</div>
+    <div id="speechNetOut" class="muted" style="margin-top:10px;">טוען…</div>
+  </div>
   <!-- Tag Manager per client: READ-ONLY (GET /api/admin/gtm/overview +
        /api/admin/gtm/history/{id}, docs/GTM-SAFETY.md). The connected
        container, the last publish, and the rollback point saved before it.
@@ -245,6 +252,20 @@ async function ytQuota() {
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הטעינה נכשלה — לנסות שוב"; }
 }
 ytQuota();
+async function speechNet() {
+  const out = document.getElementById("speechNetOut");
+  try {
+    const d = await api("/api/admin/client-speech/net");
+    if (!d.known) { out.textContent = "לא הצלחתי לקרוא את הספירה — אין מספר להציג."; return; }
+    const rows = (d.agents || []).map(a => `<tr><td dir="ltr">${esc(a.agent)}</td><td><b>${esc(a.net)}</b></td><td>${esc(a.failed)}</td><td>${esc(a.blocked)}</td><td dir="ltr">${esc(a.last)}</td></tr>`).join("");
+    out.innerHTML = (rows
+      ? `<table><thead><tr><th>סוכן</th><th>הרשת הופעלה</th><th>טקסטים שנכשלו בבדיקה</th><th>נחסמו</th><th>פעם אחרונה</th></tr></thead><tbody>${rows}</tbody></table>
+         <div style="margin-top:6px;">סך הכול: הרשת ${esc(d.total.net)} · נכשלו ${esc(d.total.failed)} · נחסמו ${esc(d.total.blocked)}</div>`
+      : "<div>אף טקסט לא נכשל בבדיקה ב-30 הימים האחרונים.</div>")
+      + ((d.unreviewed_languages || []).length ? `<div style="margin-top:6px;"><span class="badge">לא נבדק על ידי דובר שפת אם</span> <span dir="ltr">${esc(d.unreviewed_languages.join(", "))}</span> — לבדוק לפני הלקוח הראשון בשפות האלה.</div>` : "");
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הטעינה נכשלה — לנסות שוב"; }
+}
+speechNet();
 document.getElementById("gtmOut").addEventListener("click", async e => {
   const b = e.target.closest("button[data-gtm-history]");
   if (!b) return;

@@ -243,7 +243,8 @@ def log_communication(client_id: int, direction: str, channel: str, content: str
         # What a client reads never carries a platform's internal vocabulary or an expected
         # result with no basis (core/client_speech, governance §9). Blocked = nothing is stored.
         from core import client_speech
-        checked = client_speech.outbound(content, where=f"message to client {client_id} ({channel})")
+        checked = client_speech.outbound(content, where=f"message to client {client_id} ({channel})",
+                                         client_id=client_id, agent=f"stored_{channel}")
         if not checked and str(content or "").strip():
             return {}
         content = checked
