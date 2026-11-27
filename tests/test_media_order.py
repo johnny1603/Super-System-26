@@ -253,7 +253,7 @@ class Delivery(unittest.TestCase):
         self.assertNotIn('a.get("drawn")', check)
 
     def test_a_video_is_a_youtube_url_never_a_file(self):
-        o = order(campaign_type="youtube")
+        o = order(campaign_type="youtube", youtube_url=YT)
         self.assertEqual([r["kind"] for r in o["required_assets"] if r["need"] == "required"], ["video"])
         for a, code in ((mo.asset("video", 1, file_path="ads/spot.mp4"), "video_file_not_url"),
                         (mo.asset("video", 1, youtube_url="https://vimeo.com/1"), "video_bad_url")):
@@ -275,6 +275,11 @@ class Delivery(unittest.TestCase):
         o = order(campaign_type="youtube", youtube_url=YT)
         self.assertEqual((o["youtube_url"], mo.media_brief(o)["youtube_url"]), (YT, YT))
         self.assertTrue(any(r["kind"] == "video" for r in order(youtube_url=YT)["required_assets"]))   # pmax + a video
+        named = order(campaign_type="youtube", video_file_id="driveVideo1234")
+        self.assertEqual(mo.media_brief(named)["video_file_id"], "driveVideo1234")
+        with self.assertRaises(mo.OrderError) as caught:                     # a video campaign with no video named
+            order(campaign_type="youtube")
+        self.assertEqual(caught.exception.code, "video")
         for change in ({"campaign_type": "youtube", "youtube_url": "https://vimeo.com/1"},
                        {"campaign_type": "search", "youtube_url": YT}):
             with self.assertRaises(mo.OrderError) as caught:
@@ -460,10 +465,13 @@ class YouTubeOrder(unittest.TestCase):
 
     def setUp(self):
         from core import agent_actions as aa
-        self.aa, self.run = aa, aa.ACTIONS["prepare_campaign"]["run"]
-        self.store, self.alerts, self.posted, self.made, self.uploaded = {}, [], [], [], []
+        from core import youtube_quota
+        self.aa, self.quota = aa, youtube_quota
+        self.spec = aa.ACTIONS["prepare_campaign"]
+        self.store, self.alerts, self.posted, self.uploaded = {}, [], [], []
         self.saved = [(mo, n, getattr(mo, n)) for n in ("save", "get", "_palette")]
         self.saved += [(aa, n, getattr(aa, n)) for n in ("_client", "_alert", "_post_client_message", "_lang")]
+        self.saved.append((youtube_quota, "require", youtube_quota.require))
         mo.save = lambda cid, o: self.store.__setitem__(o["id"], {**o})
         mo.get = lambda cid, oid: dict(self.store.get(oid) or {})
         mo._palette = lambda cid, audience, facts, roles: {"variant": "default", "segment": "", "roles": ROLES}
@@ -471,7 +479,9 @@ class YouTubeOrder(unittest.TestCase):
         aa._alert = self.alerts.append
         aa._lang = lambda cid: "he"
         aa._post_client_message = lambda cid, persona, text: self.posted.append((persona, text))
-        self.params = {**DECISION, "campaign_type": "youtube"}
+        youtube_quota.require = lambda needed=1: {"remaining": 50}
+        self.params = {**DECISION, "campaign_type": "youtube", "video_file_id": "driveVideo1234"}
+        self.row = {"id": 55, "language": "he"}
         self.upload_answer = {"url": YT, "privacy_status": "unlisted", "privacy_requested": "unlisted",
                               "api_status": {"privacyStatus": "unlisted", "uploadStatus": "uploaded"}}
         self.probe_state = "ok"
@@ -480,55 +490,93 @@ class YouTubeOrder(unittest.TestCase):
         for module, name, value in self.saved:
             setattr(module, name, value)
 
-    def tools(self):
-        return {"make_video": lambda cid, brief: self.made.append(brief["id"]) or {"file_id": "driveVideo1234"},
-                "upload_video": lambda cid, fid, brief: self.uploaded.append(fid) or dict(self.upload_answer),
-                "probe": lambda url: {"state": self.probe_state, "http": {"ok": 200, "private": 403}.get(self.probe_state, 0)}}
+    def run_card(self, params=None):
+        tools = {"upload_video": lambda cid, fid, brief: self.uploaded.append((fid, brief.get("approved_card")))
+                 or dict(self.upload_answer),
+                 "probe": lambda url: {"state": self.probe_state, "http": {"ok": 200, "private": 403}.get(self.probe_state, 0)}}
+        return self.spec["run"](27, params or self.params, None, row=self.row, production=tools)
 
     def test_with_the_clients_own_video_it_completes_in_one_run(self):
-        result = self.run(27, {**self.params, "youtube_url": YT}, None, production=self.tools())
+        params = {**self.params, "youtube_url": YT}
+        params.pop("video_file_id")
+        result = self.run_card(params)
         self.assertEqual((result["status"], result["video_url"]), ("verified", YT))
-        self.assertEqual((self.made, self.uploaded), ([], []))                    # nothing generated, nothing uploaded
+        self.assertEqual(self.uploaded, [])                                       # nothing uploaded
         self.assertEqual(self.store[result["order"]]["status"], "verified")
         self.assertEqual([p for p, _t in self.posted], ["google"])
 
-    def test_generated_uploaded_unlisted_checked_handed_over_verified(self):
-        result = self.run(27, self.params, None, production=self.tools())
+    def test_one_approval_the_shown_file_uploaded_unlisted_checked_handed_over_verified(self):
+        result = self.run_card()
         self.assertEqual(result["status"], "verified", result)
-        self.assertEqual((len(self.made), self.uploaded), (1, ["driveVideo1234"]))
+        self.assertEqual(self.uploaded, [("driveVideo1234", 55)])                # THE file on the card, under THAT card
         self.assertEqual(result["video_privacy"], "unlisted")
         order_ = self.store[result["order"]]
         row = order_["delivery"]["manifest"]["assets"][0]
         self.assertEqual((row["youtube_url"], row["privacy_status"]), (YT, "unlisted"))
         self.assertTrue(order_["verification"]["can_serve"])
-        line = self.aa.ACTIONS["prepare_campaign"]["done_message"](result, "he")
+        line = self.spec["done_message"](result, "he")
         self.assertIn(YT, line)
         self.assertIn("לא רשום", line)
         self.assertEqual(self.alerts, [])
 
-    def test_the_social_gate_holds_the_order_and_it_continues_with_the_same_clip(self):
-        self.upload_answer = {"waiting_approval": True}
-        first = self.run(27, self.params, None, production=self.tools())
-        self.assertEqual((first["status"], first["waiting_video"]), ("incomplete", True))
-        self.assertEqual(self.posted, [])                                        # Yoav was not told
-        self.assertEqual(self.store[first["order"]]["video_file_id"], "driveVideo1234")
-        line = self.aa.ACTIONS["prepare_campaign"]["done_message"](first, "he")
-        self.assertIn(first["order"], line)
-        self.assertIn("סושיאל", line)
-        self.upload_answer = {"url": YT, "privacy_status": "unlisted", "privacy_requested": "unlisted"}
-        second = self.run(27, {"order": first["order"]}, None, production=self.tools())
-        self.assertEqual((second["status"], second["order"]), ("verified", first["order"]))
-        self.assertEqual(len(self.made), 1)                                      # the SAME clip, not a second one
-        self.assertEqual(self.uploaded, ["driveVideo1234", "driveVideo1234"])
-        with self.assertRaises(self.aa.ActionFailed) as caught:
-            self.run(27, {"order": first["order"]}, None, production=self.tools())   # no longer waiting
-        self.assertEqual(caught.exception.code, "order_gone")
+    def test_the_video_is_on_the_card_before_the_approval(self):
+        saved = self.aa._media_name
+        self.aa._media_name = lambda cid, fid: "spot-final.mp4"
+        try:
+            shown = self.spec["display"](27, self.params)
+        finally:
+            self.aa._media_name = saved
+        self.assertIn("spot-final.mp4", shown["produces"])
+        # the card PLAYS the file (our session-gated route), or links the YouTube video
+        self.assertEqual(self.spec["details"](27, self.params),
+                         {"video_url": "/api/client/media-drive/play/driveVideo1234"})
+        self.assertEqual(self.spec["details"](27, {**self.params, "youtube_url": YT}), {"youtube_url": YT})
+        self.assertIn(YT, self.spec["display"](27, {**self.params, "youtube_url": YT})["produces"])
+        page = _src("dashboard", "client", "index.html")
+        player = page[page.index("d.video_url ==="):][:700]
+        self.assertIn("media-drive\\/play\\/", player)                           # only our own player route
+        self.assertIn("document.createElement('video')", player)
+        # a video campaign with no video named never reaches a card: the order refuses it
+        with self.assertRaises(mo.OrderError):
+            mo.issue(27, {**DECISION, "campaign_type": "youtube"}, facts=FACTS, today=TODAY,
+                     palette_roles=lambda cid, label: ROLES)
+        source = _src("core", "media_order_actions.py")
+        self.assertIn('"video": _txt(', source)                                  # the question asked instead
+        self.assertEqual(self.spec["params"]["video_file_id"]["validate"], self.aa._v_media_video)
+
+    def test_no_second_approval_and_no_way_around_the_first(self):
+        production = _src("core", "paid_media_production.py")
+        self.assertNotIn("social_queue", production)                             # not queued in the Social tab too
+        self.assertNotIn("generate_video", production)                           # nothing unseen is made after the click
+        self.assertNotIn("upload_video_stream", production)                      # only through the publisher
+        self.assertIn('"campaign_card": brief.get("approved_card")', production)
+        agent = _src("agents", "youtube_content_agent.py")
+        body = agent[agent.index("def publish("):]
+        self.assertLess(body.index("_ad_card_approves("), body.index("yt.upload_video_stream("))
+        self.assertLess(body.index("social_queue.check("), body.index("yt.upload_video_stream("))   # organic: unchanged
+        from agents import youtube_content_agent as yca
+        saved = self.aa._get
+        rows = {55: {"action": "prepare_campaign", "client_id": 27, "status": "running",
+                     "params": {"video_file_id": "driveVideo1234"}}}
+        self.aa._get = lambda pid: dict(rows.get(pid) or {})
+        try:
+            self.assertTrue(yca._ad_card_approves(27, 55, "driveVideo1234"))
+            self.assertFalse(yca._ad_card_approves(27, 55, "anotherFile9999"))    # not the file the card showed
+            self.assertFalse(yca._ad_card_approves(28, 55, "driveVideo1234"))     # another client's card
+            self.assertFalse(yca._ad_card_approves(27, 56, "driveVideo1234"))     # no such card
+            self.assertFalse(yca._ad_card_approves(27, None, "driveVideo1234"))
+            rows[55]["status"] = "proposed"                                       # shown, not approved
+            self.assertFalse(yca._ad_card_approves(27, 55, "driveVideo1234"))
+            rows[55].update(status="running", action="publish_youtube_from_media")
+            self.assertFalse(yca._ad_card_approves(27, 55, "driveVideo1234"))
+        finally:
+            self.aa._get = saved
 
     def test_an_upload_that_comes_back_private_is_reported_as_the_api_answered(self):
         self.upload_answer = {"url": YT, "privacy_status": "private", "privacy_requested": "unlisted",
                               "api_status": {"privacyStatus": "private", "uploadStatus": "uploaded"}}
         self.probe_state = "private"
-        result = self.run(27, self.params, None, production=self.tools())
+        result = self.run_card()
         self.assertEqual(result["status"], "incomplete")
         self.assertIn("video_private", {p["code"] for p in result["problems"]})
         self.assertEqual(self.posted, [])
@@ -540,19 +588,30 @@ class YouTubeOrder(unittest.TestCase):
 
     def test_youtube_not_answering_is_not_a_pass(self):
         self.probe_state = "unknown"
-        result = self.run(27, self.params, None, production=self.tools())
+        result = self.run_card()
         self.assertEqual(result["status"], "incomplete")
         self.assertIn("video_unverified", {p["code"] for p in result["problems"]})
 
-    def test_the_real_upload_goes_through_the_one_publisher_and_its_gate(self):
-        source = _src("core", "paid_media_production.py")
-        body = source[source.index("def _default_upload_video"):source.index("def video_asset")]
-        self.assertIn("youtube_content_agent.publish(", body)
-        self.assertIn('"purpose": "ad"', body)
-        self.assertIn('out.get("not_approved")', body)
-        self.assertNotIn("upload_video_stream", source)                          # never around the gate
-        agent = _src("agents", "youtube_content_agent.py")
-        self.assertLess(agent.index("social_queue.check("), agent.index("yt.upload_video_stream("))
+    def test_no_quota_left_fails_by_name_before_anything_is_made(self):
+        def none_left(needed=1):
+            raise self.quota.QuotaExceeded({"used": 90, "limit": 90, "remaining": 0}, needed)
+        self.quota.require = none_left
+        with self.assertRaises(self.aa.ActionFailed) as caught:
+            self.run_card()
+        self.assertEqual(caught.exception.code, "youtube_quota")
+        self.assertEqual((self.uploaded, self.store, self.posted), ([], {}, []))
+        self.assertIn("0 left", " ".join(self.alerts))
+        self.assertEqual(set(self.spec["refusals"]["youtube_quota"]), set(LANGS))
+        source = _src("core", "media_order_actions.py")
+        run = source[source.index("    def run("):source.index("    def done_message")]
+        self.assertLess(run.index("_quota(order)"), run.index("ad_copy.write("))
+        self.assertLess(run.index("_quota(order)"), run.index("paid_media_production.produce("))
+        prepare = source[source.index("    def prepare("):source.index("    def display(")]
+        self.assertIn("_quota(order)", prepare)                                  # refused before the card exists too
+        # an order that uploads nothing is not held up by the quota
+        params = {**self.params, "youtube_url": YT}
+        params.pop("video_file_id")
+        self.assertEqual(self.run_card(params)["status"], "verified")
 
 class Wiring(unittest.TestCase):
     def setUp(self):

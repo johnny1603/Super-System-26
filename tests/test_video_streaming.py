@@ -404,14 +404,20 @@ class Publish(unittest.TestCase):
     def test_an_ad_video_asks_for_unlisted_and_reports_what_youtube_answered(self):
         self.metas["v"] = {"mimeType": "video/mp4", "size": str(MiB)}
         stub = sys.modules["core.youtube_service"]
-        saved = stub.upload_video_stream
+        saved, approves = stub.upload_video_stream, self.agent._ad_card_approves
+        # without the approved campaign card that showed this file: nothing is uploaded
+        self.agent._ad_card_approves = lambda cid, card, fid: False
+        refused = self.agent.publish(40, {"drive_file_id": "v", "title": "T", "purpose": "ad"})
+        self.assertEqual((refused["success"], refused["not_approved"], self.uploads), (False, True, []))
+        self.agent._ad_card_approves = lambda cid, card, fid: (cid, card, fid) == (40, 7, "v")
         try:
             for answered, mismatch in (({"privacyStatus": "unlisted"}, False), ({"privacyStatus": "private"}, True),
                                        (None, True)):
                 self.uploads.clear()
                 stub.upload_video_stream = lambda *a, **k: self.uploads.append((a, k)) or {
                     "id": "vid9", **({"status": answered} if answered else {})}
-                result = self.agent.publish(40, {"drive_file_id": "v", "title": "T", "purpose": "ad"})
+                result = self.agent.publish(40, {"drive_file_id": "v", "title": "T", "purpose": "ad",
+                                                 "campaign_card": 7})
                 (_args, kwargs), = self.uploads
                 self.assertEqual(kwargs["privacy_status"], "unlisted")
                 self.assertEqual(result["privacy_requested"], "unlisted")
@@ -420,7 +426,7 @@ class Publish(unittest.TestCase):
                 self.assertEqual(result["api_status"], answered or {})
                 self.assertEqual(result["url"], "https://www.youtube.com/watch?v=vid9")
         finally:
-            stub.upload_video_stream = saved
+            stub.upload_video_stream, self.agent._ad_card_approves = saved, approves
         # nothing can ask for public, and a model-supplied privacy field is ignored
         self.uploads.clear()
         self.agent.publish(40, {"drive_file_id": "v", "title": "T", "privacy_status": "public"})

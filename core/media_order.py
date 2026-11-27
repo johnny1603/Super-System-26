@@ -50,7 +50,7 @@ STATUSES = ("ordered", "in_production", "incomplete", "handed_over", "verified",
 VIDEO_OK = "ok"               # youtube_service.public_video_state: an outsider can open it (public or unlisted)
 ISSUER, PRODUCER = "yoav", "lior"
 MEDIA_KEYS = ("id", "client_id", "campaign_type", "objective", "audience_segment", "palette", "landing_page_url",
-              "offer", "required_assets", "deadline", "concepts", "specs", "youtube_url", "video_file_id")
+              "offer", "required_assets", "deadline", "concepts", "specs", "youtube_url", "video_file_id", "approved_card")
 COPY_KEYS = ("id", "client_id", "campaign_type", "objective", "audience_segment", "landing_page_url", "offer",
              "required_text", "deadline", "specs")
 URL_RE = re.compile(r"^https://[^\s/$.?#][^\s]*$", re.IGNORECASE)
@@ -118,7 +118,9 @@ def issue(client_id: int, decision: dict, facts: dict = None, today: date = None
     """Yoav's decision → a MEDIA ORDER. `decision`: {"campaign_type",
     "objective", "audience_segment", "landing_page_url", "offer", "deadline"?
     (YYYY-MM-DD), "concepts"?, "banners"?, "video"?, "youtube_url"? (a video
-    already on the client's channel — it orders the video row)}. OrderError names the
+    already on the client's channel) or "video_file_id"? (a video in their
+    media library, to upload unlisted) — either orders the video row; a type
+    whose minimum is a video needs one of them HERE, before any approval}. OrderError names the
     field that is wrong; nothing is stored here (see `save`)."""
     today = today or date.today()
     raw = decision or {}
@@ -153,17 +155,21 @@ def issue(client_id: int, decision: dict, facts: dict = None, today: date = None
     youtube_url = str(raw.get("youtube_url") or "").strip()
     if youtube_url and not gaf.youtube_id(youtube_url):
         raise OrderError("youtube_url", "a YouTube video address (watch / shorts / youtu.be)")
-    if youtube_url and not gaf.campaign(campaign_type)["video"]:
+    video_file_id = str(raw.get("video_file_id") or "").strip()
+    if (youtube_url or video_file_id) and not gaf.campaign(campaign_type)["video"]:
         raise OrderError("youtube_url", f"a {campaign_type} campaign takes no video")
+    if gaf.minimum_to_serve(campaign_type).get("video") and not (youtube_url or video_file_id):
+        raise OrderError("video", "a video campaign needs its video named before it is approved: a YouTube address "
+                                  "or a video file from the client's media library")
     try:
         rows = gaf.required_assets(campaign_type, concepts=concepts or 1, banners=str(raw.get("banners") or "none"),
-                                   video=bool(raw.get("video") or youtube_url) or None)
+                                   video=bool(raw.get("video") or youtube_url or video_file_id) or None)
     except ValueError as e:
         raise OrderError("required_assets", str(e))
     return {"id": uuid.uuid4().hex[:12], "client_id": int(client_id), "campaign_type": campaign_type,
             "objective": objective, "audience_segment": audience,
             "palette": _palette(client_id, audience, facts, palette_roles),
-            "landing_page_url": url, "offer": offer, "required_assets": rows, "youtube_url": youtube_url,
+            "landing_page_url": url, "offer": offer, "required_assets": rows, "youtube_url": youtube_url, "video_file_id": video_file_id,
             "required_text": gaf.required_text(campaign_type), "deadline": deadline, "concepts": concepts,
             "issued_by": ISSUER, "issued_at": _now(), "status": "ordered",
             "specs": {"verified": gaf.VERIFIED, "reverify_by": gaf.REVERIFY_BY, "stale": gaf.stale(today),
@@ -219,8 +225,6 @@ def video_problems(a: dict, probe=None) -> list:
     was asked to do. No probe / no answer = not proven = a problem."""
     found = [{"code": "video_" + p["code"]} for p in gaf.video_reference_problems(a)]
     if found:
-        if a.get("waiting_approval"):
-            return [{"code": "video_waiting_approval"}]
         if a.get("upload_error"):
             return [{"code": "video_upload_failed", "detail": str(a["upload_error"])[:200]}]
         return found
@@ -500,11 +504,6 @@ PROBLEM_TEXT = {
                               "{what} : impossible de confirmer auprès de YouTube que la vidéo est accessible et non privée (réponse : {http}) ; elle n'a pas été comptée.",
                               "{what}: لم أتمكن من التأكد من يوتيوب أن الفيديو متاح وغير خاص (الرد: {http})، فلم يُحتسب.",
                               "{what}: не удалось подтвердить у YouTube, что видео доступно и не закрыто (ответ: {http}), поэтому оно не засчитано."),
-    "video_waiting_approval": _five("{what}: הופק ומחכה לאישור שלכם בלשונית סושיאל. בלי האישור הזה שום דבר לא עולה לערוץ שלכם.",
-                                    "{what}: produced and waiting for your approval in the Social tab. Nothing goes to your channel without it.",
-                                    "{what} : produite, en attente de votre validation dans l'onglet Social. Rien n'est envoyé sur votre chaîne sans elle.",
-                                    "{what}: أُنتج وينتظر موافقتكم في تبويب السوشيال. لا يُرفع شيء إلى قناتكم بدونها.",
-                                    "{what}: готово и ждёт вашего одобрения во вкладке «Соцсети». Без него на ваш канал ничего не загружается."),
     "video_upload_failed": _five("{what}: ההעלאה ליוטיוב לא הצליחה.", "{what}: the upload to YouTube did not succeed.",
                                  "{what} : la mise en ligne sur YouTube a échoué.", "{what}: لم ينجح الرفع إلى يوتيوب.",
                                  "{what}: загрузка на YouTube не удалась."),

@@ -177,6 +177,11 @@ class GateCannotBeBypassed(Base):
         self.assertFalse(out["success"])
         self.assertTrue(out.get("not_approved"))
         self.assertEqual(calls, [])
+        # calling it an ad is not a way around: no approved campaign card naming this file = refused
+        for spec in ({"purpose": "ad"}, {"purpose": "ad", "campaign_card": 999999}):
+            out = yt.publish(5, {"drive_file_id": FILE_A, "title": "t", **spec})
+            self.assertTrue(out.get("not_approved"), spec)
+        self.assertEqual(calls, [])
 
     def test_meta_publish_needs_an_approved_item(self):
         from agents import meta_content_agent as mc
@@ -201,7 +206,12 @@ class GateCannotBeBypassed(Base):
         youtube = _src("agents", "youtube_content_agent.py")
         self.assertRegex(meta, r"def publish\(client_id[\s\S]{0,2500}social_queue\.check\(")
         self.assertRegex(tiktok, r"def begin_upload\(client_id[\s\S]{0,1200}social_queue\.check\(")
-        self.assertRegex(youtube, r"def publish\(client_id[\s\S]{0,2500}social_queue\.check\(")
+        self.assertRegex(youtube, r"def publish\(client_id[\s\S]{0,3500}social_queue\.check\(")
+        # the ONE exception (owner, 2026-11-28): an ad video, and only under its approved campaign card
+        body = youtube[youtube.index("def publish(client_id"):]
+        self.assertLess(body.index("_ad_card_approves("), body.index("yt.upload_video_stream("))
+        self.assertEqual(len(re.findall(r"social_queue\.check\(", body)), 1)
+        self.assertRegex(body, r"if privacy == AD_PRIVACY:\s+if not _ad_card_approves\([\s\S]{0,300}else:\s+try:\s+social_queue\.check\(")
         # TikTok's inline publish goes through begin_upload, never init_inbox_upload directly
         self.assertEqual(len(re.findall(r"init_inbox_upload\(", tiktok)), 1)
         api = _src("core", "api_server.py")

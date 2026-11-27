@@ -8387,6 +8387,27 @@ function actionDetails(d) {
     a.textContent = t('action_d_preview');
     box.appendChild(a);
   }
+  // A campaign's video, SEEN before the approval (prepare_campaign): the client's own file from
+  // OUR session-gated player route only, or a link to their YouTube video — never another URL
+  if (typeof d.video_url === 'string' && /^\/api\/client\/media-drive\/play\/[\w-]+$/.test(d.video_url)) {
+    const video = document.createElement('video');
+    video.src = d.video_url;
+    video.controls = true;
+    video.preload = 'metadata';
+    video.playsInline = true;
+    video.className = 'action-video';
+    video.style.cssText = 'display:block;width:100%;max-height:320px;border-radius:8px;margin:8px 0;background:#000';
+    box.appendChild(video);
+  }
+  if (typeof d.youtube_url === 'string' && /^https:\/\/(www\.youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/.test(d.youtube_url)) {
+    const a = document.createElement('a');
+    a.href = d.youtube_url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.className = 'preview-link';
+    a.textContent = d.youtube_url;
+    box.appendChild(a);
+  }
   // A branding attempt's mockups: our own session-gated page only
   if (typeof d.preview_url === 'string' && /^\/api\/client\/branding\/view\/\d+$/.test(d.preview_url)) {
     const a = document.createElement('a');

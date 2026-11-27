@@ -237,14 +237,22 @@ resource, `api_status`, `privacy_mismatch`); an answer different from the
 request raises an admin alert carrying the API's own status object — no
 assumption about why.
 
-The order: `youtube_url` (a video already on the client's channel; it orders
-the video row). Without one, `paid_media_production.video_asset` makes one
-short clip on the client's tool and uploads it through `publish` — the
-Social-tab gate included. Not approved there → the clip is queued, the row is
-`video_waiting_approval`, the order is `incomplete` (Yoav not told) and keeps
-`video_file_id`; `prepare_campaign` with `order` continues it with the SAME
-clip after the approval.
+The order names its video BEFORE it is approved: `youtube_url` (a video
+already on the client's channel) or `video_file_id` (a video in their media
+library, `_v_media_video`). A type whose minimum is a video and names neither
+is not issued (`OrderError("video")` → the client is asked which video).
+Nothing is generated for a video row — a clip made after the click would be a
+video nobody saw.
 
+**One approval (the owner's decision, 2026-11-28).** The campaign card is the
+approval of an ad video; it is NOT queued in the Social tab as well. The
+condition: the card SHOWS the video first — `details` gives the dashboard the
+file on our session-gated player route (a `<video>` on the card) or the
+YouTube link. `youtube_content_agent.publish` skips `social_queue.check` only
+for `purpose: "ad"` and only when `_ad_card_approves` finds, in the stored
+row, a `prepare_campaign` card of THIS client that is running now and names
+THIS file. Organic uploads (`publish_youtube_from_media`) are untouched: the
+Social gate, Private.
 The delivery check on a video row (`media_order.video_problems`): a YouTube
 URL, never a file; then `youtube_service.public_video_state(url)` — YouTube's
 public oEmbed endpoint, asked as an outsider, no token and no API quota —
@@ -252,10 +260,23 @@ must answer that the video opens (`video_private` / `video_unreachable` /
 `video_unverified` otherwise; no answer is not a pass). Yoav's check asks
 again on its own.
 
-Quota: one upload is 1,600 of the project's 10,000 daily YouTube Data API
-units, shared by every client; raising that needs the compliance audit. The
-existing brakes apply (`DAILY_UPLOAD_LIMIT`). Nothing here hit it — nothing
-here has run.
+### 3.7 The upload quota (`core/youtube_quota`)
+
+One project-wide daily limit, shared by every client. `youtube_quota.status()`
+= uploads used / limit / remaining today, from OUR tally
+(`api_call_counters`, platform `youtube`) — Google exposes no "left" call.
+Shown on `/admin/connections/` (`GET /api/admin/youtube/quota`).
+`require(1)` runs in `prepare` (no card) and again first thing in `run`
+(`ActionFailed("youtube_quota")`) — before copy, images or the upload. The
+owner is alerted on the upload that reaches half the limit.
+
+**The limit is `youtube_service.DAILY_UPLOAD_LIMIT` (90), and that number is
+not confirmed.** The repo's July 2026 check and current third-party guides
+say videos.insert allows 100 calls/day; the older figure is 1,600 of 10,000
+units = 6 uploads/day. The project's quota page in the Cloud Console decides.
+If it shows 6, set `DAILY_UPLOAD_LIMIT = 6` — the page, the refusal and the
+alert all follow that one constant. The tally fails open when the database is
+down, and its day is UTC while Google's resets at midnight Pacific.
 ### Not built, not verified
 
 - **Nothing is uploaded to Google Ads.** No asset upload, no asset group, no

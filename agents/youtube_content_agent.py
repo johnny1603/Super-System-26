@@ -257,8 +257,8 @@ def run_channel_detection_scan() -> dict:
 
 # ─── Publishing ─────────────────────────────────────────────────────────────
 
-# One upload costs 1,600 of the 10,000 YouTube Data API units/day that every
-# client shares (core/youtube_service). Client-approved uploads from chat
+# Uploads share ONE project-wide daily limit across every client (core/youtube_quota:
+# what an upload costs, the tally, the owner's alert). Client-approved uploads from chat
 # (core/agent_actions publish_youtube_from_media) stop at this many per client
 # per UTC day; every upload path counts toward it.
 DAILY_UPLOADS_PER_CLIENT = 3
@@ -273,6 +273,23 @@ def uploads_today(client_id: int) -> int:
             .eq("action_type", "content_published")
             .gte("created_at", midnight.isoformat()).limit(50).execute().data or [])
     return len(rows)
+
+
+AD_CARD_ACTION = "prepare_campaign"
+
+
+def _ad_card_approves(client_id: int, card_id, drive_file_id: str) -> bool:
+    """Is there a campaign card the client APPROVED (it is running now) for
+    THIS client that showed THIS file? Read from the stored row — never from
+    what the caller says about it. Any doubt = no."""
+    try:
+        from core import agent_actions
+        row = agent_actions._get(int(card_id)) or {}
+    except Exception:
+        return False
+    return (row.get("action") == AD_CARD_ACTION and int(row.get("client_id") or 0) == int(client_id)
+            and row.get("status") == "running"
+            and bool(drive_file_id) and (row.get("params") or {}).get("video_file_id") == drive_file_id)
 
 
 @drive_storage.scoped
@@ -307,11 +324,19 @@ def publish(client_id: int, spec: dict) -> dict:
     # THE Social-tab gate (core/social_queue): the chat card, the admin route
     # and the verification demo all pass here. Not approved there for YouTube
     # = nothing is uploaded.
+    # ONE exception (the owner's decision, 2026-11-28): an AD video is approved on its
+    # campaign card — which SHOWED this very file before the click — and is not queued in the
+    # Social tab too. It passes only with that card: running now, this client's, naming this file.
     from core import social_queue
-    try:
-        social_queue.check(client_id, "youtube", file_id=drive_file_id)
-    except social_queue.GateClosed as e:
-        return {"success": False, "not_approved": True, "errors": [str(e)]}
+    if privacy == AD_PRIVACY:
+        if not _ad_card_approves(client_id, spec.get("campaign_card"), drive_file_id):
+            return {"success": False, "not_approved": True,
+                    "errors": ["no approved campaign card names this video — nothing was uploaded"]}
+    else:
+        try:
+            social_queue.check(client_id, "youtube", file_id=drive_file_id)
+        except social_queue.GateClosed as e:
+            return {"success": False, "not_approved": True, "errors": [str(e)]}
 
     conn = _get_connection(client_id)
     if not (conn.get("access_token") and conn.get("account_id")):

@@ -139,6 +139,12 @@ def build(aa) -> dict:
             "Votre marque a plus d'une palette de couleurs, selon le public. À quel public s'adresse cette campagne ?",
             "لعلامتكم أكثر من لوحة ألوان بحسب الجمهور. لأي جمهور هذه الحملة؟",
             "У вашего бренда несколько палитр — по аудиториям. Для какой аудитории эта кампания?"),
+        "video": _txt(
+            "קמפיין וידאו מאשרים רק אחרי שרואים את הסרטון. איזה סרטון להשתמש? אפשר לשלוח קישור לסרטון שכבר בערוץ היוטיוב שלכם, לבחור סרטון מספריית המדיה, או לבקש ממני להפיק אחד קודם.",
+            "A video campaign is approved only after you have seen the video. Which video should it use? Send a link to a video already on your YouTube channel, pick one from your media library, or ask me to produce one first.",
+            "Une campagne vidéo ne se valide qu'après avoir vu la vidéo. Laquelle utiliser ? Envoyez le lien d'une vidéo déjà sur votre chaîne YouTube, choisissez-en une dans votre médiathèque, ou demandez-moi d'en produire une d'abord.",
+            "حملة الفيديو تُعتمد فقط بعد مشاهدة الفيديو. أي فيديو نستخدم؟ أرسلوا رابط فيديو موجود على قناتكم في يوتيوب، أو اختاروا واحدًا من مكتبة الوسائط، أو اطلبوا مني إنتاج واحد أولًا.",
+            "Видеокампанию одобряют только после просмотра видео. Какое использовать? Пришлите ссылку на видео на вашем YouTube-канале, выберите из медиатеки или попросите меня сначала сделать его."),
         "audience_segment": _txt(
             "למי הקמפיין הזה פונה? משפט אחד על הקהל מספיק.", "Who is this campaign for? One sentence about the audience is enough.",
             "À qui s'adresse cette campagne ? Une phrase sur le public suffit.", "لمن هذه الحملة؟ تكفي جملة واحدة عن الجمهور.",
@@ -169,11 +175,12 @@ def build(aa) -> dict:
             "Il me manque un élément sans lequel je ne produis pas d'annonces (la bibliothèque métier ou le brief de marque) : rien n'a été produit. L'équipe est prévenue.",
             "ينقصني ما لا أنتج إعلانات بدونه (مكتبة الحرفة أو موجز العلامة)، فلم يُنتج شيء. تم تنبيه الفريق.",
             "Не хватает материала, без которого я не делаю рекламу (библиотека ремесла или бриф бренда), ничего не создано. Команда уведомлена."),
-        "order_gone": _txt("ההזמנה הזאת כבר לא מחכה להמשך, אז לא הפעלתי כלום. אפשר לבקש קמפיין חדש.",
-                           "That order is no longer waiting to be continued, so nothing ran. You can ask for a new campaign.",
-                           "Cette commande n'attend plus de suite : rien n'a été lancé. Vous pouvez demander une nouvelle campagne.",
-                           "هذا الطلب لم يعد بانتظار المتابعة، فلم يُشغَّل شيء. يمكن طلب حملة جديدة.",
-                           "Этот заказ больше не ждёт продолжения, ничего не запущено. Можно запросить новую кампанию."),
+        "youtube_quota": _txt(
+            "היום כבר לא נשארו העלאות ליוטיוב במכסה היומית של המערכת, אז לא התחלתי כלום ושום קרדיט לא נוצל. המכסה מתחדשת מחר — בקשו שוב אז.",
+            "No YouTube uploads are left in the system's daily allowance today, so nothing was started and no credit was used. The allowance renews tomorrow — ask again then.",
+            "Il ne reste plus d'envois YouTube dans le quota quotidien du système aujourd'hui : rien n'a été lancé et aucun crédit utilisé. Le quota se renouvelle demain — redemandez alors.",
+            "لم يبقَ اليوم رفع إلى يوتيوب ضمن الحصة اليومية للنظام، فلم أبدأ شيئًا ولم يُستخدم أي رصيد. تتجدد الحصة غدًا — اطلبوا مجددًا حينها.",
+            "На сегодня в дневной квоте системы не осталось загрузок на YouTube, поэтому ничего не запущено и кредиты не потрачены. Квота обновится завтра — попросите снова."),
         "stopped": _txt("עצרתי. מה שכבר הופק נשאר בתיקיית ה-Drive שלכם; ההזמנה לא הועברה הלאה.",
                         "Stopped. What was already produced stays in your Drive folder; the order was not handed on.",
                         "Arrêté. Ce qui a déjà été produit reste dans votre Drive ; la commande n'a pas été transmise.",
@@ -193,16 +200,11 @@ def build(aa) -> dict:
                           "la vidéo déjà présente sur votre chaîne YouTube ({video})",
                           "الفيديو الموجود على قناتكم في يوتيوب ({video})",
                           "видео, уже размещённое на вашем YouTube-канале ({video})"),
-        "video_make": _txt("סרטון קצר אחד שיופק בכלי הווידאו שבחשבון שלכם. הוא יחכה לאישור שלכם בלשונית סושיאל, ורק אחריו יעלה לערוץ היוטיוב שלכם כ״לא רשום״ (נגיש רק דרך הקישור)",
-                           "one short video made on the video tool on your own account. It waits for your approval in the Social tab, and only then is uploaded to your YouTube channel as unlisted (reachable only by its link)",
-                           "une courte vidéo créée avec l'outil vidéo de votre propre compte. Elle attend votre validation dans l'onglet Social, puis est mise en ligne sur votre chaîne YouTube en non répertorié (accessible uniquement par son lien)",
-                           "فيديو قصير واحد يُنتج بأداة الفيديو في حسابكم. ينتظر موافقتكم في تبويب السوشيال، وبعدها فقط يُرفع إلى قناتكم على يوتيوب كغير مدرج (متاح عبر الرابط فقط)",
-                           "одно короткое видео, созданное видеоинструментом вашего аккаунта. Оно ждёт вашего одобрения во вкладке «Соцсети» и только потом загружается на ваш YouTube-канал с доступом по ссылке"),
-        "resume": _txt("אחרי שתאשרו את הסרטון בלשונית סושיאל, כתבו לי \"להמשיך בקמפיין\" (הזמנה {order}) — אעלה אותו ליוטיוב כלא רשום ואשלים את ההזמנה.",
-                       "Once you approve the video in the Social tab, write \"continue the campaign\" (order {order}) — I'll upload it to YouTube as unlisted and complete the order.",
-                       "Une fois la vidéo validée dans l'onglet Social, écrivez « continuer la campagne » (commande {order}) — je la mets en ligne sur YouTube en non répertorié et je termine la commande.",
-                       "بعد أن توافقوا على الفيديو في تبويب السوشيال اكتبوا \"متابعة الحملة\" (الطلب {order}) — سأرفعه إلى يوتيوب كغير مدرج وأكمل الطلب.",
-                       "Когда одобрите видео во вкладке «Соцсети», напишите «продолжить кампанию» (заказ {order}) — загружу его на YouTube с доступом по ссылке и завершу заказ."),
+        "video_file": _txt("הסרטון \"{name}\" מספריית המדיה שלכם, שמוצג כאן בכרטיס — צפו בו לפני האישור. אחרי האישור הוא יעלה לערוץ היוטיוב שלכם כ״לא רשום״ (נגיש רק דרך הקישור), בלי אישור נוסף",
+                           "the video \"{name}\" from your media library, shown here on the card — watch it before approving. Once approved it is uploaded to your YouTube channel as unlisted (reachable only by its link), with no further approval",
+                           "la vidéo « {name} » de votre médiathèque, affichée ici sur la carte — regardez-la avant de valider. Une fois validée, elle est mise en ligne sur votre chaîne YouTube en non répertorié (accessible uniquement par son lien), sans autre validation",
+                           "الفيديو \"{name}\" من مكتبة الوسائط، المعروض هنا في البطاقة — شاهدوه قبل الموافقة. بعد الموافقة يُرفع إلى قناتكم على يوتيوب كغير مدرج (متاح عبر الرابط فقط) دون موافقة إضافية",
+                           "видео «{name}» из вашей медиатеки, показанное здесь на карточке — посмотрите его до одобрения. После одобрения оно загружается на ваш YouTube-канал с доступом по ссылке, без дополнительного подтверждения"),
         "ready_video": _txt("מוכן ✓ הסרטון לקמפיין נמצא בערוץ היוטיוב שלכם: {url}\nיוטיוב מדווח שהוא {privacy}, ובדקתי בנפרד שאפשר לפתוח אותו מבחוץ. שום קמפיין לא נפתח — זה השלב הבא, באישור שלכם.",
                             "Ready ✓ The campaign video is on your YouTube channel: {url}\nYouTube reports it as {privacy}, and I checked separately that it opens from outside. No campaign was opened — that is the next step, with your approval.",
                             "Prêt ✓ La vidéo de la campagne est sur votre chaîne YouTube : {url}\nYouTube l'indique comme {privacy}, et j'ai vérifié séparément qu'elle s'ouvre de l'extérieur. Aucune campagne n'a été ouverte — c'est l'étape suivante, avec votre accord.",
@@ -266,22 +268,14 @@ def build(aa) -> dict:
             raise ValueError("not a YouTube video address")
         return value[:200]
 
-    def v_order(value, client_id):
-        value = str(value or "").strip()
-        if not re.fullmatch(r"[0-9a-f]{12}", value):
-            raise ValueError("not an order id")
-        return value
+    def _needs_upload(order):
+        return bool(order.get("video_file_id")) and not order.get("youtube_url")
 
-    def _waiting(client_id, order_id):
-        """The stored order a video approval is holding up, or {}."""
-        order = media_order.get(client_id, order_id)
-        problems = (((order.get("delivery") or {}).get("check") or {}).get("problems")) or []
-        held = any(p.get("code") == "video_waiting_approval" for p in problems)
-        return order if order.get("status") == "incomplete" and held and order.get("video_file_id") else {}
-
-    def _needs_video(order):
-        return any(r["kind"] == "video" for r in order["required_assets"]) and not order.get("youtube_url")
-
+    def _quota(order):
+        """QuotaExceeded when this order's upload no longer fits today."""
+        if _needs_upload(order):
+            from core import youtube_quota
+            youtube_quota.require(1)
     def v_text(limit):
         return lambda value, client_id: aa._v_short_text(value, limit)
 
@@ -296,10 +290,6 @@ def build(aa) -> dict:
         lang = (context or {}).get("language") or "he"
         if aa._in_package({"package": client_state.cached_package(client_id)}, "google_ads") is False:
             return {"refuse": _pick(refusals["not_in_package"], lang)}
-        if params.get("order"):                         # continuing an order held up by a video approval
-            if not _waiting(client_id, params["order"]):
-                return {"refuse": _pick(refusals["order_gone"], lang)}
-            return {"params": {"order": params["order"]}}
         missing = post_brief.try_context(client_id).get("missing")
         if missing:
             aa._alert(f"client {client_id}: content context missing ({', '.join(missing)}) — {ACTION} refused")
@@ -310,7 +300,7 @@ def build(aa) -> dict:
             aa._alert(f"client {client_id}: the campaign decision failed ({type(e).__name__})")
             return {"refuse": _pick(refusals["decision_failed"], lang)}
         clean = {k: v for k, v in decided.items() if v}
-        for k in ("deadline", "youtube_url"):
+        for k in ("deadline", "youtube_url", "video_file_id"):
             if params.get(k):
                 clean[k] = params[k]
         try:
@@ -320,7 +310,14 @@ def build(aa) -> dict:
                 return {"clarify": _pick(ask[e.code], lang)}
             aa._alert(f"client {client_id}: the campaign order could not be issued ({e})")
             return {"refuse": _pick(refusals["decision_failed"], lang)}
-        if (media_order.generations(order) or _needs_video(order)) and aa._media_tool_status(client_id) not in ("connected",
+        try:
+            _quota(order)                               # before the card exists: nothing was produced, nothing spent
+        except Exception as e:
+            if type(e).__name__ != "QuotaExceeded":
+                raise
+            aa._alert(f"client {client_id}: a campaign with a video was refused — {e}")
+            return {"refuse": _pick(refusals["youtube_quota"], lang)}
+        if media_order.generations(order) and aa._media_tool_status(client_id) not in ("connected",
                                                                                       "connected_unverified"):
             return {"switch_to": "connect_creative_tool", "switch_params": {"tool": "higgsfield"},
                     "notice": _pick(aa._PRODUCE_TOOL_FIRST, lang).replace("{tool}", aa._creative_label("higgsfield", lang))}
@@ -331,10 +328,6 @@ def build(aa) -> dict:
 
     def display(client_id, params):
         lang = aa._lang(client_id)
-        if params.get("order"):
-            stored = media_order.get(client_id, params["order"])
-            params = {**{k: stored.get(k, "") for k in ("campaign_type", "objective", "offer", "audience_segment",
-                                                         "landing_page_url", "youtube_url")}, "resume": True}
         campaign_type = params.get("campaign_type", "")
         try:
             concepts = max(1, min(media_order.DEFAULT_CONCEPTS, gaf.max_concepts(campaign_type) or 1))
@@ -347,13 +340,26 @@ def build(aa) -> dict:
         if params.get("youtube_url"):
             video = _pick(text["video_url"], lang).replace("{video}", params["youtube_url"])
             produces = video if not n else produces + " + " + video
-        elif any(r["kind"] == "video" and r["need"] == "required" for r in rows):
-            produces = _pick(text["video_make"], lang)
+        elif params.get("video_file_id"):
+            # its name from Drive's own metadata; the video itself plays on the card (`details`)
+            video = _pick(text["video_file"], lang).replace(
+                "{name}", aa._media_name(client_id, params["video_file_id"]) or "—")
+            produces = video if not n else produces + " + " + video
         return {"type": _pick(types.get(campaign_type) or {"he": campaign_type}, lang),
                 "objective": _pick(objectives.get(params.get("objective")) or {"he": ""}, lang),
                 "offer": params.get("offer", ""), "audience": params.get("audience_segment", ""),
                 "url": params.get("landing_page_url", ""), "produces": produces, "why": params.get("why", ""),
                 "generations": str(n)}
+
+    def details(client_id, params):
+        """THE video, on the card BEFORE the approval: the dashboard plays the client's own file
+        from our session-gated route, or links the YouTube video. Never a URL a model wrote: the
+        file id passed _v_media_video, the address v_youtube."""
+        if params.get("youtube_url"):
+            return {"youtube_url": params["youtube_url"]}
+        if params.get("video_file_id"):
+            return {"video_url": f"/api/client/media-drive/play/{params['video_file_id']}"}
+        return {}
 
     def run(client_id, params, background_tasks, row=None, production=None):
         """`production` = the callables paid_media_production.produce takes plus
@@ -367,15 +373,18 @@ def build(aa) -> dict:
             probe = youtube_service.public_video_state
         lang = (row or {}).get("language") or aa._lang(client_id)
         proposal_id = (row or {}).get("id")
-        if params.get("order"):
-            order = _waiting(client_id, params["order"])
-            if not order:
-                raise ActionFailed("order_gone", f"{ACTION}: order {params['order']} is not waiting")
-        else:
-            try:
-                order = _order(client_id, params)
-            except media_order.OrderError as e:
-                raise ActionFailed("decision_failed", f"{ACTION}: {e}")
+        try:
+            order = _order(client_id, params)
+        except media_order.OrderError as e:
+            raise ActionFailed("decision_failed", f"{ACTION}: {e}")
+        order["approved_card"] = proposal_id               # the approval an ad video's upload rests on
+        try:
+            _quota(order)                                  # BEFORE copy, images or the upload
+        except Exception as e:
+            if type(e).__name__ != "QuotaExceeded":
+                raise
+            aa._alert(f"client {client_id}: media order {order['id']} not started — {e}")
+            raise ActionFailed("youtube_quota", f"{ACTION}: {e}")
         order["status"] = "in_production"
         media_order.save(client_id, order)
         if order.get("required_text") and not order.get("texts"):
@@ -404,8 +413,7 @@ def build(aa) -> dict:
                                f"{ACTION}: {e}")
         made = len([a for a in delivered["assets"] if a.get("file_id") or a.get("youtube_url")])
         video = next((a for a in delivered["assets"] if a["slot"] == "video"), {})
-        if video.get("file_id"):
-            order["video_file_id"] = video["file_id"]          # a continued order uploads THIS clip, never a new one
+
         if video.get("youtube_url") and video.get("privacy_requested") and \
                 video.get("privacy_status") != video["privacy_requested"]:
             # the upload did not come back as asked: the API's own answer, not an assumption about a policy
@@ -415,12 +423,9 @@ def build(aa) -> dict:
         try:
             media_order.hand_over(client_id, order, delivered, files, probe=probe)
         except media_order.IncompleteDelivery as e:
-            waiting = any(p["code"] == "video_waiting_approval" for p in e.problems)
-            if not waiting:
-                aa._alert(f"client {client_id}: media order {order['id']} NOT handed over — " +
-                          "; ".join(media_order.problem_lines(e.problems, "en"))[:600])
-            return {"status": "incomplete", "order": order["id"], "made": made, "problems": e.problems,
-                    "waiting_video": waiting}
+            aa._alert(f"client {client_id}: media order {order['id']} NOT handed over — " +
+                      "; ".join(media_order.problem_lines(e.problems, "en"))[:600])
+            return {"status": "incomplete", "order": order["id"], "made": made, "problems": e.problems}
         verdict = media_order.yoav_verify(client_id, order, files, order["texts"], probe=probe)
         if not verdict["can_serve"]:
             aa._alert(f"client {client_id}: media order {order['id']} rejected at the platform minimum — " +
@@ -437,9 +442,8 @@ def build(aa) -> dict:
         if status in ("incomplete", "rejected"):
             lines = "\n".join("• " + line for line in media_order.problem_lines(result.get("problems"), lang))
             out = _pick(text[status], lang).replace("{lines}", lines).replace("{made}", str(result.get("made", 0)))
-            if result.get("waiting_video"):
-                out += "\n" + _pick(text["resume"], lang).replace("{order}", str(result.get("order", "")))
             return out
+
         if result.get("video_url") and not result.get("images"):
             privacy = text["privacy"].get(result.get("video_privacy")) or text["privacy"][""]
             return (_pick(text["ready_video"], lang).replace("{url}", result["video_url"])
@@ -462,8 +466,9 @@ def build(aa) -> dict:
                     "campaign type and objective; on approval the ad texts are written to Google's character limits, "
                     "the media agent produces the full image set in every required ratio, the set is checked from "
                     "the files, and only a COMPLETE set is handed to the Google Ads specialist, who verifies it "
-                    "again. A video campaign uses the client's own YouTube video (youtube_url) or one short clip that waits "
-                    "for their approval in the Social tab and is then uploaded to their channel as unlisted. Nothing is "
+                    "again. A VIDEO campaign needs its video named up front — the client's YouTube video (youtube_url) "
+                    "or a video from their media library (video_file_id): the card shows it, and approving the card "
+                    "uploads that file to their channel as unlisted. No video named = they are asked which one. Nothing is "
                     "uploaded to Google Ads and no campaign is opened by this. Never ask the client "
                     "which sizes, ratios or campaign type they want.",
             "params": {
@@ -483,9 +488,10 @@ def build(aa) -> dict:
                 "youtube_url": {"required": False, "validate": v_youtube,
                                 "hint": "a YouTube video address the CLIENT gave — a video already on their channel "
                                         "for the campaign to use; never a guess"},
-                "order": {"required": False, "validate": v_order,
-                          "hint": "ONLY to continue an earlier order that was waiting for the client's video approval "
-                                  "in the Social tab: the 12-character order id from that result line, and nothing else"},
+                "video_file_id": {"required": False, "validate": aa._v_media_video,
+                                  "hint": "for a VIDEO campaign without a youtube_url: drive_file_id copied exactly from "
+                                          "account_state.media_folder.videos — the video the client chose (never shown "
+                                          "to the client, never a guess)"},
                 "why": {"required": False, "validate": v_text(300), "hint": "leave empty — filled by the system"},
             },
             "available": possible,
@@ -493,6 +499,7 @@ def build(aa) -> dict:
             "validate_stored": lambda client_id, params: aa.validate_params(aa.ACTIONS[ACTION], params, client_id),
             "run": run,
             "display": display,
+            "details": details,
             "slow": {"minutes": 25, "eta": _txt(
                 "הטקסטים נכתבים תוך דקה, וכל תמונה לוקחת בדרך כלל דקה-שתיים.",
                 "The texts are written within a minute, and each image usually takes a minute or two.",

@@ -980,6 +980,7 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   queues it and replies where it waits. `social_queue.check()` runs inside `meta_content_agent.publish` (spec
   `queue_item` required), `tiktok_content_agent.begin_upload` and `youtube_content_agent.publish`, before any
   platform call. Admin routes and the verification demo included; there is no override. A new publisher must call it.
+  ONE exception, the owner's: an AD video approved on its `prepare_campaign` card, which showed it (Paid media below).
   Approve (one or a batch; chat card `approve_social_items`), edit (an edit re-opens approval), reject with a reason
   (a line + a fix card in the PRODUCER's chat), download. Approved ≠ published: per channel `scheduled` / `one_tap`
   / `not_connected` / `drafts` / `private` / `done` from `channel_modes`. Today everything is a tap (no date job;
@@ -1067,8 +1068,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   incomplete set raises `IncompleteDelivery` by name — Yoav is not told — then
   `yoav_verify` re-checks against the platform minimum on its own. Chat: ONE card `prepare_campaign`
   (`core/media_order_actions`, every param optional, **internal accounts only until a live run**, `STOP_FINISH`).
-  A video row is a YouTube URL: the order's `youtube_url`, or one clip uploaded UNLISTED via
-  `youtube_content_agent.publish` (`purpose: "ad"`, the Social gate included — a held order continues with `order`);
+  A video row is a YouTube URL: the order's `youtube_url`, or its `video_file_id` (a media-library video) uploaded
+  UNLISTED via `youtube_content_agent.publish` (`purpose: "ad"`). ONE approval (owner, 2026-11-28): the campaign card
+  SHOWS the video (`details` → a player on the card) and its approval is the only one — publish skips the Social gate
+  ONLY for an ad whose running `prepare_campaign` row names that file (`_ad_card_approves`); nothing is generated for
+  a video row. Upload quota: `core/youtube_quota` (tally, `/admin/connections/`, refusal before production, alert at half);
   `upload_video_stream(privacy_status=)` defaults to private and the client card `publish_youtube_from_media` STILL
   uploads Private; the result reports the status YouTube answered; the check asks `youtube_service.public_video_state`
   (reachable, not private). NOTHING is uploaded to Google Ads; uploaded banners are not produced; never run live.
