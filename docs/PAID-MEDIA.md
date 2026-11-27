@@ -66,3 +66,62 @@ Decisions made here that are not Google's (flagged so they can be changed):
 - Where the spec gives a responsive display count as "× 5", it is read as a
   ceiling of 5 with a floor of 1.
 - `CROP_TARGETS` (which crops a slot must survive) — see §2.
+
+## 2. The craft layer — `knowledge/paid-media-craft.md`
+
+What the table cannot encode. Five rules (§2.1–2.5 there): crop survival, text
+belongs in text fields, the 150 KB problem, coverage beats polish, brand
+discipline. The file holds **no numbers of its own** — a size written there
+would be a second source (`tests/test_paid_media_checks.py` fails on one).
+It carries the table's two dates. Two of the rules are code, not advice:
+
+### Crop survival — `core/crop_survival.py`
+
+`check(content, slot, subject_box=None)` takes the PRODUCED file, makes the
+centre crops `google_ads_formats.CROP_TARGETS` lists for its slot and measures
+how much of the subject each crop keeps.
+
+| slot | cropped to |
+|---|---|
+| landscape | 1:1 and 4:1 |
+| square | 1.91:1 |
+| portrait | 1:1 |
+| vertical | 4:5 |
+
+How the subject is found (pixels only — no model, no network, no cost): the
+border ring is the background (its median colour and its own spread, so a
+textured backdrop is not a subject); a pixel's distance from that is its
+weight; an image with no colour separation falls back to its edges. A crop
+survives when it keeps `MIN_RETAINED` (70%) of the weight. When the producer
+knows where the product is it passes `subject_box`, and that box must sit
+`MIN_BOX_INSIDE` (90%) inside every crop as well. No findable subject = a
+failed check (it fails closed). `crops()` returns the crops themselves for a
+human to look at; `line()` is the log line.
+
+Limits, said plainly: this is not understanding. It cannot tell a product
+from a brighter object beside it, and "readable" is approximated by "still in
+frame". The two thresholds are judgment, not a Google spec, and have not been
+tuned against real ad images.
+
+The spec said "every display image must survive a centre crop to square and
+to 4:1". That is applied literally to the **landscape** image, which is the
+one Google cuts that way. Applied literally to a square or a portrait image it
+would fail nearly everything (a 4:1 strip keeps a fifth of a portrait), so
+those slots are held to the crop that actually happens to them (table above).
+Change `CROP_TARGETS` to change it.
+
+### The 150 KB problem — `core/ad_compress.py`
+
+`to_cap(content, max_bytes, file_types, what, floor=None)`: a file already
+within its cap is returned untouched; otherwise every encoding the slot takes
+is tried (JPEG at the highest quality that fits — a search, never one guess —
+a 256-colour PNG, a lossless PNG), each one's damage is measured against the
+original (PSNR), and the least damaged that fits wins. None under the cap at
+`MIN_PSNR` (33 dB) or better → `CannotReachCap`, naming the file, the cap and
+how close the best attempt came. JPEG is never pushed under `MIN_QUALITY`
+(60). A cut-out logo is never flattened to JPEG. A banner is never resized;
+a slot with a minimum size (`floor`) may be stepped down, and the result says
+so.
+
+PSNR is a stand-in for "no visible degradation", not a pair of eyes; 33 dB is
+a judgment call.
