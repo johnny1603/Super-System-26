@@ -1076,6 +1076,18 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `upload_video_stream(privacy_status=)` defaults to private and the client card `publish_youtube_from_media` STILL
   uploads Private; the result reports the status YouTube answered; the check asks `youtube_service.public_video_state`
   (reachable, not private). NOTHING is uploaded to Google Ads; uploaded banners are not produced; never run live.
+- **Speaking to the client (2026-11-28, `knowledge/client-governance.md` §9)**: a client never reads a platform's
+  internal vocabulary. THE table is data in `core/client_speech.py` (`TERMS`: patterns in Latin + transliteration,
+  the plain words in 5 languages, `None` = never mentioned) — a new platform = new rows, never a prompt line.
+  Enforced on the OUTPUT: `client_speech.enforce` (named failure → the caller's model rewrite once → the table's
+  words → `Blocked`) runs on the chat reply (`_client_chat_answer`, with `allow_from(message)`: a term the client
+  used is answered plainly), on every non-admin `agent_actions.card`, and inside `client_agent.log_communication`
+  for `outbound` (blocked = nothing stored). A card that quotes object names from the client's own account opts a
+  key out with `speech_allow` (the Tag Manager plan cards). An expected result with no stated basis fails the same
+  way (`expectation_problems`). `core/campaign_presentation`: where / budget (total + per day) / goal / expected
+  result with its basis (history → benchmark → estimate as a range with assumptions) — `prepare_campaign` asks for
+  the budget and opens no card without all four. NOT the same file as `core/client_language` (which language a
+  client reads). `tests/test_client_speech.py` (`--show` prints a sample presentation).
   app_settings `media_orders:<id>`. `tests/test_media_order.py`, `tests/test_paid_media_checks.py`.
 - **Specialist replies (2026-11-22, `core/reply_guards.py`)**: after the model, in
   `support_agent._reply_guards`: a SPECIALIST's off-request content-plan talk and plan card are

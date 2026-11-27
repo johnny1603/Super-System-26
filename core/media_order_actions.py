@@ -21,7 +21,7 @@ Nothing is uploaded to the ad platform here. The result says so.
 import json
 import re
 
-from core import ad_copy, media_order, paid_media_production
+from core import ad_copy, campaign_presentation, client_speech, media_order, paid_media_production
 from core import google_ads_formats as gaf
 
 SERVICE_NAME = "media_order_actions"
@@ -45,19 +45,26 @@ Decide:
   compose or guess an address. None there = "".
 - offer: what is advertised, one sentence in `language`, only from the request and the business facts. Never
   invent a price, a discount or a deadline. Nothing to go on = "".
-- why: one sentence in `language` — why this campaign type, in plain words for the business owner.
+- why: one sentence in `language` — why this is the right way to advertise this, in plain words for the business
+  owner. NEVER a product name, an acronym or marketing jargon (no "Performance Max", "Demand Gen", "CPC", "ROAS",
+  "conversions"): say where the ads will appear and why that suits them. No number of expected results here.
+- estimate: used ONLY when the account has no history of its own. Your honest estimate of what ONE result of this
+  objective costs for a business like this in Israel, in shekels, as a RANGE: cost_low and cost_high (numbers,
+  cost_high at least 1.5 times cost_low; for "awareness" the cost of reaching a thousand people), and
+  `assumptions`: one short clause in `language`, plain words, saying what the range assumes (the kind of
+  business, the price of what is sold, how crowded the field is). Never a single figure, never a promise.
 
 Return JSON only: {"campaign_type": "", "objective": "", "audience_segment": "", "landing_page_url": "",
-"offer": "", "why": ""}"""
+"offer": "", "why": "", "estimate": {"cost_low": 0, "cost_high": 0, "assumptions": ""}}"""
 
 
-def decide(client_id: int, given: dict, lang: str, call=None, knowledge=None, facts=None) -> dict:
+def decide(client_id: int, given: dict, lang: str, call=None, knowledge=None, facts=None, need_estimate=False) -> dict:
     """Yoav's decision: `given` (what the chat already fixed) completed by ONE
     model call when something is missing. A landing page the model returns is
     kept only when that address is in what it was shown."""
     fields = ("campaign_type", "objective", "audience_segment", "landing_page_url", "offer")
     out = {k: given[k] for k in fields if given.get(k)}
-    if all(out.get(k) for k in fields):
+    if all(out.get(k) for k in fields) and not need_estimate:
         return {**out, "why": ""}
     if knowledge is None:
         from core import client_knowledge
@@ -86,7 +93,9 @@ def decide(client_id: int, given: dict, lang: str, call=None, knowledge=None, fa
                                                                              URL_IN_TEXT.findall(shown)}:
         print(f"[{SERVICE_NAME}] client {client_id}: a landing page that was not in the data was dropped")
         out["landing_page_url"] = ""
-    return {**out, "why": str(answer.get("why") or "").strip()[:300]}
+    estimate = answer.get("estimate") if isinstance(answer.get("estimate"), dict) else {}
+    return {**out, "why": str(answer.get("why") or "").strip()[:300],
+            "estimate": {k: estimate.get(k) for k in ("cost_low", "cost_high", "assumptions")}}
 
 
 def build(aa) -> dict:
@@ -95,25 +104,8 @@ def build(aa) -> dict:
     def _pick(texts, lang):
         return aa._pick(texts, lang)
 
-    types = {
-        "pmax": _txt("קמפיין רב-ערוצי (חיפוש, יוטיוב, רשת המדיה, Gmail ומפות יחד)",
-                     "a cross-channel campaign (Search, YouTube, Display, Gmail and Maps together)",
-                     "une campagne multicanale (Recherche, YouTube, Display, Gmail et Maps ensemble)",
-                     "حملة متعددة القنوات (البحث ويوتيوب وشبكة العرض وGmail والخرائط معًا)",
-                     "кампания сразу на всех каналах (Поиск, YouTube, медийная сеть, Gmail и Карты)"),
-        "demand_gen": _txt("קמפיין חשיפה ויצירת ביקוש (יוטיוב, Discover ו-Gmail)",
-                           "a demand-generation campaign (YouTube, Discover and Gmail)",
-                           "une campagne de génération de demande (YouTube, Discover et Gmail)",
-                           "حملة لتوليد الطلب (يوتيوب وDiscover وGmail)",
-                           "кампания для формирования спроса (YouTube, Discover и Gmail)"),
-        "display": _txt("קמפיין באנרים ברשת המדיה", "a display campaign", "une campagne Display",
-                        "حملة على شبكة العرض", "кампания в медийной сети"),
-        "youtube": _txt("קמפיין וידאו ביוטיוב", "a YouTube video campaign", "une campagne vidéo YouTube",
-                        "حملة فيديو على يوتيوب", "видеокампания на YouTube"),
-        "search": _txt("קמפיין חיפוש (מודעות טקסט)", "a search campaign (text ads)",
-                       "une campagne sur le Réseau de Recherche (annonces textuelles)",
-                       "حملة على شبكة البحث (إعلانات نصية)", "поисковая кампания (текстовые объявления)"),
-    }
+    # Where each campaign type appears, in places a client knows — THE table (core/client_speech)
+    types = {t: client_speech.TERMS[t][1] for t in gaf.CAMPAIGN_TYPES}
     objectives = {
         "sales": _txt("מכירות", "sales", "ventes", "مبيعات", "продажи"),
         "leads": _txt("פניות", "leads", "prospects", "عملاء محتملون", "заявки"),
@@ -139,6 +131,12 @@ def build(aa) -> dict:
             "Votre marque a plus d'une palette de couleurs, selon le public. À quel public s'adresse cette campagne ?",
             "لعلامتكم أكثر من لوحة ألوان بحسب الجمهور. لأي جمهور هذه الحملة؟",
             "У вашего бренда несколько палитр — по аудиториям. Для какой аудитории эта кампания?"),
+        "budget": _txt(
+            "כדי להציג לכם את הקמפיין חסר לי דבר אחד: מה התקציב שתרצו להשקיע בו, ולכמה זמן? למשל: 3,000 ₪ לחודש.",
+            "To show you the campaign I am missing one thing: what budget would you like to put into it, and for how long? For example: ₪3,000 for a month.",
+            "Pour vous présenter la campagne, il me manque une chose : quel budget souhaitez-vous y consacrer, et pour combien de temps ? Par exemple : 3 000 ₪ pour un mois.",
+            "لأعرض عليكم الحملة ينقصني أمر واحد: ما الميزانية التي تودّون استثمارها فيها، ولأي مدة؟ مثلًا: 3,000 ₪ لشهر.",
+            "Чтобы показать вам кампанию, мне не хватает одного: какой бюджет вы хотите вложить и на какой срок? Например: 3 000 ₪ на месяц."),
         "video": _txt(
             "קמפיין וידאו מאשרים רק אחרי שרואים את הסרטון. איזה סרטון להשתמש? אפשר לשלוח קישור לסרטון שכבר בערוץ היוטיוב שלכם, לבחור סרטון מספריית המדיה, או לבקש ממני להפיק אחד קודם.",
             "A video campaign is approved only after you have seen the video. Which video should it use? Send a link to a video already on your YouTube channel, pick one from your media library, or ask me to produce one first.",
@@ -175,6 +173,12 @@ def build(aa) -> dict:
             "Il me manque un élément sans lequel je ne produis pas d'annonces (la bibliothèque métier ou le brief de marque) : rien n'a été produit. L'équipe est prévenue.",
             "ينقصني ما لا أنتج إعلانات بدونه (مكتبة الحرفة أو موجز العلامة)، فلم يُنتج شيء. تم تنبيه الفريق.",
             "Не хватает материала, без которого я не делаю рекламу (библиотека ремесла или бриф бренда), ничего не создано. Команда уведомлена."),
+        "presentation": _txt(
+            "לא הצלחתי לבנות לקמפיין הזה הצגה מלאה — איפה הוא יופיע, התקציב, המטרה ומה אנחנו מצפים ממנו ועל מה זה נשען — אז לא פתחתי כרטיס. העברתי את זה לצוות.",
+            "I could not put together a complete presentation of this campaign — where it appears, the budget, the goal and what we expect from it and why — so I did not open a card. I passed it to the team.",
+            "Je n'ai pas pu préparer une présentation complète de cette campagne — où elle apparaît, le budget, l'objectif et ce que nous en attendons et pourquoi — je n'ai donc pas ouvert de carte. J'ai transmis à l'équipe.",
+            "لم أتمكن من إعداد عرض كامل لهذه الحملة — أين ستظهر، الميزانية، الهدف وما نتوقعه منها ولماذا — لذلك لم أفتح بطاقة. حوّلت الأمر إلى الفريق.",
+            "Мне не удалось собрать полное описание этой кампании — где она появится, бюджет, цель и чего мы от неё ждём и почему, — поэтому карточку я не открыл. Передал команде."),
         "youtube_quota": _txt(
             "היום כבר לא נשארו העלאות ליוטיוב במכסה היומית של המערכת, אז לא התחלתי כלום ושום קרדיט לא נוצל. המכסה מתחדשת מחר — בקשו שוב אז.",
             "No YouTube uploads are left in the system's daily allowance today, so nothing was started and no credit was used. The allowance renews tomorrow — ask again then.",
@@ -262,6 +266,28 @@ def build(aa) -> dict:
         from datetime import date
         return date.fromisoformat(str(value or "").strip()).isoformat()
 
+    def v_budget(value, client_id):
+        number = float(str(value).replace(",", "").replace("₪", "").strip())
+        if not 0 < number <= 1_000_000:
+            raise ValueError("not a budget")
+        return round(number, 2)
+
+    def v_days(value, client_id):
+        days = int(float(str(value).strip()))
+        if not 1 <= days <= 365:
+            raise ValueError("not a number of days")
+        return days
+
+    def v_expected(value, client_id):
+        clean = campaign_presentation.clean_expected(value)
+        if not clean:
+            raise ValueError("not an expected result")
+        return clean
+
+    def _presentation(params):
+        return campaign_presentation.build(params.get("campaign_type", ""), params.get("objective", ""),
+                                           params.get("budget_total"), params.get("days"), params.get("expected"))
+
     def v_youtube(value, client_id):
         value = str(value or "").strip()
         if not gaf.youtube_id(value):
@@ -294,13 +320,21 @@ def build(aa) -> dict:
         if missing:
             aa._alert(f"client {client_id}: content context missing ({', '.join(missing)}) — {ACTION} refused")
             return {"refuse": _pick(refusals["context_missing"], lang)}
+        totals = campaign_presentation.history(client_id)
         try:
-            decided = decide(client_id, params, lang)
+            decided = decide(client_id, params, lang, need_estimate=not (totals.get("cost") or 0) > 0)
         except Exception as e:
             aa._alert(f"client {client_id}: the campaign decision failed ({type(e).__name__})")
             return {"refuse": _pick(refusals["decision_failed"], lang)}
+        estimate = decided.pop("estimate", None) or {}
         clean = {k: v for k, v in decided.items() if v}
-        for k in ("deadline", "youtube_url", "video_file_id"):
+        if clean.get("why"):                            # model-written: the table's words, or no line at all
+            try:
+                clean["why"] = client_speech.enforce(clean["why"], lang, where=f"client {client_id} campaign why",
+                                                     alert=aa._alert)
+            except client_speech.Blocked:
+                clean.pop("why")
+        for k in ("deadline", "youtube_url", "video_file_id", "budget_total", "days"):
             if params.get(k):
                 clean[k] = params[k]
         try:
@@ -310,6 +344,19 @@ def build(aa) -> dict:
                 return {"clarify": _pick(ask[e.code], lang)}
             aa._alert(f"client {client_id}: the campaign order could not be issued ({e})")
             return {"refuse": _pick(refusals["decision_failed"], lang)}
+        # The four things a campaign is presented with (governance §9) — all four, or no card
+        if not clean.get("budget_total"):
+            return {"clarify": _pick(ask["budget"], lang)}
+        clean.setdefault("days", campaign_presentation.DEFAULT_DAYS)
+        expected = (campaign_presentation.from_history(clean["objective"], clean["budget_total"], totals)
+                    or campaign_presentation.from_estimate(clean["objective"], clean["budget_total"], estimate.get("cost_low"),
+                                                           estimate.get("cost_high"), estimate.get("assumptions")))
+        clean["expected"] = expected or {}
+        try:
+            campaign_presentation.render(_presentation(clean), lang)
+        except campaign_presentation.PresentationIncomplete as e:
+            aa._alert(f"client {client_id}: the campaign card was NOT opened — {e}")
+            return {"refuse": _pick(refusals["presentation"], lang)}
         try:
             _quota(order)                               # before the card exists: nothing was produced, nothing spent
         except Exception as e:
@@ -345,11 +392,24 @@ def build(aa) -> dict:
             video = _pick(text["video_file"], lang).replace(
                 "{name}", aa._media_name(client_id, params["video_file_id"]) or "—")
             produces = video if not n else produces + " + " + video
-        return {"type": _pick(types.get(campaign_type) or {"he": campaign_type}, lang),
+        try:
+            presentation = campaign_presentation.render(_presentation(params), lang)
+        except campaign_presentation.PresentationIncomplete as e:
+            print(f"[{SERVICE_NAME}] client {client_id}: {e}")
+            presentation = ""                           # validate_stored refuses such a card before it is shown
+        return {"presentation": presentation,
+                "type": _pick(types.get(campaign_type) or {"he": campaign_type}, lang),
                 "objective": _pick(objectives.get(params.get("objective")) or {"he": ""}, lang),
                 "offer": params.get("offer", ""), "audience": params.get("audience_segment", ""),
                 "url": params.get("landing_page_url", ""), "produces": produces, "why": params.get("why", ""),
                 "generations": str(n)}
+
+    def validate_stored(client_id, params):
+        clean = aa.validate_params(aa.ACTIONS[ACTION], params, client_id)
+        missing = campaign_presentation.problems(_presentation(clean))
+        if missing:
+            raise ValueError("campaign presentation incomplete: " + ", ".join(missing))
+        return clean
 
     def details(client_id, params):
         """THE video, on the card BEFORE the approval: the dashboard plays the client's own file
@@ -469,7 +529,9 @@ def build(aa) -> dict:
                     "again. A VIDEO campaign needs its video named up front — the client's YouTube video (youtube_url) "
                     "or a video from their media library (video_file_id): the card shows it, and approving the card "
                     "uploads that file to their channel as unlisted. No video named = they are asked which one. Nothing is "
-                    "uploaded to Google Ads and no campaign is opened by this. Never ask the client "
+                    "uploaded to Google Ads and no campaign is opened by this. The card presents the campaign in plain words: "
+                    "where it appears, the budget, the goal and the expected result with its basis — so pass "
+                    "budget_total (and days) when the client said them; with no budget they are asked for it. Never ask the client "
                     "which sizes, ratios or campaign type they want.",
             "params": {
                 "request": {"required": False, "validate": v_text(600),
@@ -492,11 +554,16 @@ def build(aa) -> dict:
                                   "hint": "for a VIDEO campaign without a youtube_url: drive_file_id copied exactly from "
                                           "account_state.media_folder.videos — the video the client chose (never shown "
                                           "to the client, never a guess)"},
+                "budget_total": {"required": False, "validate": v_budget,
+                                 "hint": "the campaign's TOTAL budget in shekels, ONLY a number the client said; never a guess"},
+                "days": {"required": False, "validate": v_days,
+                         "hint": "how many days that budget is for, ONLY when the client said (a month = 30)"},
+                "expected": {"required": False, "validate": v_expected, "hint": "leave empty — filled by the system"},
                 "why": {"required": False, "validate": v_text(300), "hint": "leave empty — filled by the system"},
             },
             "available": possible,
             "prepare": prepare,
-            "validate_stored": lambda client_id, params: aa.validate_params(aa.ACTIONS[ACTION], params, client_id),
+            "validate_stored": validate_stored,
             "run": run,
             "display": display,
             "details": details,
@@ -509,11 +576,11 @@ def build(aa) -> dict:
             "title": _txt("הכנת קמפיין בגוגל", "Preparing a Google campaign", "Préparer une campagne Google",
                           "تجهيز حملة على جوجل", "Подготовка кампании в Google"),
             "what": _txt(
-                "יואב קבע: {type}, למטרת {objective}.\nמה מפרסמים: {offer}\nלמי: {audience}\nלאן המודעות מובילות: {url}\n{why}\nמה יופק: {produces}, וטקסטים למודעות לפי מגבלות התווים של גוגל.\nהתמונות נוצרות בכלי התמונות שבחשבון שלכם (עד {generations} יצירות) ונשמרות בתיקיית ה-Drive. שום דבר לא עולה לגוגל ושום קמפיין לא נפתח בלי אישור נפרד.",
-                "Yoav decided: {type}, for {objective}.\nWhat is advertised: {offer}\nFor whom: {audience}\nWhere the ads lead: {url}\n{why}\nWhat will be made: {produces}, and ad texts within Google's character limits.\nThe images are made on the image tool on your own account (up to {generations} generations) and saved to your Drive folder. Nothing is uploaded to Google and no campaign is opened without a separate approval.",
-                "Yoav a décidé : {type}, objectif {objective}.\nCe qui est mis en avant : {offer}\nPour qui : {audience}\nOù mènent les annonces : {url}\n{why}\nCe qui sera produit : {produces}, et des textes d'annonces dans les limites de caractères de Google.\nLes images sont créées avec l'outil d'images de votre propre compte (jusqu'à {generations} générations) et enregistrées dans votre Drive. Rien n'est envoyé à Google et aucune campagne n'est ouverte sans validation distincte.",
-                "قرّر يوآف: {type}، بهدف {objective}.\nما الذي نعلن عنه: {offer}\nلمن: {audience}\nإلى أين تقود الإعلانات: {url}\n{why}\nما الذي سيُنتج: {produces}، ونصوص إعلانية ضمن حدود الأحرف لدى جوجل.\nتُنشأ الصور بأداة الصور في حسابكم (حتى {generations} عملية إنشاء) وتُحفظ في مجلد Drive. لا يُرفع شيء إلى جوجل ولا تُفتح حملة دون موافقة منفصلة.",
-                "Йоав решил: {type}, цель — {objective}.\nЧто рекламируем: {offer}\nДля кого: {audience}\nКуда ведут объявления: {url}\n{why}\nЧто будет сделано: {produces}, а также тексты объявлений в лимитах знаков Google.\nИзображения создаются инструментом изображений в вашем аккаунте (до {generations} генераций) и сохраняются в вашу папку Drive. В Google ничего не загружается и кампания не открывается без отдельного одобрения."),
+                "{presentation}\nמה מפרסמים: {offer}\nלמי: {audience}\nלאן המודעות מובילות: {url}\n{why}\nמה יופק: {produces}, וטקסטים למודעות לפי מגבלות התווים של גוגל.\nהתמונות נוצרות בכלי התמונות שבחשבון שלכם (עד {generations} יצירות) ונשמרות בתיקיית ה-Drive. שום דבר לא עולה לגוגל ושום קמפיין לא נפתח בלי אישור נפרד.",
+                "{presentation}\nWhat is advertised: {offer}\nFor whom: {audience}\nWhere the ads lead: {url}\n{why}\nWhat will be made: {produces}, and ad texts within Google's character limits.\nThe images are made on the image tool on your own account (up to {generations} generations) and saved to your Drive folder. Nothing is uploaded to Google and no campaign is opened without a separate approval.",
+                "{presentation}\nCe qui est mis en avant : {offer}\nPour qui : {audience}\nOù mènent les annonces : {url}\n{why}\nCe qui sera produit : {produces}, et des textes d'annonces dans les limites de caractères de Google.\nLes images sont créées avec l'outil d'images de votre propre compte (jusqu'à {generations} générations) et enregistrées dans votre Drive. Rien n'est envoyé à Google et aucune campagne n'est ouverte sans validation distincte.",
+                "{presentation}\nما الذي نعلن عنه: {offer}\nلمن: {audience}\nإلى أين تقود الإعلانات: {url}\n{why}\nما الذي سيُنتج: {produces}، ونصوص إعلانية ضمن حدود الأحرف لدى جوجل.\nتُنشأ الصور بأداة الصور في حسابكم (حتى {generations} عملية إنشاء) وتُحفظ في مجلد Drive. لا يُرفع شيء إلى جوجل ولا تُفتح حملة دون موافقة منفصلة.",
+                "{presentation}\nЧто рекламируем: {offer}\nДля кого: {audience}\nКуда ведут объявления: {url}\n{why}\nЧто будет сделано: {produces}, а также тексты объявлений в лимитах знаков Google.\nИзображения создаются инструментом изображений в вашем аккаунте (до {generations} генераций) и сохраняются в вашу папку Drive. В Google ничего не загружается и кампания не открывается без отдельного одобрения."),
             "done": text["ready"],
             "done_message": done_message,
             "refusals": {**refusals, "missing_tool": aa._CREATIVE_REFUSALS["missing_tool"]},

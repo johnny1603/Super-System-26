@@ -34,6 +34,7 @@ CLIENT_FACING = (
     "core/branding_actions.py", "core/seo_report_actions.py", "core/competitor_watch_actions.py",
     "core/media_order.py", "core/media_order_actions.py",
     "core/tiktok_uploads.py", "core/client_language.py", "core/email_service.py",
+    "core/campaign_presentation.py",
 )
 
 # Hebrew on purpose: "file:fragment" — staff-only lines inside a client

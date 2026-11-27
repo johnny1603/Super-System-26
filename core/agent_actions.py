@@ -3818,6 +3818,9 @@ ACTIONS = {
         "prepare": _prepare_configure_conversion,
         "validate_stored": _validate_conversion_stored,
         "what_for": lambda params: _plan_what(params),
+        # The plan quotes the NAMES of the tags in the client's own container, as they are written there
+        # (docs/GTM-SAFETY.md: the card IS the plan) — those names are not ours to reword (core/client_speech)
+        "speech_allow": ("conversion",),
         "display": _client_measures,
         # Neutral title: it measures exactly the client's own types (purchases
         # for a store, leads for a lead business) — never "leads" by default
@@ -3904,6 +3907,9 @@ ACTIONS = {
         "prepare": _prepare_revert_conversion,
         "validate_stored": _validate_revert_stored,
         "what_for": lambda params: _plan_what(params, revert=True),
+        # The plan quotes the NAMES of the tags in the client's own container, as they are written there
+        # (docs/GTM-SAFETY.md: the card IS the plan) — those names are not ours to reword (core/client_speech)
+        "speech_allow": ("conversion",),
         "title": _txt("ביטול המדידה שהוספנו באתר", "Undo the tracking we added", "Annuler la mesure ajoutée",
                       "التراجع عن القياس الذي أضفناه", "Отменить добавленный учёт"),
         "what": _txt("נבטל ב-Tag Manager של האתר את המדידה שהוספנו, ורק אותה.",
@@ -6279,6 +6285,23 @@ def card(row: dict, actor: str, lang: str = "he") -> dict:
                 out[key] = vendor_names.scrub(out[key], lang)
         if isinstance(out.get("progress"), dict) and isinstance(out["progress"].get("text"), str):
             out["progress"]["text"] = vendor_names.scrub(out["progress"]["text"], lang)
+        # ...nor a platform's internal vocabulary, nor an expected result with no basis
+        # (core/client_speech, governance §9): named, rewritten, or the line is not shown
+        from core import client_speech
+        where = f"card {row.get('action')} (client {row.get('client_id')})"
+        own = (ACTIONS.get(row.get("action")) or {}).get("speech_allow") or ()
+        for key in ("title", "what", "result", "blocked"):
+            if isinstance(out.get(key), str):
+                try:
+                    out[key] = client_speech.enforce(out[key], lang, allowed=own, where=f"{where} {key}", alert=_alert)
+                except client_speech.Blocked as e:
+                    _alert(f"{where} {key} BLOCKED — not shown to the client: {e}"[:600])
+                    out[key] = ""
+        if isinstance(out.get("progress"), dict) and isinstance(out["progress"].get("text"), str):
+            try:
+                out["progress"]["text"] = client_speech.enforce(out["progress"]["text"], lang, where=f"{where} progress")
+            except client_speech.Blocked:
+                out["progress"]["text"] = ""
     return out
 
 

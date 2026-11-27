@@ -630,7 +630,7 @@ class Wiring(unittest.TestCase):
         for code, texts in spec["refusals"].items():
             self.assertEqual(set(texts), set(LANGS), code)
         for lang in LANGS:
-            for placeholder in ("{type}", "{objective}", "{offer}", "{url}", "{produces}", "{generations}"):
+            for placeholder in ("{presentation}", "{offer}", "{url}", "{produces}", "{generations}"):
                 self.assertIn(placeholder, spec["what"][lang], (lang, placeholder))
 
     def test_the_result_says_exactly_what_is_missing(self):

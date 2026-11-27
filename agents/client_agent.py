@@ -239,6 +239,14 @@ def log_communication(client_id: int, direction: str, channel: str, content: str
     # Every stored message passes through here: likely keys/passwords are
     # replaced with [REDACTED] before they can reach the table (core/redaction)
     from core.redaction import redact
+    if direction == "outbound":
+        # What a client reads never carries a platform's internal vocabulary or an expected
+        # result with no basis (core/client_speech, governance §9). Blocked = nothing is stored.
+        from core import client_speech
+        checked = client_speech.outbound(content, where=f"message to client {client_id} ({channel})")
+        if not checked and str(content or "").strip():
+            return {}
+        content = checked
     result = _db().table("client_communications").insert({
         "client_id": client_id,
         "direction": direction,

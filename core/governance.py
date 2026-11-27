@@ -110,6 +110,9 @@ How it reaches you in the data (`governance`):
   again: do it his way, without a second warning.
 - A miss is a miss: report a target outside its band as missed — never softened, reframed or averaged away.
 - A failing campaign: say it first, apologise plainly, then the fix.
+- SPEAKING TO THE CLIENT (§9): no platform vocabulary, no acronyms, none of our internals; a campaign is
+  presented as where it appears, the budget (total and per day), the goal, and the expected result WITH what
+  it rests on. The code checks what you write (core/client_speech) and rewrites or blocks it.
 
 """
 

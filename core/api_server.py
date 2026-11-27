@@ -1646,6 +1646,9 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
                     # the productions this yes started / that already run: drawn in the producer's chat
                     "productions": fast.get("productions") or []}
     from core.cost_tracker import cost_action
+    # A term the CLIENT used is theirs to hear back, plainly explained (governance §9)
+    from core import client_speech
+    client_speech.allow_from(message)
     while True:
         # Every LLM cost of this turn is labelled with it (core/cost_tracker);
         # an article draft started inside it relabels its own calls
@@ -1673,6 +1676,18 @@ def _client_chat_answer(req, client_id, persona, channel, message, turn, backgro
         from core import agent_actions, vendor_tools
         if req.help_connection not in vendor_tools.TOOLS:
             result["reply"] = vendor_tools.scrub_vendor_names(result["reply"], agent_actions._lang(client_id))
+        # No platform vocabulary, no expected result without its basis (core/client_speech,
+        # governance §9): named, rewritten once by a model, then by the table; else not sent
+        speech_lang = agent_actions._lang(client_id)
+        try:
+            result["reply"] = client_speech.enforce(
+                result["reply"], speech_lang, rewrite=client_speech.model_rewriter(client_id, speech_lang),
+                where=f"chat reply to client {client_id} ({persona})", alert=agent_actions._alert)
+        except client_speech.Blocked as e:
+            from core import chat_fallback
+            agent_actions._alert(f"chat reply to client {client_id} ({persona}) BLOCKED — a fallback line was sent: {e}"[:600])
+            result = {**result, "reply": chat_fallback.technical_reply(persona, speech_lang), "action": None,
+                      "needs_human_followup": True}
         # Never a card that isn't there, never the same "it's on the card" line a
         # third time (core/chat_approval)
         from core import chat_approval
