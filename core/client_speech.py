@@ -15,7 +15,10 @@ Enforced on the OUTPUT, never trusted to a prompt:
       rewriter first, then the table's own plain words), re-checked, and
       `Blocked` when it still fails — it does not reach the client.
 - `plain(text, lang)`     the deterministic rewrite: a term with plain words
-      becomes them; a term that is never mentioned takes its sentence with it.
+      becomes them — SHORT (a noun phrase) inside a sentence, LONG (the
+      explanation) standing alone; a term that is never mentioned takes its
+      sentence with it. It does not fix agreement around the phrase: the
+      model rewrite, tried first, is what makes it read naturally.
 - `where(campaign_type)`  where a campaign appears, in places a client knows.
 
 Two limits (§9): CLIENT-FACING output only — admin views and agent-to-agent
@@ -87,7 +90,7 @@ TERMS = {
                           "إعلانات تعود إلى أشخاص زاروا موقعكم من قبل", "объявления, которые возвращаются к людям, уже побывавшим на вашем сайте"), ()),
     # ── Google: the numbers ──
     "cpc": ((r"cpc", r"סי פי סי"),
-            _five("כמה עולה כל קליק", "what each click costs", "ce que coûte chaque clic", "كم تكلّف كل نقرة", "сколько стоит каждый клик"), ()),
+            _five("כמה עולה כל קליק על המודעה", "what each click on the ad costs", "ce que coûte chaque clic sur l'annonce", "كم تكلّف كل نقرة على الإعلان", "сколько стоит каждый клик по объявлению"), ()),
     "cpm": ((r"cpm", r"סי פי אם"),
             _five("כמה עולה להגיע לאלף אנשים", "what it costs to reach a thousand people", "ce que coûte le fait de toucher mille personnes",
                   "كم يكلّف الوصول إلى ألف شخص", "сколько стоит показ тысяче человек"), ()),
@@ -118,11 +121,62 @@ TERMS = {
     "agent_module": ((r"[a-z]+(?:_[a-z]+)*_agent",), None, ()),
 }
 
+# The SECOND column of the table (the owner, 2026-11-29). Every term that has
+# plain words has them in two forms:
+#   long   (TERMS[key][1], above) — the full explanation: a first explanation, or
+#          the term standing alone ("what is X", a line that is only the term).
+#   short  (here) — a NOUN PHRASE that fits inside a sentence, where the term stood.
+# An explanation cannot stand where a noun belongs: "ה-CTR עלה ל-3%" becomes
+# "אחוז ההקלקות עלה ל-3%", never the long form. A row without both forms fails at import.
+SHORT = {
+    "pmax": _five("קמפיין בכל המקומות של גוגל", "a campaign across all of Google", "une campagne sur l'ensemble de Google",
+                  "حملة في كل أماكن جوجل", "кампания по всему Google"),
+    "search": _five("מודעות בחיפוש של גוגל", "ads in Google search", "des annonces dans la recherche Google",
+                    "إعلانات في بحث جوجل", "объявления в поиске Google"),
+    "demand_gen": _five("מודעות תמונה ביוטיוב ובג'ימייל", "image ads on YouTube and Gmail",
+                        "des annonces illustrées sur YouTube et Gmail", "إعلانات مصوّرة على يوتيوب وجيميل",
+                        "объявления с картинками на YouTube и в Gmail"),
+    "display": _five("באנרים באתרים", "banners on websites", "des bannières sur des sites", "لافتات إعلانية في المواقع",
+                     "баннеры на сайтах"),
+    "youtube": _five("סרטון פרסומת ביוטיוב", "a video ad on YouTube", "une publicité vidéo sur YouTube",
+                     "إعلان فيديو على يوتيوب", "видеореклама на YouTube"),
+    "bumper": _five("סרטון פרסומת קצר ביוטיוב", "a short video ad on YouTube", "une courte publicité vidéo sur YouTube",
+                    "إعلان فيديو قصير على يوتيوب", "короткий рекламный ролик на YouTube"),
+    "shorts_ads": _five("סרטון פרסומת אנכי ביוטיוב", "a vertical video ad on YouTube",
+                        "une publicité vidéo verticale sur YouTube", "إعلان فيديو عمودي على يوتيوب",
+                        "вертикальный рекламный ролик на YouTube"),
+    "remarketing": _five("מודעות למי שכבר ביקר באתר", "ads for people who already visited the site",
+                         "des annonces pour vos anciens visiteurs", "إعلانات لمن زار الموقع من قبل",
+                         "объявления для прежних посетителей сайта"),
+    "cpc": _five("עלות לקליק", "cost per click", "coût par clic", "تكلفة النقرة", "цена клика"),
+    "cpm": _five("עלות לאלף חשיפות", "cost per thousand views", "coût pour mille affichages", "تكلفة الألف ظهور",
+                 "цена за тысячу показов"),
+    "ctr": _five("אחוז ההקלקות", "click rate", "taux de clics", "نسبة النقر", "доля кликов"),
+    "roas": _five("החזר על ההוצאה", "return on ad spend", "retour sur les dépenses publicitaires",
+                  "العائد على الإنفاق الإعلاني", "окупаемость рекламы"),
+    "conversion": _five("פעולות של לקוחות", "customer actions", "actions de clients", "إجراءات العملاء", "целевые действия"),
+    "impressions": _five("חשיפות", "times shown", "affichages", "مرات الظهور", "показы"),
+}
+FORMS = ("short", "long")
+if set(SHORT) != {key for key, row in TERMS.items() if row[1] is not None} or not all(
+        (SHORT[key].get(lang) or "").strip() and (TERMS[key][1].get(lang) or "").strip() for key in SHORT for lang in LANGS):
+    raise RuntimeError("client_speech: every term with plain words needs a short AND a long form in all five languages")
+
+
+def words(key: str, lang: str = "he", form: str = "short") -> str:
+    """A term's plain words in one form ('' = no row, or a term that is never mentioned)."""
+    row = TERMS.get(key)
+    if not row or row[1] is None:
+        return ""
+    lang = lang if lang in LANGS else "he"
+    return (SHORT[key] if form == "short" else row[1])[lang]
+
 # ─── Matching ────────────────────────────────────────────────────────────────
 _HE_PREFIX = r"(?:[ושה]?[בלמכ]?ה?)"
 _SEP = r"[\s\-־._]*"
 _GERESH = r"['׳’ʼ]"
 _URL = re.compile(r"(https?://\S+|www\.\S+)")
+_HE_HYPHEN_PREFIX = re.compile(r"(?<![֐-׿])([ושה]?[בלמכ]?ה?)[-־]$")      # the "ה-" of "ה-CTR"
 
 
 def _compile(fragment: str):
@@ -198,9 +252,9 @@ def allow_from(client_message: str):
 
 
 def where(campaign_type: str, lang: str = "he") -> str:
-    """Where a campaign appears, in places the client recognises ('' = no row)."""
-    row = TERMS.get(campaign_type)
-    return (row[1] or {}).get(lang if lang in LANGS else "he", "") if row else ""
+    """Where a campaign appears, in places the client recognises ('' = no row).
+    Standing alone on its line, so the LONG form."""
+    return words(campaign_type, lang, "long")
 
 
 # ─── An expected result needs its basis (§9 point 4) ─────────────────────────
@@ -276,21 +330,32 @@ def _drop(text: str, bad) -> str:
 def plain(text: str, lang: str = None, allowed=()) -> str:
     """The deterministic rewrite. A sentence naming a never-mentioned term, or
     promising a result with no basis, is removed whole; every other term
-    becomes the table's plain words."""
+    becomes the table's plain words — the SHORT form (a noun phrase) inside a
+    sentence, the LONG form (the explanation) when the term is all the
+    sentence holds."""
     text = str(text or "")
     lang = lang if lang in LANGS else guess_lang(text)
     unbased = {p["sentence"] for p in expectation_problems(text)}
     text = _drop(text, lambda s: s.strip() in unbased
                  or any(key in NEVER for _a, _b, key in _spans(s, lang, allowed)))
-    out, last = [], 0
-    for start, end, key in _spans(text, lang, allowed):
-        lead = len(text[start:end]) - len(text[start:end].lstrip())
-        before = text[last:start + lead]
-        before = re.sub(r"(?<![\u0590-\u05FF])[ושה]?[בלמכ]?ה?[-\u05BE]$", "", before)      # "ה-CTR": the prefix goes with the term
-        out.append(before + TERMS[key][1][lang])
-        last = end
-    return "".join(out) + text[last:]
-
+    done = []
+    for sentence in sentences(text):
+        spans = _spans(sentence, lang, allowed)
+        rest, cut = sentence, 0
+        for start, end, _key in spans:
+            rest = rest[:start - cut] + rest[end - cut:]
+            cut += end - start
+        alone = len(spans) == 1 and not re.search(r"\w", re.sub(r"[\u05D0-\u05EA]{1,3}[-\u05BE]", "", rest))
+        out, last = [], 0
+        for start, end, key in spans:
+            lead = len(sentence[start:end]) - len(sentence[start:end].lstrip())
+            before = sentence[last:start + lead]
+            # "ה-CTR" / "ב-CTR": the hyphen and the article go with the term; a preposition stays ("באחוז ההקלקות")
+            before = _HE_HYPHEN_PREFIX.sub(lambda m: m.group(1).replace("\u05D4", ""), before)
+            out.append(before + words(key, lang, "long" if alone else "short"))
+            last = end
+        done.append("".join(out) + sentence[last:])
+    return "".join(done)
 
 def enforce(text: str, lang: str = None, allowed=(), rewrite=None, where: str = "", alert=None) -> str:
     """The text a client may read. Clean text comes back untouched. Otherwise
@@ -349,8 +414,11 @@ owner, not a marketer). It failed a check, for the reasons listed. Rewrite it in
 length or shorter, keeping every fact, number, link and question.
 
 Rules:
-- Replace each forbidden term with what it means in plain words (use `plain_words` when the term is there). Do not
-  keep the term, its acronym or a transliteration of it, not even in brackets.
+- Replace each forbidden term with its plain words from `plain_words`, which gives two forms. Inside a sentence use
+  `short` — a noun phrase that stands exactly where the term stood — and fix the grammar around it (gender, number,
+  article) so it reads as if a person wrote it. Use `long` only when the term stands alone or the message is
+  explaining what it means. Never put the long form where a noun belongs. Do not keep the term, its acronym or a
+  transliteration of it, not even in brackets.
 - A term with no plain words is never mentioned at all: say the point without it or drop that detail.
 - An expected result may stay ONLY with what it rests on, and only if that basis is already in the message. An
   estimate must be a range with its assumptions. If the message gives no basis, remove the promise — do not invent
@@ -366,7 +434,8 @@ def model_rewriter(client_id: int, lang: str, call=None):
         import json
         found = find(text, lang)
         payload = {"language": lang, "message": text, "failed_because": lines,
-                   "plain_words": {hit["term"]: (TERMS[hit["key"]][1] or {}).get(lang) for hit in found}}
+                   "plain_words": {hit["term"]: ({form: words(hit["key"], lang, form) for form in FORMS}
+                                                 if words(hit["key"], lang) else None) for hit in found}}
         if call is not None:
             answer = call(REWRITE_SYSTEM, json.dumps(payload, ensure_ascii=False))
         else:

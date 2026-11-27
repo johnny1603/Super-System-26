@@ -12,7 +12,14 @@ Point 4 is never a bare number. `expected` carries its basis:
   history    this client's own past performance (always preferred) — the
              period, what was spent and what it brought
   benchmark  an industry figure, with the name of its source
-  estimate   no history: a RANGE, with the assumptions said out loud
+  estimate   no history: a RANGE, with the assumptions said out loud, and
+             SAID to be our own estimate and not a market figure
+
+Which of the three it is is a REQUIRED FIELD on the presentation
+(`basis_type`), never wording a model chooses: the sentence that tells the
+client what the number rests on is fixed per type (`BASIS_SAYS`), and an
+estimate whose assumptions cite a study, a market figure or an industry
+average is refused (`estimate_claims_a_source`).
 
 The number shown already holds the internal margin (§5, governance.BAND):
 from history the range runs from the aim less the margin up to the aim.
@@ -27,6 +34,7 @@ from the Google Ads specialist's model call — it is shown AS an estimate, with
 its assumptions, never as data.
 """
 import math
+import re
 
 from core import client_speech
 
@@ -87,19 +95,42 @@ T = {
         "Ce que nous attendons : selon une moyenne du secteur ({source}) — pas encore vos propres données — avec ce budget nous visons {low} à {high} {unit}.",
         "ما نتوقعه: وفق متوسط القطاع ({source}) — وليست بياناتكم بعد — بهذه الميزانية نستهدف {low} إلى {high} {unit}.",
         "Чего мы ждём: по среднему по отрасли ({source}) — это ещё не ваши данные — с этим бюджетом мы нацелены на {low} до {high} {unit}."),
+    # The client must be able to tell a guess from data: the first sentence is fixed and says it in these words
     "estimate": _five(
-        "מה אנחנו מצפים: אין עדיין נתונים מהחשבון שלכם, אז זו הערכה ולא התחייבות — בהנחה ש{one} עולה בין {cost_low} ל-{cost_high} ({assumptions}), בתקציב הזה אנחנו מכוונים ל-{low} עד {high} {unit}.",
-        "What we expect: there is no data from your account yet, so this is an estimate, not a commitment — assuming {one} costs between {cost_low} and {cost_high} ({assumptions}), with this budget we are aiming for {low} to {high} {unit}.",
-        "Ce que nous attendons : il n'y a pas encore de données de votre compte, c'est donc une estimation, pas un engagement — en supposant que {one} coûte entre {cost_low} et {cost_high} ({assumptions}), avec ce budget nous visons {low} à {high} {unit}.",
-        "ما نتوقعه: لا توجد بيانات من حسابكم بعد، لذا هذا تقدير وليس التزامًا — بافتراض أن {one} يكلّف بين {cost_low} و{cost_high} ({assumptions})، بهذه الميزانية نستهدف {low} إلى {high} {unit}.",
-        "Чего мы ждём: данных из вашего аккаунта пока нет, поэтому это оценка, а не обязательство — при условии, что {one} стоит от {cost_low} до {cost_high} ({assumptions}), с этим бюджетом мы нацелены на {low} до {high} {unit}."),
+        "מה אנחנו מצפים: אין עדיין נתונים מהחשבון שלכם, אז זו הערכה שלנו לפי היכרות עם התחום ולא מדד מהשוק. בהנחה ש{one} עולה בין {cost_low} ל-{cost_high} ({assumptions}), בתקציב הזה אנחנו מכוונים ל-{low} עד {high} {unit}.",
+        "What we expect: there is no data from your account yet, so this is our own estimate from knowing the field, not a market figure. Assuming {one} costs between {cost_low} and {cost_high} ({assumptions}), with this budget we are aiming for {low} to {high} {unit}.",
+        "Ce que nous attendons : il n'y a pas encore de données de votre compte, c'est donc notre estimation d'après notre connaissance du secteur, et non un chiffre du marché. En supposant que {one} coûte entre {cost_low} et {cost_high} ({assumptions}), avec ce budget nous visons {low} à {high} {unit}.",
+        "ما نتوقعه: لا توجد بيانات من حسابكم بعد، لذا هذا تقديرنا بحسب معرفتنا بالمجال وليس مؤشرًا من السوق. بافتراض أن {one} يكلّف بين {cost_low} و{cost_high} ({assumptions})، بهذه الميزانية نستهدف {low} إلى {high} {unit}.",
+        "Чего мы ждём: данных из вашего аккаунта пока нет, поэтому это наша оценка по знанию отрасли, а не рыночный показатель. При условии, что {one} стоит от {cost_low} до {cost_high} ({assumptions}), с этим бюджетом мы нацелены на {low} до {high} {unit}."),
 }
+# What the client is told the expectation rests on — one fixed phrase per BASIS TYPE, chosen by the
+# type and never by a model. `render` refuses a text that does not carry its type's phrase.
+BASIS_SAYS = {
+    "history": _five("על בסיס הביצועים שלכם", "based on your own results", "sur la base de vos résultats", "بناءً على نتائجكم",
+                     "на основе ваших результатов"),
+    "benchmark": _five("לפי ממוצע בענף", "by an industry average", "selon une moyenne du secteur", "وفق متوسط القطاع",
+                       "по среднему по отрасли"),
+    "estimate": _five("זו הערכה שלנו לפי היכרות עם התחום ולא מדד מהשוק", "this is our own estimate from knowing the field, not a market figure",
+                      "notre estimation d'après notre connaissance du secteur, et non un chiffre du marché",
+                      "هذا تقديرنا بحسب معرفتنا بالمجال وليس مؤشرًا من السوق", "это наша оценка по знанию отрасли, а не рыночный показатель"),
+}
+# An estimate's assumptions are a model's words. They may not borrow the authority of data they do not have.
+SOURCE_CLAIM = re.compile(
+    r"ממוצע (?:ב|ה)?ענף|ממוצע ענפי|נתוני (?:ה)?שוק|לפי (?:ה)?(?:נתונים|מחקר|סקר|סטטיסטיק)|מחקר(?:ים)? מרא|בנצ'?מרק|"
+    r"\bbenchmark\w*|\bindustry (?:average|data|standard)\w*|\bmarket (?:data|average|research)\b|\baccording to\b|\bstud(?:y|ies) show\w*|\bstatistic\w*|"
+    r"\bmoyenne du secteur\b|\bdonnées du marché\b|\bselon (?:les|une|des) (?:données|études?)\b|"
+    r"متوسط القطاع|بيانات السوق|بحسب (?:ال)?(?:بيانات|دراس)|"
+    r"средн\w+ по отрасли|данны\w+ рынка|по данным|исследовани\w+ показ", re.IGNORECASE)
 RANGE_JOIN = _five(" עד ", " to ", " à ", " إلى ", " до ")        # as the templates above join a range
 PROBLEM_NAMES = {
     "where_missing": "where it will appear", "budget_missing": "the budget (total and per day)",
     "goal_missing": "the goal in business terms", "expected_missing": "the expected result",
     "basis_missing": "what the expected result rests on", "basis_incomplete": "the basis is named but its details are not given",
     "estimate_not_a_range": "an estimate must be a range", "assumptions_missing": "an estimate must state its assumptions",
+    "basis_type_missing": "the basis type (history | benchmark | estimate) is not set on the presentation",
+    "basis_type_mismatch": "the basis type on the presentation is not the one the expected result carries",
+    "estimate_claims_a_source": "an estimate with no data may not cite a market figure, a study or an industry average",
+    "basis_not_said": "the text does not say what kind of basis the expected result has",
     "language": "the text uses internal vocabulary",
 }
 
@@ -178,11 +209,16 @@ def clean_expected(value) -> dict:
 
 # ─── The four elements ───────────────────────────────────────────────────────
 
-def build(campaign_type: str, objective: str, budget_total, days=None, expected: dict = None) -> dict:
+def build(campaign_type: str, objective: str, budget_total, days=None, expected: dict = None, basis_type: str = "") -> dict:
+    """`basis_type` is given by the caller, from the path that PRODUCED the
+    expectation (from_history / a named benchmark / from_estimate) — it is not
+    read back out of `expected`, so the two must agree or nothing is shown."""
     total, days = _num(budget_total), int(_num(days) or DEFAULT_DAYS)
     return {"campaign_type": campaign_type, "objective": objective, "budget_total": total, "days": days,
             "budget_daily": round(total / days, 2) if total and days > 0 else None,
-            "expected": clean_expected(expected)}
+            "expected": clean_expected(expected),
+            # REQUIRED, and a field — never wording: which of the three bases the expected result has
+            "basis_type": str(basis_type or "")}
 
 
 def problems(p: dict) -> list:
@@ -201,6 +237,10 @@ def problems(p: dict) -> list:
     kind = basis.get("kind")
     if kind not in BASES:
         return out + ["basis_missing"]
+    if p.get("basis_type") not in BASES:
+        return out + ["basis_type_missing"]
+    if p["basis_type"] != kind:
+        return out + ["basis_type_mismatch"]
     if kind == "history" and not (basis.get("period_days") and basis.get("spend") and basis.get("results")):
         out.append("basis_incomplete")
     if kind == "benchmark" and not str(basis.get("source") or "").strip():
@@ -210,6 +250,8 @@ def problems(p: dict) -> list:
             out.append("estimate_not_a_range")
         if not str(basis.get("assumptions") or "").strip():
             out.append("assumptions_missing")
+        elif SOURCE_CLAIM.search(str(basis["assumptions"])):
+            out.append("estimate_claims_a_source")
     return out
 
 
@@ -247,6 +289,8 @@ def render(p: dict, lang: str = "he") -> str:
              .replace("{days}", str(p["days"])),
              T["goal"][lang].replace("{goal}", GOALS[objective][lang]), fourth]
     text = "\n".join(lines)
+    if BASIS_SAYS[p["basis_type"]][lang] not in text:
+        raise PresentationIncomplete(["basis_not_said"])
     found = client_speech.problems(text, lang)
     if found:
         raise PresentationIncomplete(["language"], "; ".join(client_speech.problem_lines(found)))

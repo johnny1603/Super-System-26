@@ -234,41 +234,55 @@ can judge whether that is what they want.
 A target stated without its basis is a guess dressed as a commitment. Every
 expected result says what it is built from:
 
-* this client's own past performance, where it exists — always preferred
-* an industry benchmark, named as such
-* an estimate, when there is no history — and then it is a RANGE, with the
-  assumptions stated
+* this client's own past performance, where it exists — always preferred;
+  the period and the numbers are named
+* a real industry benchmark — its source is named
+* our own estimate, when there is no data — said in exactly those words
+  ("אין עדיין נתונים מהחשבון שלכם, אז זו הערכה שלנו לפי היכרות עם התחום ולא
+  מדד מהשוק"), and then a RANGE with the assumptions stated
 
-For a new client with no history, the honest sentence is a range and the
-assumptions behind it. Never a single confident figure. The committed number
+The client must always be able to tell which of the three it is. The basis
+type is a required field on the presentation (`basis_type`), never wording a
+model chooses, and an estimate may not cite a study, a market figure or an
+industry average. A client who later finds that an authoritative-sounding
+number was a guess stops trusting the ones that are real.
+
+Never a single confident figure for a new client. The committed number
 already contains the internal margin described in section 5.
-
 ### Translation table
 
-The table itself is data, in one file: `core/client_speech.py` (`TERMS`), in
-all five languages. The Hebrew rows, as the owner wrote them:
+The table itself is data, in one file: `core/client_speech.py` (`TERMS` +
+`SHORT`), in all five languages. Every term has TWO forms (the owner,
+2026-11-29): **short** — a noun phrase that fits inside a sentence, where the
+term stood; **long** — the full explanation, for a first explanation or when
+the term stands alone. An explanation is never put where a noun belongs:
+"אחוז ההקלקות עלה ל-3%". The Hebrew rows:
 
-| Internal term | What the client reads |
-|---|---|
-| Performance Max | קמפיין שרץ בכל המקומות של גוגל — חיפוש, יוטיוב, ג'ימייל, מפות ואתרים — וגוגל מחליטה איפה להציג לפי מי שהכי סביר לקנות |
-| Search / RSA | מודעות בתוצאות החיפוש של גוגל, כשמישהו מחפש בדיוק את מה שאתם מוכרים |
-| Demand Gen | מודעות עם תמונות ביוטיוב, בג'ימייל ובפיד של גוגל, לאנשים שעוד לא חיפשו אתכם |
-| Display | באנרים באתרים ובאפליקציות |
-| YouTube in-stream | סרטון שרץ לפני או בתוך סרטונים ביוטיוב |
-| Bumper | סרטון של שש שניות ביוטיוב שאי אפשר לדלג עליו |
-| Shorts ads | סרטון אנכי בין הסרטונים הקצרים של יוטיוב |
-| Remarketing | מודעות שחוזרות לאנשים שכבר ביקרו באתר שלכם |
-| CPC | כמה עולה כל קליק |
-| CPM | כמה עולה להגיע לאלף אנשים |
-| CTR | כמה אחוז מהאנשים שראו את המודעה לחצו עליה |
-| ROAS | כמה שקלים חוזרים על כל שקל שהושקע |
-| Conversion | הפעולה שרצינו שתקרה: קנייה, פנייה או הזמנה |
-| Impressions | כמה פעמים המודעה הוצגה |
-
+| Internal term | Short (inside a sentence) | Long (standing alone / first explanation) |
+|---|---|---|
+| Performance Max | קמפיין בכל המקומות של גוגל | קמפיין שרץ בכל המקומות של גוגל — חיפוש, יוטיוב, ג'ימייל, מפות ואתרים — וגוגל מחליטה איפה להציג לפי מי שהכי סביר לקנות |
+| Search / RSA | מודעות בחיפוש של גוגל | מודעות בתוצאות החיפוש של גוגל, כשמישהו מחפש בדיוק את מה שאתם מוכרים |
+| Demand Gen | מודעות תמונה ביוטיוב ובג'ימייל | מודעות עם תמונות ביוטיוב, בג'ימייל ובפיד של גוגל, לאנשים שעוד לא חיפשו אתכם |
+| Display | באנרים באתרים | באנרים באתרים ובאפליקציות |
+| YouTube in-stream | סרטון פרסומת ביוטיוב | סרטון שרץ לפני או בתוך סרטונים ביוטיוב |
+| Bumper | סרטון פרסומת קצר ביוטיוב | סרטון של שש שניות ביוטיוב שאי אפשר לדלג עליו |
+| Shorts ads | סרטון פרסומת אנכי ביוטיוב | סרטון אנכי בין הסרטונים הקצרים של יוטיוב |
+| Remarketing | מודעות למי שכבר ביקר באתר | מודעות שחוזרות לאנשים שכבר ביקרו באתר שלכם |
+| CPC | עלות לקליק | כמה עולה כל קליק על המודעה |
+| CPM | עלות לאלף חשיפות | כמה עולה להגיע לאלף אנשים |
+| CTR | אחוז ההקלקות | כמה אחוז מהאנשים שראו את המודעה לחצו עליה |
+| ROAS | החזר על ההוצאה | כמה שקלים חוזרים על כל שקל שהושקע |
+| Conversion | פעולות של לקוחות | הפעולה שרצינו שתקרה: קנייה, פנייה או הזמנה |
+| Impressions | חשיפות | כמה פעמים המודעה הוצגה |
 Never mentioned at all, in any form: asset group, ad strength, bid strategy,
-keyword match type, and the system's own internals — brief, manifest, render,
-agent names other than the client's own account manager.
+keyword match type, and the system's own internals — manifest, render, and
+internal CODE names (media_agent, social_queue and the like).
 
+The agents themselves are the product: Lior, Maya, Yoav and the others are
+named to the client, who chats with them and sees them on the avatars page.
+"בריף" is ordinary speech and is allowed. A card that quotes the names of
+objects in the client's OWN account (their Tag Manager tags) shows them as
+they are.
 Meta and the other platforms follow the identical rule as those agents come
 online: Advantage+, CBO, lookalike and the rest are rows added to the same
 table.

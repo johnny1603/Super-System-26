@@ -35,6 +35,21 @@ class Terms(unittest.TestCase):
                 self.assertEqual(set(plain), set(LANGS), key)
                 for lang in LANGS:                               # the plain words never use a forbidden term themselves
                     self.assertEqual(cs.problems(plain[lang], lang), [], (key, lang))
+                    short, long = cs.words(key, lang, "short"), cs.words(key, lang, "long")
+                    self.assertTrue(short and long, (key, lang))             # TWO forms, every row, every language
+                    self.assertEqual(long, plain[lang])
+                    self.assertEqual(cs.problems(short, lang), [], (key, lang))
+                    self.assertLess(len(short), len(long), (key, lang))      # a noun phrase, not the explanation again
+                    self.assertNotRegex(short, r"[,:—]| - ", (key, lang))
+            else:
+                self.assertEqual(cs.words(key, "he"), "")
+        self.assertEqual(set(cs.SHORT), {k for k, row in cs.TERMS.items() if row[1] is not None})
+        owner = {"ctr": ("אחוז ההקלקות", "כמה אחוז מהאנשים שראו את המודעה לחצו עליה"),
+                 "cpc": ("עלות לקליק", "כמה עולה כל קליק על המודעה"),
+                 "cpm": ("עלות לאלף חשיפות", "כמה עולה להגיע לאלף אנשים"),
+                 "roas": ("החזר על ההוצאה", "כמה שקלים חוזרים על כל שקל שהושקע")}
+        for key, (short, long) in owner.items():                 # the owner's own wording, 2026-11-29
+            self.assertEqual((cs.words(key, "he", "short"), cs.words(key, "he", "long")), (short, long), key)
         for key in ("asset_group", "ad_strength", "bid_strategy", "match_type", "manifest", "render"):
             self.assertIn(key, cs.NEVER)
         for owner_row in ("pmax", "search", "demand_gen", "display", "youtube", "bumper", "shorts_ads", "remarketing",
@@ -103,9 +118,21 @@ class Enforce(unittest.TestCase):
         told = []
         out = cs.enforce("אנחנו מריצים Performance Max בתקציב הזה.", "he", where="t", alert=told.append)
         self.assertNotIn("Performance Max", out)
-        self.assertIn("חיפוש, יוטיוב, ג'ימייל, מפות ואתרים", out)
+        self.assertEqual(out, "אנחנו מריצים קמפיין בכל המקומות של גוגל בתקציב הזה.")
         self.assertIn('forbidden term "Performance Max" (pmax)', told[0])
-        self.assertEqual(cs.enforce("ה-CTR עלה ל-3%.", "he"), "כמה אחוז מהאנשים שראו את המודעה לחצו עליה עלה ל-3%.")
+        # inside a sentence: the SHORT form, a noun phrase where the term stood
+        self.assertEqual(cs.enforce("ה-CTR עלה ל-3%.", "he"), "אחוז ההקלקות עלה ל-3%.")
+        self.assertEqual(cs.enforce("ראינו שיפור ב-CTR החודש.", "he"), "ראינו שיפור באחוז ההקלקות החודש.")   # the preposition stays
+        self.assertEqual(cs.enforce("Your CTR rose to 3%.", "en"), "Your click rate rose to 3%.")
+        self.assertEqual(cs.enforce("Le CTR est monté à 3 %.", "fr"), "Le taux de clics est monté à 3 %.")
+        # standing alone: the LONG form, the explanation
+        self.assertEqual(cs.enforce("CTR", "he"), "כמה אחוז מהאנשים שראו את המודעה לחצו עליה")
+        self.assertEqual(cs.where("pmax", "he"), cs.words("pmax", "he", "long"))
+        for lang in LANGS:                                                       # never the explanation in a noun's place
+            said = cs.plain({"he": "ה-CTR עלה.", "en": "The CTR rose.", "fr": "Le CTR monte.", "ar": "ارتفع CTR اليوم.",
+                             "ru": "CTR вырос."}[lang], lang)
+            self.assertIn(cs.words("ctr", lang, "short"), said, lang)
+            self.assertNotIn(cs.words("ctr", lang, "long"), said, lang)
         clean = "הקמפיין עלה לאוויר."
         self.assertIs(cs.enforce(clean, "he"), clean)                            # clean text is not touched
 
@@ -134,6 +161,9 @@ class Enforce(unittest.TestCase):
         rewrite = cs.model_rewriter(27, "he", call=lambda system, user: calls.append((system, user)) or {"text": "בסדר."})
         self.assertEqual(rewrite("נריץ Performance Max", ["x"]), "בסדר.")
         self.assertIn("plain_words", calls[0][1])
+        self.assertIn('"short"', calls[0][1])
+        self.assertIn('"long"', calls[0][1])
+        self.assertIn("Never put the long form where a noun belongs", cs.REWRITE_SYSTEM)
         self.assertIn("safe_claude_json_call", _src("core", "client_speech.py"))  # the one JSON gate
 
     def test_wired_on_every_way_out(self):
@@ -216,7 +246,9 @@ def presentation(**over):
     base = {"campaign_type": "pmax", "objective": "leads", "budget_total": 3000, "days": 30,
             "expected": cp.from_history("leads", 3000, HISTORY)}
     base.update(over)
-    return cp.build(base["campaign_type"], base["objective"], base["budget_total"], base["days"], base["expected"])
+    kind = ((base["expected"] or {}).get("basis") or {}).get("kind", "")
+    return cp.build(base["campaign_type"], base["objective"], base["budget_total"], base["days"], base["expected"],
+                    base.get("basis_type", kind))
 
 
 class Presentation(unittest.TestCase):
@@ -231,6 +263,11 @@ class Presentation(unittest.TestCase):
                            ({"expected": {"low": 40, "high": 40, "unit": "leads",
                                           "basis": {"kind": "estimate", "cost_low": 50, "cost_high": 80, "assumptions": "x"}}},
                             "estimate_not_a_range"),
+                           ({"basis_type": ""}, "basis_type_missing"),                   # a required FIELD
+                           ({"basis_type": "benchmark"}, "basis_type_mismatch"),         # and it must be the true one
+                           ({"expected": cp.from_estimate("leads", 3000, 60, 110, "לפי ממוצע בענף")}, "estimate_claims_a_source"),
+                           ({"expected": cp.from_estimate("leads", 3000, 60, 110, "according to market data")},
+                            "estimate_claims_a_source"),
                            ({"expected": {"low": 35, "high": 60, "unit": "leads",
                                           "basis": {"kind": "estimate", "cost_low": 50, "cost_high": 80}}}, "assumptions_missing")):
             p = presentation(**over)
@@ -266,8 +303,19 @@ class Presentation(unittest.TestCase):
         est = cp.from_estimate("leads", 3000, 60, 110, "עסק שירות מקומי")
         self.assertEqual((est["low"], est["high"], est["basis"]["kind"]), (27, 50, "estimate"))
         text = cp.render(presentation(expected=est), "he")
-        self.assertIn("הערכה ולא התחייבות", text)
+        # a guess is SAID to be a guess, in the owner's words, before the range
+        said = "אין עדיין נתונים מהחשבון שלכם, אז זו הערכה שלנו לפי היכרות עם התחום ולא מדד מהשוק."
+        self.assertIn(said, text)
+        self.assertLess(text.index(said), text.index("27 עד 50"))
         self.assertIn("עסק שירות מקומי", text)
+        for lang in LANGS:                                               # each basis type has its own fixed words
+            for expected in (e, est):
+                kind = expected["basis"]["kind"]
+                out = cp.render(presentation(expected=expected), lang)
+                self.assertIn(cp.BASIS_SAYS[kind][lang], out, (kind, lang))
+                for other in set(cp.BASES) - {kind}:
+                    self.assertNotIn(cp.BASIS_SAYS[other][lang], out, (kind, other, lang))
+        self.assertEqual(set(cp.BASIS_SAYS), set(cp.BASES))
         for bad in ((80, 80), (80, 85), (0, 100), (None, None)):
             self.assertIsNone(cp.from_estimate("leads", 3000, bad[0], bad[1], "x"), bad)   # a single figure is not an estimate
         jargon = cp.from_estimate("leads", 3000, 60, 110, "לפי ה-asset group")
@@ -281,14 +329,15 @@ class Presentation(unittest.TestCase):
             self.assertTrue(spec["what"][lang].startswith("{presentation}\n"), lang)
         params = {"campaign_type": "pmax", "objective": "leads", "audience_segment": "home owners",
                   "landing_page_url": "https://example.com/", "offer": "ייעוץ ראשון", "budget_total": 3000, "days": 30,
-                  "expected": cp.from_history("leads", 3000, HISTORY)}
+                  "expected": cp.from_history("leads", 3000, HISTORY), "basis_type": "history"}
         saved = aa._lang
         aa._lang = lambda cid: "he"
         try:
             shown = spec["display"](27, params)
             self.assertEqual(shown["presentation"], cp.render(presentation(), "he"))
+            self.assertEqual(shown["basis_type"], "history")
             self.assertEqual(spec["validate_stored"](27, params)["budget_total"], 3000.0)
-            for missing in ("budget_total", "expected"):
+            for missing in ("budget_total", "expected", "basis_type"):
                 with self.assertRaises(ValueError):
                     spec["validate_stored"](27, {k: v for k, v in params.items() if k != missing})
         finally:
@@ -298,6 +347,7 @@ class Presentation(unittest.TestCase):
         self.assertLess(prepare.index('ask["budget"]'), prepare.index("campaign_presentation.render("))
         self.assertLess(prepare.index("campaign_presentation.from_history("), prepare.index("campaign_presentation.from_estimate("))
         self.assertIn('refusals["presentation"]', prepare)
+        self.assertIn('clean["basis_type"] = "history" if from_account else "estimate" if expected else ""', prepare)
         self.assertEqual(set(spec["refusals"]["presentation"]), set(LANGS))
 
 
@@ -305,9 +355,9 @@ def sample() -> str:
     """The Performance Max presentation for client 27, as the card renders it.
     The INPUTS are sample values (no production data is readable from here)."""
     p = cp.build("pmax", "sales", 3000, 30,
-                 cp.from_estimate("sales", 3000, 90, 160, "מוצר במחיר של כמה מאות שקלים, בתחום שיש בו לא מעט מפרסמים"))
+                 cp.from_estimate("sales", 3000, 90, 160, "מוצר במחיר של כמה מאות שקלים, בתחום שיש בו לא מעט מפרסמים"),
+                 "estimate")
     return cp.render(p, "he")
-
 
 if __name__ == "__main__":
     if "--show" in sys.argv:
@@ -317,7 +367,8 @@ if __name__ == "__main__":
         text = sample()
         out.write(text + "\n\nchecks: " + str({"forbidden terms": cs.find(text, "he"), "expectation": cs.expectation_problems(text),
                                                 "four elements": cp.problems(cp.build("pmax", "sales", 3000, 30, cp.from_estimate(
-                                                    "sales", 3000, 90, 160, "x")))}) + "\n")
+                                                    "sales", 3000, 90, 160, "x"), "estimate"))}) + "\n")
+        out.write("\nbasis_type: estimate\nshort form in a sentence: " + cs.enforce("ה-CTR עלה ל-3% החודש.", "he") + "\n")
         out.flush()
         sys.exit(0)
     unittest.main()

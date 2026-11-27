@@ -52,7 +52,9 @@ Decide:
   objective costs for a business like this in Israel, in shekels, as a RANGE: cost_low and cost_high (numbers,
   cost_high at least 1.5 times cost_low; for "awareness" the cost of reaching a thousand people), and
   `assumptions`: one short clause in `language`, plain words, saying what the range assumes (the kind of
-  business, the price of what is sold, how crowded the field is). Never a single figure, never a promise.
+  business, the price of what is sold, how crowded the field is). Never a single figure, never a promise. It is
+  YOUR judgment and the client is told so in those words: never cite or imply a source — no "industry average",
+  "market data", "studies", "according to", "benchmark". A clause that does is refused and no card opens.
 
 Return JSON only: {"campaign_type": "", "objective": "", "audience_segment": "", "landing_page_url": "",
 "offer": "", "why": "", "estimate": {"cost_low": 0, "cost_high": 0, "assumptions": ""}}"""
@@ -286,7 +288,13 @@ def build(aa) -> dict:
 
     def _presentation(params):
         return campaign_presentation.build(params.get("campaign_type", ""), params.get("objective", ""),
-                                           params.get("budget_total"), params.get("days"), params.get("expected"))
+                                           params.get("budget_total"), params.get("days"), params.get("expected"),
+                                           params.get("basis_type", ""))
+
+    def v_basis_type(value, client_id):
+        if value not in campaign_presentation.BASES:
+            raise ValueError("not a basis type")
+        return value
 
     def v_youtube(value, client_id):
         value = str(value or "").strip()
@@ -351,7 +359,10 @@ def build(aa) -> dict:
         expected = (campaign_presentation.from_history(clean["objective"], clean["budget_total"], totals)
                     or campaign_presentation.from_estimate(clean["objective"], clean["budget_total"], estimate.get("cost_low"),
                                                            estimate.get("cost_high"), estimate.get("assumptions")))
+        from_account = campaign_presentation.from_history(clean["objective"], clean["budget_total"], totals)
         clean["expected"] = expected or {}
+        # set HERE, by which path produced the number — never by the model, never by wording
+        clean["basis_type"] = "history" if from_account else "estimate" if expected else ""
         try:
             campaign_presentation.render(_presentation(clean), lang)
         except campaign_presentation.PresentationIncomplete as e:
@@ -397,7 +408,7 @@ def build(aa) -> dict:
         except campaign_presentation.PresentationIncomplete as e:
             print(f"[{SERVICE_NAME}] client {client_id}: {e}")
             presentation = ""                           # validate_stored refuses such a card before it is shown
-        return {"presentation": presentation,
+        return {"presentation": presentation, "basis_type": params.get("basis_type", ""),
                 "type": _pick(types.get(campaign_type) or {"he": campaign_type}, lang),
                 "objective": _pick(objectives.get(params.get("objective")) or {"he": ""}, lang),
                 "offer": params.get("offer", ""), "audience": params.get("audience_segment", ""),
@@ -559,6 +570,7 @@ def build(aa) -> dict:
                 "days": {"required": False, "validate": v_days,
                          "hint": "how many days that budget is for, ONLY when the client said (a month = 30)"},
                 "expected": {"required": False, "validate": v_expected, "hint": "leave empty — filled by the system"},
+                "basis_type": {"required": False, "validate": v_basis_type, "hint": "leave empty — filled by the system"},
                 "why": {"required": False, "validate": v_text(300), "hint": "leave empty — filled by the system"},
             },
             "available": possible,
