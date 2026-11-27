@@ -3105,6 +3105,14 @@ def admin_google_scopes(request: Request, client_id: int = 27, live: bool = True
     from core import google_scopes
     return {"success": True, "data": google_scopes.diagnostic(client_id, live=live)}
 
+@app.get("/api/admin/youtube/quota")
+def admin_youtube_quota(request: Request):
+    # READ-ONLY: today's YouTube uploads against the project-wide daily limit
+    # (our own tally, core/youtube_quota) — how many uploads are left for ALL clients.
+    _require_admin(request)
+    from core import youtube_quota
+    return {"success": True, "data": youtube_quota.status()}
+
 _RECONNECT_PRODUCTS = {"gtm": "core.gtm_service", "youtube": "core.youtube_service"}
 
 @app.get("/api/admin/google/reconnect/{client_id}")

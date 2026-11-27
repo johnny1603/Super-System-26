@@ -19,6 +19,9 @@ COST REALITY (checked 2026-07-23 — the handoff's explicit question):
   and the existing per-client Claude/media costs already priced elsewhere.
 - Uploads are counted through core.api_call_counters ("youtube") anyway —
   same runaway-loop brake idiom as google_ads_service.
+- 2026-11-28: the figures above were never confirmed against the project's
+  own quota page. core/youtube_quota shows the tally and refuses before the
+  limit; DAILY_UPLOAD_LIMIT below is THE one number it all follows.
 
 VERIFICATION STATUS: written against the Data API v3 reference, never run
 with a live grant — same accepted MVP state as every service module before
@@ -176,6 +179,8 @@ def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: 
     count = increment_call_counter("youtube", window_days=1)
     if count > DAILY_UPLOAD_LIMIT:
         raise RuntimeError(f"YouTube daily upload brake reached ({DAILY_UPLOAD_LIMIT}) - refusing upload")
+    from core import youtube_quota
+    youtube_quota.after_upload(count)          # the owner hears at half the limit, not at the wall
 
     def initiate_session(snippet: dict):
         return httpx.post(
