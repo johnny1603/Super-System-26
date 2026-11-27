@@ -166,6 +166,85 @@ def palette(manifest, roles: dict, background: dict = None, mean: str = ""):
                        "second_role": bg.get("second_color_role") or "", "mean": str(mean or "").upper()}}
 
 
+# ─── Measuring a file's colours (THE one measurement: slides and ad images) ──
+
+PHOTO_TOLERANCE = 40          # per channel: a photographed / generated backdrop against a brand colour (judgment)
+BORDER_SHARE = 0.06           # the frame band whose colour is "the background" of a finished picture
+DOMINANT = 5
+
+
+def _hex(rgb) -> str:
+    return "#%02X%02X%02X" % tuple(int(round(v)) for v in tuple(rgb)[:3])
+
+
+def mean_color(img, border: float = 0.0) -> str:
+    """The average colour of a Pillow image, from its pixels: the whole canvas
+    (`border` 0 — what the slide renderer records right after the background
+    layer), or only the frame band `border` wide (share of the short side) —
+    the background of a picture that already has a subject in the middle."""
+    from PIL import Image, ImageStat
+    rgb = img.convert("RGB")
+    if not border:
+        return _hex(rgb.resize((1, 1), Image.BOX).getpixel((0, 0)))
+    w, h = rgb.size
+    band = max(1, int(round(min(w, h) * border)))
+    mask = Image.new("L", (w, h), 255)
+    if w > 2 * band and h > 2 * band:
+        mask.paste(0, (band, band, w - band, h - band))
+    return _hex(ImageStat.Stat(rgb, mask).mean)
+
+
+def measure_image(content: bytes) -> dict:
+    """{"mean", "background", "dominant": [{"color", "share"}]} of a produced
+    image FILE, or {} when it cannot be read. Nothing here is told what the
+    colours were meant to be."""
+    import io
+    from PIL import Image
+    try:
+        with Image.open(io.BytesIO(content)) as opened:
+            img = opened.convert("RGB")
+    except Exception:
+        return {}
+    small = img.resize((96, max(1, round(96 * img.size[1] / img.size[0]))), Image.BOX)
+    quant = small.quantize(DOMINANT)
+    pal, total = quant.getpalette(), small.size[0] * small.size[1]
+    dominant = [{"color": _hex(pal[i * 3:i * 3 + 3]), "share": round(n / total, 2)}
+                for n, i in sorted(quant.getcolors() or [], reverse=True)]
+    return {"mean": mean_color(img), "background": mean_color(img, BORDER_SHARE), "dominant": dominant}
+
+
+def measured(manifest, content: bytes) -> dict:
+    """Records measure_image(content) on the manifest (`palette.measured`). Returns it."""
+    got = measure_image(content)
+    if manifest is not None and got:
+        manifest.setdefault("palette", {})["measured"] = got
+    return got
+
+
+def _distance(a: str, b: str) -> int:
+    """The largest channel difference between two #RRGGBB colours (999 = unreadable)."""
+    try:
+        pa, pb = (tuple(int(str(c).lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)) for c in (a, b))
+    except (ValueError, TypeError):
+        return 999
+    return max(abs(x - y) for x, y in zip(pa, pb))
+
+
+def off_palette(got: dict, brand_roles: dict, tolerance: int = PHOTO_TOLERANCE) -> dict:
+    """The MEASURED background against a brand variant's colours: {} when it
+    is one of them (within `tolerance`), else {"background", "nearest",
+    "distance"}. No measurement = off (nothing was proven)."""
+    colors = [str(c).upper() for c in (brand_roles or {}).values() if c]
+    background = (got or {}).get("background") or ""
+    if not colors:
+        return {}
+    if not background:
+        return {"background": "", "nearest": "", "distance": 999}
+    nearest = min(colors, key=lambda c: _distance(background, c))
+    gap = _distance(background, nearest)
+    return {} if gap <= tolerance else {"background": background, "nearest": nearest, "distance": gap}
+
+
 def name_palette(manifest, variant: str, brand_roles: dict) -> str:
     """Writes on the manifest WHICH brand variant its drawn colours are: the
     variant's label when the four drawn role colours are that variant's, ""
@@ -294,11 +373,8 @@ def missing(wanted: list, manifest) -> list:
 
 def _far(a: str, b: str, tolerance: int = 6) -> bool:
     """Two #RRGGBB colours differ by more than rounding."""
-    try:
-        pa, pb = (tuple(int(str(c).lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)) for c in (a, b))
-    except (ValueError, TypeError):
-        return True
-    return max(abs(x - y) for x, y in zip(pa, pb)) > tolerance
+    return _distance(a, b) > tolerance
+
 
 
 PALETTE_TEXT = {

@@ -37,7 +37,8 @@ from core import google_ads_formats as gaf                                      
 
 LANGS = ("he", "en", "fr", "ar", "ru")
 TODAY = date(2026, 11, 28)
-ROLES = {"primary": "#1F3A5F", "accent": "#E07A5F", "background": "#F4F1DE"}
+ROLES = {"bg": "#F4F1DE", "fg": "#1F3A5F", "accent": "#E07A5F", "muted": "#8D99AE"}
+TEAL = (0, 128, 128)
 FACTS = {"palette_variants": []}
 DECISION = {"campaign_type": "pmax", "objective": "sales", "audience_segment": "home bakers",
             "landing_page_url": "https://example.com/shop", "offer": "ערכת אפייה ביתית"}
@@ -48,9 +49,9 @@ def _src(*parts) -> str:
         return f.read()
 
 
-def picture(w, h, subject=(0.42, 0.3, 0.58, 0.7), kind="JPEG") -> bytes:
+def picture(w, h, subject=(0.42, 0.3, 0.58, 0.7), kind="JPEG", backdrop=(236, 232, 222)) -> bytes:
     """A plain backdrop with ONE subject at `subject` (fractions of the frame)."""
-    img = Image.new("RGB", (w, h), (236, 232, 222))
+    img = Image.new("RGB", (w, h), backdrop)
     d = ImageDraw.Draw(img)
     box = (int(subject[0] * w), int(subject[1] * h), int(subject[2] * w), int(subject[3] * h))
     d.ellipse(box, fill=(190, 40, 40))
@@ -205,13 +206,50 @@ class Delivery(unittest.TestCase):
         result = mo.check_delivery(self.o, delivered, files)
         self.assertIn(("portrait", "no_file"), {(p["slot"], p["code"]) for p in result["problems"]})
 
-    def test_the_palette_must_be_the_segments_variant(self):
+    def test_the_palette_is_measured_from_the_pixels_never_read_from_the_name(self):
+        from core import render_manifest as rm
+        # the row SAYS the right variant; the file is teal
+        delivered, files = full_delivery(self.o, **{"landscape#1": picture(1200, 628, backdrop=TEAL)})
+        with self.assertRaises(mo.IncompleteDelivery) as caught:
+            mo.hand_over(27, self.o, delivered, files, notify=self.notified.append, store=False)
+        self.assertEqual(self.notified, [])
+        off = [p for p in caught.exception.problems if p["code"] == "palette_measured"]
+        self.assertEqual([(p["slot"], p["n"]) for p in off], [("landscape", 1)])
+        self.assertLessEqual(rm._distance(off[0]["measured"], "#008080"), 6)
+        self.assertEqual(off[0]["nearest"], "#1F3A5F")
+        self.assertIn(("landscape", "missing"), {(p["slot"], p["code"]) for p in caught.exception.problems})
+        line = mo.problem_lines(off, "he")[0]
+        self.assertIn(off[0]["measured"], line)
+        self.assertIn("#F4F1DE", line)
+        print("\n[item 1 demo] " + mo.problem_lines(off, "en")[0])
+        # the row says the WRONG variant; the file is the brand backdrop: the name is not what is checked
         delivered, files = full_delivery(self.o)
-        delivered["assets"][0]["palette_variant"] = "cool"
+        for a in delivered["assets"]:
+            a["palette_variant"] = "some other name"
+        result = mo.check_delivery(self.o, delivered, files)
+        self.assertTrue(result["complete"], result["problems"])
+        got = result["measured"]["landscape#1"]
+        self.assertEqual(set(got), {"mean", "background", "dominant"})
+        self.assertLessEqual(rm._distance(got["background"], "#ECE8DE"), 4)
+        print(f"[item 1 demo] landscape#1 measured: background {got['background']}, mean {got['mean']}, dominant "
+              f"{[(d['color'], d['share']) for d in got['dominant'][:3]]} | brand variant "
+              f"{result['palette']['variant']}: {result['palette']['roles']} -> within {rm.PHOTO_TOLERANCE} of #F4F1DE: ok")
         delivered["assets"][1]["drawn_colors"] = ["#1f3a5f", "#00FF00"]
         codes = {(p["code"], p.get("colors", "")) for p in mo.check_delivery(self.o, delivered, files)["problems"]}
-        self.assertIn(("palette_variant", ""), codes)
         self.assertIn(("palette_colors", "#00FF00"), codes)
+
+    def test_one_measurement_shared_with_the_slide_renderer(self):
+        self.assertIn("render_manifest.mean_color(img)", _src("core", "slide_renderer.py"))
+        self.assertNotIn("resize((1, 1)", _src("core", "slide_renderer.py"))
+        for name in ("media_order.py", "paid_media_production.py"):
+            source = _src("core", name)
+            self.assertIn("render_manifest.measure", source, name)
+            for own in ("ImageStat", "resize((1, 1)", "quantize("):
+                self.assertNotIn(own, source, (name, own))
+        body = _src("core", "media_order.py")
+        check = body[body.index("def check_delivery"):body.index("def hand_over")]
+        self.assertNotIn('a.get("palette_variant")', check)
+        self.assertNotIn('a.get("drawn")', check)
 
     def test_a_video_is_a_youtube_url_never_a_file(self):
         o = order(campaign_type="youtube")
@@ -345,6 +383,8 @@ class Production(unittest.TestCase):
         self.assertEqual(self.generated, ["1.91:1"] * 3)                   # the other ratios were cut from it
         sources = {a["source"] for a in delivered["assets"]}
         self.assertEqual(sources, {"generated", "derived", "logo"})
+        for a in delivered["assets"]:
+            self.assertEqual("measured" in ((a.get("drawn") or {}).get("palette") or {}), a["source"] != "logo", a)
         self.assertEqual(len(self.stored), len(delivered["assets"]))
         for k, content in files.items():
             row = next(r for r in self.o["required_assets"] if r["slot"] == k.split("#")[0])
@@ -366,6 +406,16 @@ class Production(unittest.TestCase):
         self.assertLessEqual(len(self.generated), mo.generations(self.o) + pmp.RETRIES)
         with self.assertRaises(mo.IncompleteDelivery):
             mo.hand_over(27, self.o, delivered, files, store=False)
+
+    def test_an_off_palette_picture_is_regenerated_then_fails_by_name(self):
+        def teal(prompt, aspect):
+            slot = gaf.SLOTS[next(s for s in gaf.SLOTS if gaf.SLOTS[s].aspect == aspect)]
+            return picture(slot.width, slot.height, subject=(0.44, 0.38, 0.56, 0.62), backdrop=TEAL)
+        delivered, files = self.produce(teal)
+        self.assertEqual(len(self.generated), 3 + pmp.RETRIES)
+        with self.assertRaises(mo.IncompleteDelivery) as caught:
+            mo.hand_over(27, self.o, delivered, files, store=False)
+        self.assertIn("palette_measured", {p["code"] for p in caught.exception.problems})
 
     def test_hebrew_never_reaches_the_image_model(self):
         with self.assertRaises(Exception):

@@ -36,7 +36,7 @@ its own work.
 import io
 import json
 
-from core import ad_compress, crop_survival, image_fit, media_order
+from core import ad_compress, crop_survival, image_fit, media_order, render_manifest
 from core import google_ads_formats as gaf
 
 SERVICE_NAME = "paid_media_production"
@@ -57,7 +57,9 @@ IRON RULES:
   Everything outside that is plain, uncluttered backdrop that can be cut away.
 - ABSOLUTELY NO text, letters, words, numbers, signs with writing, logos, badges or captions in the scene. The
   message is carried by the ad's text assets, which you are not given and must not invent.
-- Use ONLY the palette given (one audience variant of the brand). Never another colour scheme.
+- Use ONLY the palette given (one audience variant of the brand). Never another colour scheme. The backdrop that
+  fills the frame edge to edge is the palette's `bg` colour, stated in the prompt by its hex code: the finished file's
+  background colour is MEASURED and compared to the palette, and a different one fails the order.
 - Never depict a specific product as if it were a real item the customer can order, unless the brand brief says
   it is one. Atmosphere, studio and workspace scenes, hands at work, blank items, textures are fine.
 - No celebrity likenesses, no trademarked or licensed characters, no brand logos.
@@ -227,6 +229,8 @@ def produce(client_id: int, brief: dict, generate=None, craft=None, load_logos=N
     rows = brief.get("required_assets") or []
     images = [r for r in rows if r["kind"] == "image"]
     variant = (brief.get("palette") or {}).get("variant") or ""
+    roles = (brief.get("palette") or {}).get("roles") or {}
+    backdrop = roles.get("bg") or ""
     assets, files, notes, prompts = [], {}, [], []
     retries = RETRIES
     stopped = stopped or (lambda: False)
@@ -235,8 +239,14 @@ def produce(client_id: int, brief: dict, generate=None, craft=None, load_logos=N
         name = f"{row['slot']}-{n}.{gaf.file_type(content) or 'bin'}"
         saved = store(brief["id"], name, content, "image/" + ("jpeg" if name.endswith("jpg") else "png")) if store else {}
         files[media_order.key(row["slot"], n)] = content
+        drawn = None
+        if row["kind"] == "image":
+            # What the FILE holds, measured (the same measurement a slide gets) — recorded, and
+            # re-measured from the bytes by the handover check
+            drawn = render_manifest.for_asset("image", {})
+            render_manifest.measured(drawn, content)
         assets.append(media_order.asset(row["slot"], n, file_id=saved.get("id"), link=saved.get("link"),
-                                        source=source, palette_variant=variant, **extra))
+                                        source=source, palette_variant=variant, drawn=drawn, **extra))
 
     if images:
         generate = generate or _default_generate(client_id)
@@ -260,12 +270,17 @@ def produce(client_id: int, brief: dict, generate=None, craft=None, load_logos=N
                     final = to_slot(row, raw)
                     result = crop_survival.check(final, row["slot"], targets=tuple(row["crop_targets"]))
                     print(crop_survival.line(result) + f" (order {brief['id']}, concept {n}, {source})")
-                    if result["ok"] or retries <= 0 or stopped():
+                    off = render_manifest.off_palette(render_manifest.measure_image(final), roles)
+                    if off:
+                        print(f"[{SERVICE_NAME}] {row['slot']} background measured {off['background']}, nearest brand "
+                              f"colour {off['nearest']} (order {brief['id']}, concept {n})")
+                    if (result["ok"] and not off) or retries <= 0 or stopped():
                         return final, source, raw
                     retries -= 1
                     source = "generated"
                     raw = generate(prompt + " The subject is small and exactly centred, with wide empty backdrop "
-                                            "on every side.", row["aspect"])
+                                            "on every side." + (f" The backdrop is the flat colour {backdrop}."
+                                                                if off and backdrop else ""), row["aspect"])
 
             master = None
             if n <= master_row["count"]:

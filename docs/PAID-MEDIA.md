@@ -180,8 +180,14 @@ file exists and passes every check, then holds the count against the order:
   (`google_ads_formats.check_file` on the bytes);
 - crop survival (`crop_survival.check` on the bytes, for the row's crop targets);
 - a video is a YouTube URL (`video_file_not_url`, `video_bad_url`);
-- the palette is the segment's variant (`palette_variant`), and any colour code
-  drew is in it (`palette_colors`).
+- the palette, MEASURED (`palette_measured`, 2026-11-28): `render_manifest.measure_image`
+  reads the file's pixels — the background (the frame band), the mean, the
+  dominant colours — and `off_palette` holds the measured background against the
+  segment's variant colours (`PHOTO_TOLERANCE` = 40 per channel, a judgment). The
+  variant NAME the producer wrote on the row is a record and is never checked.
+  It is the same measurement the slide renderer records (`mean_color`); there is
+  no second one. Any colour code drew must also be in the variant (`palette_colors`).
+  Logos are the client's own file and are not measured.
 
 Nothing the manifest says about its own files is read. An incomplete set
 raises `IncompleteDelivery`: the order is stored `incomplete` with the named
@@ -230,8 +236,9 @@ in the client's Drive media folder under `ads/<order id>/`.
   name. There is no "attach a URL to the order" path yet.
 - **Uploaded banners** (the 150 KB sizes): the table, the compressor and the
   checks cover them; nothing produces them, and the card never orders them.
-- **Palette check**: the variant is recorded by the producer and compared; code
-  draws no colours into these images, so there is no pixel-level palette
-  measurement of a generated photo.
+- **Palette check**: what is compared is the BACKGROUND colour of the file. A
+  picture with a brand-coloured backdrop and an off-brand subject passes; the
+  dominant colours are recorded but not judged. The tolerance has never met a
+  real generated image.
 - The agents do not yet read orders back (`media_order.summary` exists, nothing
   feeds it to `client_state`).

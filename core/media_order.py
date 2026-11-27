@@ -14,7 +14,8 @@ Three objects, one direction:
                      what the manifest claims): every required asset present,
                      every file within its cap, every image through the
                      crop-survival check, every video a YouTube URL, the
-                     palette the segment's brand variant.
+                     background colour MEASURED in each image one of the
+                     segment's brand variant's colours (core/render_manifest).
   HANDOVER           `hand_over()`: an INCOMPLETE set is never handed over.
                      It raises IncompleteDelivery, names exactly what is
                      missing, and Yoav is not notified. An asset group that
@@ -36,7 +37,7 @@ import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from core import crop_survival
+from core import crop_survival, render_manifest
 from core import google_ads_formats as gaf
 
 SERVICE_NAME = "media_order"
@@ -186,7 +187,8 @@ def key(slot: str, n: int) -> str:
 
 def asset(slot: str, n: int, **fields) -> dict:
     """One manifest row. Fields a producer may set: file_id, link, source
-    (generated | derived | logo | real), palette_variant, drawn_colors (every
+    (generated | derived | logo | real), palette_variant (a record, never
+    checked), drawn (its render manifest, with the measured colours), drawn_colors (every
     colour CODE drew into the file), subject_box (fractions), youtube_url,
     file_path, compress, crop."""
     row = {"slot": str(slot), "n": int(n)}
@@ -216,7 +218,9 @@ def check_delivery(order: dict, delivered: dict, files: dict) -> dict:
     for a in (delivered or {}).get("assets") or []:
         by_slot.setdefault(a.get("slot"), []).append(a)
     variant = (order.get("palette") or {}).get("variant") or ""
-    allowed = {str(c).upper() for c in ((order.get("palette") or {}).get("roles") or {}).values()}
+    roles = (order.get("palette") or {}).get("roles") or {}
+    allowed = {str(c).upper() for c in roles.values()}
+    measured = {}
     for row in order.get("required_assets") or []:
         good = 0
         for a in sorted(by_slot.get(row["slot"], []), key=lambda x: int(x.get("n") or 0)):
@@ -241,9 +245,16 @@ def check_delivery(order: dict, delivered: dict, files: dict) -> dict:
                             if not c["ok"]:
                                 found.append({"code": "crop", "aspect": c["aspect"],
                                               "pct": round(c["retained"] * 100)})
-                if str(a.get("palette_variant") or "") != variant:
-                    found.append({"code": "palette_variant", "variant": variant,
-                                  "used": str(a.get("palette_variant") or "—")})
+                if row["kind"] == "image" and content:
+                    # The palette is MEASURED from the file (core/render_manifest), never read
+                    # from the variant name the producer wrote on the row
+                    got = render_manifest.measure_image(content)
+                    measured[key(a["slot"], a.get("n") or 0)] = got
+                    off = render_manifest.off_palette(got, roles)
+                    if off:
+                        found.append({"code": "palette_measured", "variant": variant,
+                                      "measured": off["background"] or "—", "nearest": off["nearest"] or "—",
+                                      "colors": ", ".join(sorted(allowed))})
                 outside = sorted({str(c).upper() for c in a.get("drawn_colors") or []} - allowed)
                 if outside:
                     found.append({"code": "palette_colors", "variant": variant, "colors": ", ".join(outside)})
@@ -254,8 +265,8 @@ def check_delivery(order: dict, delivered: dict, files: dict) -> dict:
         counts[row["slot"]] = {"have": good, "need": row["count"]}
         if good < row["count"]:
             problems.append({**_what(row), "code": "missing", "have": good, "need": row["count"]})
-    return {"complete": not problems, "problems": problems, "counts": counts, "checked_at": _now(),
-            "warning": gaf.stale_line()}
+    return {"complete": not problems, "problems": problems, "counts": counts, "measured": measured,
+            "palette": {"variant": variant, "roles": roles}, "checked_at": _now(), "warning": gaf.stale_line()}
 
 
 def hand_over(client_id: int, order: dict, delivered: dict, files: dict, notify=None, store=True) -> dict:
@@ -444,11 +455,11 @@ PROBLEM_TEXT = {
     "video_bad_url": _five("{what}: הקישור אינו קישור לסרטון YouTube.", "{what}: the link is not a YouTube video link.",
                            "{what} : le lien n'est pas un lien de vidéo YouTube.", "{what}: الرابط ليس رابط فيديو على YouTube.",
                            "{what}: ссылка не ведёт на видео YouTube."),
-    "palette_variant": _five("{what}: לא הופק בפלטת המותג של הקהל הזה ({variant}).",
-                             "{what}: not produced in this audience's brand palette ({variant}).",
-                             "{what} : non produit dans la palette de marque de ce public ({variant}).",
-                             "{what}: لم يُنتج بلوحة ألوان العلامة لهذا الجمهور ({variant}).",
-                             "{what}: сделано не в фирменной палитре этой аудитории ({variant})."),
+    "palette_measured": _five("{what}: צבע הרקע שנמדד בקובץ הוא {measured} — לא אחד מצבעי פלטת המותג {variant} ({colors}).",
+                              "{what}: the background colour measured in the file is {measured} — not one of the {variant} brand palette's colours ({colors}).",
+                              "{what} : la couleur de fond mesurée dans le fichier est {measured} — pas une couleur de la palette de marque {variant} ({colors}).",
+                              "{what}: لون الخلفية المقاس في الملف هو {measured} — ليس من ألوان لوحة العلامة {variant} ({colors}).",
+                              "{what}: измеренный в файле цвет фона — {measured}, его нет в фирменной палитре {variant} ({colors})."),
     "palette_colors": _five("{what}: יש בו צבעים שאינם בפלטת המותג {variant}: {colors}.",
                             "{what}: it has colours outside the {variant} brand palette: {colors}.",
                             "{what} : couleurs hors de la palette de marque {variant} : {colors}.",

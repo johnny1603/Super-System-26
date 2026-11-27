@@ -1062,7 +1062,9 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   `CannotReachCap`). The handoff (`core/media_order`): Yoav issues the MEDIA ORDER (he decides the campaign type, never
   the look), text assets are COPY (`core/ad_copy` on `copy_budget.ads_budget` — never the same step as the images),
   Lior produces (`core/paid_media_production`: logos are the client's file, never generated), `hand_over` checks the
-  delivery FROM THE FILES and an incomplete set raises `IncompleteDelivery` by name — Yoav is not told — then
+  delivery FROM THE FILES (palette included: the background MEASURED by `render_manifest.measure_image`, the one
+  measurement the slide renderer shares, against the variant's colours — never the variant name on the row) and an
+  incomplete set raises `IncompleteDelivery` by name — Yoav is not told — then
   `yoav_verify` re-checks against the platform minimum on its own. Chat: ONE card `prepare_campaign`
   (`core/media_order_actions`, every param optional, **internal accounts only until a live run**, `STOP_FINISH`).
   NOTHING is uploaded to Google Ads; video and uploaded banners are not produced; never run live.
