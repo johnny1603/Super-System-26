@@ -9,20 +9,14 @@ consent-screen + verification-resubmission reality as the GTM scopes (see
 gtm_service's docstring); YouTube API services additionally reserve the
 right to a compliance audit at scale. Development works now via test users.
 
-COST REALITY (checked 2026-07-23 — the handoff's explicit question):
-- The Data API has NO monetary billing at all — quota units, not money.
-- Default project quota: 10,000 units/day, and videos.insert dropped from
-  1,600 to ~100 units in Dec 2025 (with a 100 uploads/day cap) — so the
-  default free quota supports ~100 uploads/day across ALL clients, far
-  beyond our volume. API access itself therefore has ZERO real cost
-  exposure at current scale; the only real costs are our operational time
-  and the existing per-client Claude/media costs already priced elsewhere.
-- Uploads are counted through core.api_call_counters ("youtube") anyway —
-  same runaway-loop brake idiom as google_ads_service.
-- 2026-11-28: the figures above were never confirmed against the project's
-  own quota page. core/youtube_quota shows the tally and refuses before the
-  limit; DAILY_UPLOAD_LIMIT below is THE one number it all follows.
-
+COST REALITY — quota, not money (the Data API has no monetary billing). THE
+figures and their history live in core/youtube_quota's header, confirmed by
+the owner 2026-11-28: videos.insert and search.list each have their OWN bucket
+of 100 calls a day per project (since 1 June 2026), shared by every client;
+everything else draws on the general 10,000 units/day at 1 unit a call. The
+old 1,600-unit upload cost is history, not the limit. Both buckets are
+counted on Google's Pacific day, shown on /admin/connections/ and refused
+before the wall (youtube_quota). Raising either needs the compliance audit.
 VERIFICATION STATUS: written against the Data API v3 reference, never run
 with a live grant — same accepted MVP state as every service module before
 its first real key.
@@ -35,7 +29,6 @@ from urllib.parse import urlencode
 import httpx
 
 from agents.keys_agent import get_key
-from core.api_call_counters import increment_call_counter
 # Deliberate reuse (same as gtm_service): token exchange/refresh are
 # scope-agnostic OAuth calls — one implementation, not a second copy. The
 # exchange is NOT redirect-agnostic, though: see exchange_code below.
@@ -57,7 +50,7 @@ from core import google_scopes  # noqa: E402
 YOUTUBE_SCOPES = google_scopes.YOUTUBE_SCOPES
 TIMEOUT = 30
 UPLOAD_TIMEOUT = 600  # a long-form video upload is genuinely slow
-DAILY_UPLOAD_LIMIT = 90  # default project cap is 100 videos.insert/day - brake below it
+DAILY_UPLOAD_LIMIT = 90  # Google's bucket is 100 videos.insert calls/day per project - brake below it
 
 
 def redirect_uri() -> str:
@@ -176,11 +169,11 @@ def upload_video_stream(refresh_token: str, read_chunk, total_size: int, title: 
         raise UploadFailed(f"video size {total_size} is outside the upload limit")
     if privacy_status not in PRIVACY_STATUSES:
         raise UploadFailed(f"unknown privacy status {privacy_status!r}")
-    count = increment_call_counter("youtube", window_days=1)
+    from core import youtube_quota
+    count = youtube_quota.count_call(youtube_quota.UPLOAD)      # on Google's Pacific day
     if count > DAILY_UPLOAD_LIMIT:
         raise RuntimeError(f"YouTube daily upload brake reached ({DAILY_UPLOAD_LIMIT}) - refusing upload")
-    from core import youtube_quota
-    youtube_quota.after_upload(count)          # the owner hears at half the limit, not at the wall
+    youtube_quota.after_call(youtube_quota.UPLOAD, count)       # the owner hears at half the limit, not at the wall
 
     def initiate_session(snippet: dict):
         return httpx.post(
@@ -311,20 +304,18 @@ def get_video_stats(refresh_token: str, video_ids: list) -> list:
 # no Google verification — just the project API key — which is exactly why it is
 # the only outward-looking social source we can actually run today.
 #
-# QUOTA — the real constraint, read before adding a caller:
-#   * search.list costs **100 units**; the default project quota is
-#     **10,000 units/day**, so ~100 searches/day.
-#   * That pool is SHARED with uploads (videos.insert, also ~100 units), which
-#     already carry DAILY_UPLOAD_LIMIT = 90. 90 uploads + 90 searches would be
-#     18,000 units — double the quota. Hence a deliberately smaller brake here:
-#     DAILY_SEARCH_LIMIT = 40 (4,000 units) leaves ~6,000 for uploads.
-#   * Uploads are a paid client deliverable; niche research is an enrichment
-#     that degrades silently. If the two ever contend, research must lose.
-#   * A quota increase is FREE but needs a Google audit form, not a billing
-#     change. See .claude/skills/youtube/SKILL.md before assuming headroom.
+# QUOTA — the real constraint, read before adding a caller (core/youtube_quota):
+#   * search.list has its OWN bucket: 100 calls/day for the whole project,
+#     every client together (since 1 June 2026). It no longer shares a pool
+#     with uploads, so the old "research must lose to uploads" brake of 40 is
+#     gone; the brake sits just under Google's cap, like the upload one.
+#   * search_videos() below is THE ONLY search.list call in the codebase. A new
+#     caller goes through it — never a second httpx call to /search.
+#   * Callers that spend anything BEFORE searching (an LLM call to build the
+#     query) ask youtube_quota.require(bucket=SEARCH) first.
+#   * Raising the bucket needs Google's compliance audit, not a billing change.
 
-SEARCH_UNITS = 100          # documented quota cost of one search.list call
-DAILY_SEARCH_LIMIT = 40     # our brake: 4,000 units/day, under the shared 10,000
+DAILY_SEARCH_LIMIT = 90     # Google's bucket is 100 search.list calls/day per project - brake below it
 SEARCH_WINDOW_DAYS = 90     # "what works NOW", not an all-time megahit
 SEARCH_MAX_RESULTS = 5
 WATCH_URL = "https://www.youtube.com/watch?v={}"
@@ -369,8 +360,8 @@ CHANNEL_RECENT_MAX = 10
 
 def public_channel_recent(handle: str = "", channel_id: str = "", max_videos: int = CHANNEL_RECENT_MAX) -> dict:
     """A PUBLIC channel's recent videos with their PUBLIC counts (core/competitor_watch).
-    API key only, no user token. 3 quota units (channels.list + playlistItems.list +
-    videos.list, 1 each) — never search.list. A count the owner hid is simply absent
+    API key only, no user token. 3 units of the general pool (channels.list +
+    playlistItems.list + videos.list, 1 each) — never search.list. A count the owner hid is simply absent
     (None), never 0. {} when the key is unset or the channel is not found."""
     if not search_available() or not (handle or channel_id):
         return {}
@@ -427,8 +418,8 @@ def search_videos(query: str, max_results: int = SEARCH_MAX_RESULTS,
     these videos would be invented.
 
     (`list_recent_uploads` above is still the right call for a channel's OWN
-    videos at 1 unit — this is 100, justified only because there is no cheaper
-    way to discover content on channels we don't own.)
+    videos — this one draws on the 100-a-day search bucket, justified only
+    because there is no other way to discover content on channels we don't own.)
 
     Returns [] for an empty query or a missing key. Raises on quota/HTTP errors
     so the caller can log the reason and carry on unenriched.
@@ -437,12 +428,12 @@ def search_videos(query: str, max_results: int = SEARCH_MAX_RESULTS,
     if not query or not search_available():
         return []
 
-    count = increment_call_counter("youtube_search", window_days=1)
+    from core import youtube_quota
+    youtube_quota.require(1, bucket=youtube_quota.SEARCH)       # refused by name BEFORE it is counted or sent
+    count = youtube_quota.count_call(youtube_quota.SEARCH)      # on Google's Pacific day
     if count > DAILY_SEARCH_LIMIT:
-        raise RuntimeError(
-            f"YouTube daily search brake reached ({DAILY_SEARCH_LIMIT} searches = "
-            f"{DAILY_SEARCH_LIMIT * SEARCH_UNITS} units) - refusing search to protect "
-            f"the upload quota sharing the same 10,000/day pool")
+        raise RuntimeError(f"YouTube daily search brake reached ({DAILY_SEARCH_LIMIT}) - refusing search")
+    youtube_quota.after_call(youtube_quota.SEARCH, count)
 
     published_after = (datetime.now(timezone.utc)
                        - timedelta(days=published_within_days)).strftime("%Y-%m-%dT%H:%M:%SZ")

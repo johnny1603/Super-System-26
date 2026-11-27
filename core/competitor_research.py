@@ -285,7 +285,7 @@ def _client_supplied_competitors(client_id: int) -> list:
 # Its URLs are folded into the verification source set, so a YouTube video the
 # model quotes in EXAMPLES survives the same check every other link goes through.
 
-YOUTUBE_MAX_QUERIES = 2      # 100 quota units each — see youtube_service's quota note
+YOUTUBE_MAX_QUERIES = 2      # each is 1 of the project's 100 searches a day — core/youtube_quota
 YOUTUBE_RESULTS_PER_QUERY = 5
 YOUTUBE_MAX_VIDEOS = 8
 
@@ -314,6 +314,12 @@ def _youtube_niche_videos(client_id: int, brief: dict) -> list:
     from core import youtube_service
     if not youtube_service.search_available():
         return []
+    try:                                  # no search left today = no LLM call to build queries for one
+        from core import youtube_quota
+        youtube_quota.require(1, bucket=youtube_quota.SEARCH)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: youtube niche search skipped — {e}")
+        return []
     try:
         # Name + summary only: the query builder needs the niche in one line, not
         # the whole sales-chat transcript `brief` also carries.
@@ -335,7 +341,7 @@ def _youtube_niche_videos(client_id: int, brief: dict) -> list:
                 query, max_results=YOUTUBE_RESULTS_PER_QUERY)
         except Exception as e:
             # Quota brake or API error: stop entirely rather than spend the next
-            # 100 units discovering the same wall.
+            # search discovering the same wall.
             print(f"[{SERVICE_NAME}] client {client_id}: youtube search stopped ({query}): {e}")
             break
         for video in found:
@@ -589,8 +595,8 @@ def research(client_id: int, lens: str, extra_context: dict = None,
             "competitors_named_by_client": client_named,
         }
         # Real videos from this client's niche, MEDIA lens only — the other two
-        # lenses are about sites and ads, and a search.list call costs 100 quota
-        # units, so they don't get to spend it. Supplements the web search below,
+        # lenses are about sites and ads, and searches are 100 a day for the whole
+        # project, so they don't get to spend one. Supplements the web search below,
         # never replaces it: both sources feed the same one prompt.
         youtube_videos = _youtube_niche_videos(client_id, brief) if lens == "media" else []
         if youtube_videos:

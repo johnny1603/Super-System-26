@@ -39,9 +39,10 @@ tracking. It is deliberately NOT a generation-cost bucket:
 **Cost research behind the number (the handoff's explicit ask — verify,
 don't assume it mirrors Higgsfield's per-generation billing)**: the
 YouTube Data API v3 has **zero monetary billing** — quota units only, not
-a per-request charge. Default project quota is 10,000 units/day;
-`videos.insert` dropped from ~1,600 to ~100 units per call in Dec 2025,
-so the default free quota alone supports ~100 uploads/day — far beyond
+a per-request charge. `videos.insert` has its own bucket of 100 calls/day
+per project since 1 June 2026 (the ~1,600-unit cost before Dec 2025 is
+history, not the limit — `core/youtube_quota`), so the free quota supports
+~100 uploads/day — far beyond
 uallak's realistic volume across every client combined. **There is no real
 API cost to price into the fee at all.** `DAILY_UPLOAD_LIMIT = 90` in
 `core/youtube_service.py` is a safety brake under the free cap, not a
@@ -163,29 +164,25 @@ ranks the result set without revealing any number, so it is not a measurement
 anyone may quote. The lens prompt states this explicitly; never let this get
 framed as trend analytics in client-facing copy.
 
-**Quota is the real constraint, and it is SHARED with uploads:**
-
+**Quota is the real constraint — two buckets, each shared by ALL clients
+(`core/youtube_quota`, confirmed by the owner 2026-11-28):**
 | | cost | brake |
 |---|---|---|
-| `search.list` (niche discovery) | 100 units | `DAILY_SEARCH_LIMIT = 40` → 4,000 units |
-| `videos.insert` (upload) | ~100 units | `DAILY_UPLOAD_LIMIT = 90` → 9,000 units |
+| `search.list` (niche discovery) | own bucket, 100 calls/day (since 2026-06-01) | `DAILY_SEARCH_LIMIT = 90` |
+| `videos.insert` (upload) | own bucket, 100 calls/day (since 2026-06-01) | `DAILY_UPLOAD_LIMIT = 90` |
 | `playlistItems` / `videos.list` (engagement) | 1-2 units | none needed |
 
-One project quota of **10,000 units/day** covers all of them. The two brakes
-deliberately overlap (13,000 units of nominal headroom) because real upload
-volume is ~zero today — but **if uploads become routine, lower
-`DAILY_SEARCH_LIMIT` first**: research degrades silently, a failed upload is a
-client deliverable. Counted through `core/api_call_counters` under platform
-`youtube_search`, separate from uploads' `youtube` row.
+Uploads and searches no longer share a pool: each has 100 calls/day for the
+whole project, counted on Google's Pacific day through `core/api_call_counters`
+(platforms `youtube` / `youtube_search`), shown on `/admin/connections/`,
+refused by name before the wall and alerted at half. The general 10,000
+units/day covers only the 1-unit reads.
 
 **Headroom in practice**: the media lens caches 14 days per client and spends at
-most 2 searches per uncached pass, so 40 searches/day ≈ 20 client research passes
-per day ≈ **~280 media clients** before the brake binds. Not a near-term
-bottleneck. When it becomes one, a **quota increase is free** — a Google audit
-form (YouTube API Services compliance review), not a billing change. Do that
-before considering caching search results separately; the research cache already
-absorbs most of the repeat load.
-
+most 2 searches per uncached pass; an upload card spends at most 1. So 90
+searches/day ≈ 45 uncached research passes — the Saturday check-in alone
+reaches the brake at about 45 media clients with a stale cache on the same
+evening. Raising a bucket is free but needs Google's compliance audit.
 ## Endpoints
 
 Client-facing: `/api/oauth/youtube/start`, `/api/oauth/youtube/callback`.

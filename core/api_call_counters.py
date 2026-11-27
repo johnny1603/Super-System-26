@@ -30,7 +30,7 @@ def _db():
     return _db_instance
 
 
-def increment_call_counter(platform: str, window_days: int = 1) -> int:
+def increment_call_counter(platform: str, window_days: int = 1, day: str = None) -> int:
     """Increment today's row for `platform` and return the window total (the
     number that actually matters against whatever limit/threshold is being
     tracked).
@@ -40,7 +40,9 @@ def increment_call_counter(platform: str, window_days: int = 1) -> int:
     this is a best-effort safety net, not the source of truth for billing or
     the limit itself (Google/Meta enforce the real limit server-side
     regardless of what this counter says)."""
-    today = time.strftime("%Y-%m-%d")
+    # `day` (YYYY-MM-DD): the caller's own day boundary — YouTube counts on Google's
+    # Pacific day (core/youtube_quota.pacific_day). Default: the server's date, as before.
+    today = day or time.strftime("%Y-%m-%d")
     try:
         result = _db().rpc("increment_api_call_counter", {
             "p_platform": platform,

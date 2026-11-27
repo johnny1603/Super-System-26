@@ -3107,8 +3107,8 @@ def admin_google_scopes(request: Request, client_id: int = 27, live: bool = True
 
 @app.get("/api/admin/youtube/quota")
 def admin_youtube_quota(request: Request):
-    # READ-ONLY: today's YouTube uploads against the project-wide daily limit
-    # (our own tally, core/youtube_quota) — how many uploads are left for ALL clients.
+    # READ-ONLY: today's YouTube uploads AND searches against the two project-wide daily
+    # limits (our own tally on Google's Pacific day, core/youtube_quota) — what is left for ALL clients.
     _require_admin(request)
     from core import youtube_quota
     return {"success": True, "data": youtube_quota.status()}

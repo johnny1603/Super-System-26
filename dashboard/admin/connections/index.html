@@ -79,15 +79,14 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
     </div>
     <div id="gsOut" class="muted" style="margin-top:10px;"></div>
   </div>
-  <!-- YouTube uploads today: READ-ONLY (GET /api/admin/youtube/quota, core/youtube_quota).
-       ONE daily limit for the whole project, shared by every client. The number is OUR
-       count of uploads, not a figure from Google; the Cloud Console quota page is the truth. -->
+  <!-- YouTube calls today: READ-ONLY (GET /api/admin/youtube/quota, core/youtube_quota).
+       Two daily limits for the whole project, shared by every client: uploads and searches.
+       The numbers are OUR count, on Google's Pacific day; the Cloud Console quota page is the truth. -->
   <div class="card" id="ytQuota">
-    <h2>YouTube — העלאות היום (מכסה אחת לכל הלקוחות)</h2>
-    <div class="muted">ספירה שלנו של העלאות, לא נתון מגוגל. המספר הקובע הוא בעמוד המכסות ב-Cloud Console. הגדלה דורשת את ביקורת התאימות של YouTube API.</div>
+    <h2>YouTube — העלאות וחיפושים היום (מכסה אחת לכל הלקוחות)</h2>
+    <div class="muted">ספירה שלנו, לא נתון מגוגל. היום מתחלף בחצות לפי שעון החוף המערבי (Pacific), כמו אצל גוגל. הגדלה דורשת את ביקורת התאימות של YouTube API.</div>
     <div id="ytQuotaOut" class="muted" style="margin-top:10px;">טוען…</div>
   </div>
-
   <!-- Tag Manager per client: READ-ONLY (GET /api/admin/gtm/overview +
        /api/admin/gtm/history/{id}, docs/GTM-SAFETY.md). The connected
        container, the last publish, and the rollback point saved before it.
@@ -231,16 +230,18 @@ async function gtmOverview() {
 }
 document.getElementById("gtmBtn").onclick = gtmOverview;
 
+function ytBucket(label, b) {
+  if (!b || !b.known) return `<div>${label}: לא הצלחתי לקרוא את הספירה של היום — אין מספר להציג.</div>`;
+  return `<div style="margin-top:6px;"><span style="font-size:1.2em;color:var(--text,inherit);">${label}: נשארו <b>${esc(b.remaining)}</b></span>
+    · נוצלו ${esc(b.used)} מתוך ${esc(b.limit)} (הבלם שלנו; המכסה של גוגל ${esc(b.google_cap)} ביום) · ${esc(Math.round((b.share || 0) * 100))}%
+    ${b.used >= b.alert_at ? '<span class="badge">עברנו חצי — נשלחה התראה</span>' : ""}</div>`;
+}
 async function ytQuota() {
   const out = document.getElementById("ytQuotaOut");
   try {
     const d = await api("/api/admin/youtube/quota");
-    if (!d.known) { out.textContent = "לא הצלחתי לקרוא את הספירה של היום — אין מספר להציג."; return; }
-    const half = d.used >= d.alert_at;
-    out.innerHTML = `<div style="font-size:1.25em;color:var(--text,inherit);">נשארו <b>${esc(d.remaining)}</b> העלאות היום</div>
-      <div>נוצלו ${esc(d.used)} מתוך ${esc(d.limit)} (הבלם שלנו; המכסה של גוגל ${esc(d.google_cap)} ביום) · ${esc(Math.round((d.share || 0) * 100))}%
-      ${half ? '<span class="badge">עברנו חצי — נשלחה התראה</span>' : ""}</div>
-      <div>חיפושים היום: ${esc(d.searches == null ? "—" : d.searches)} (${esc(d.search_units == null ? "—" : d.search_units)} מתוך ${esc(d.units_per_day)} יחידות) · יום הספירה: <span dir="ltr">${esc(d.day)}</span> (UTC)</div>`;
+    out.innerHTML = ytBucket("העלאות", d) + ytBucket("חיפושים", d.search)
+      + `<div style="margin-top:6px;">יום הספירה: <span dir="ltr">${esc(d.day)}</span> (Pacific)</div>`;
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הטעינה נכשלה — לנסות שוב"; }
 }
 ytQuota();

@@ -260,23 +260,37 @@ must answer that the video opens (`video_private` / `video_unreachable` /
 `video_unverified` otherwise; no answer is not a pass). Yoav's check asks
 again on its own.
 
-### 3.7 The upload quota (`core/youtube_quota`)
+### 3.7 The YouTube quotas (`core/youtube_quota`)
 
-One project-wide daily limit, shared by every client. `youtube_quota.status()`
-= uploads used / limit / remaining today, from OUR tally
-(`api_call_counters`, platform `youtube`) — Google exposes no "left" call.
-Shown on `/admin/connections/` (`GET /api/admin/youtube/quota`).
-`require(1)` runs in `prepare` (no card) and again first thing in `run`
-(`ActionFailed("youtube_quota")`) — before copy, images or the upload. The
-owner is alerted on the upload that reaches half the limit.
+Two project-wide daily limits, shared by every client (figures confirmed by
+the owner, 2026-11-28): **videos.insert — its own bucket, 100 calls/day**
+(since 1 June 2026; ~100 units from 4 Dec 2025; the 1,600-unit figure before
+that is history, not the limit) and **search.list — its own bucket, 100
+calls/day**. Our brakes: `DAILY_UPLOAD_LIMIT = 90`, `DAILY_SEARCH_LIMIT = 90`
+(`core/youtube_service`). Raising either needs the compliance audit.
 
-**The limit is `youtube_service.DAILY_UPLOAD_LIMIT` (90), and that number is
-not confirmed.** The repo's July 2026 check and current third-party guides
-say videos.insert allows 100 calls/day; the older figure is 1,600 of 10,000
-units = 6 uploads/day. The project's quota page in the Cloud Console decides.
-If it shows 6, set `DAILY_UPLOAD_LIMIT = 6` — the page, the refusal and the
-alert all follow that one constant. The tally fails open when the database is
-down, and its day is UTC while Google's resets at midnight Pacific.
+`youtube_quota.status()` = used / limit / remaining per bucket, from OUR tally
+(`api_call_counters`, platforms `youtube` / `youtube_search`) — Google exposes
+no "left" call. **The tally's day is Google's: the Pacific date
+(`pacific_day`), not UTC.** Shown on `/admin/connections/`
+(`GET /api/admin/youtube/quota`). The owner is alerted on the call that
+reaches half of either limit.
+
+Uploads: `require(1)` runs in `prepare_campaign`'s `prepare` (no card) and
+first thing in `run` (`ActionFailed("youtube_quota")`) — before copy, images
+or the upload.
+
+Searches: ONE call site, `youtube_service.search_videos`, which refuses by
+name before counting or sending. Two callers — `competitor_research.
+_youtube_niche_videos` (media lens, ≤ 2 searches per uncached pass, 14-day
+cache; it asks `require` before its query-building LLM call) and
+`youtube_metadata.niche_titles` (≤ 1 per upload card, cached). The first is
+reached from scheduled jobs: the Saturday media check-in (`plan_week`) and
+the Sunday engagement run (`create_filming_kit`), per client with a stale
+cache. Both degrade to "no YouTube examples" when refused.
+
+The tally fails open when the database is down, and sees only this system's
+calls.
 ### Not built, not verified
 
 - **Nothing is uploaded to Google Ads.** No asset upload, no asset group, no
