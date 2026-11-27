@@ -108,7 +108,9 @@ class OneSource(unittest.TestCase):
         for folder in ("core", "agents"):
             for name in sorted(os.listdir(os.path.join(ROOT, folder))):
                 rel = os.path.join(folder, name)
-                if not name.endswith(".py") or rel == os.path.join("core", "social_formats.py"):
+                # the two tables: this one, and Google Ads' own (tests/test_google_ads_formats.py guards it)
+                if not name.endswith(".py") or rel in (os.path.join("core", "social_formats.py"),
+                                                       os.path.join("core", "google_ads_formats.py")):
                     continue
                 with open(os.path.join(ROOT, rel), "rb") as f:
                     source = f.read()

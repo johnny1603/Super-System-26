@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from supabase import create_client as _supabase_client
 
 from core.parallel import single_flight
+from core import google_ads_formats
 from core import google_ads_service as gads
 from core import lead_tracking
 from core.agent_base import agent_alert, log_step, timed_step
@@ -548,8 +549,11 @@ DEFAULT_LANGUAGES = ["1027", "1000"]   # languageConstants: Hebrew, English
 
 # Google's responsive-search-ad limits - validated here so a bad spec fails
 # with a readable message instead of a nested API error
-RSA_HEADLINE_MAX_CHARS = 30
-RSA_DESCRIPTION_MAX_CHARS = 90
+_RSA = google_ads_formats.text_limits("search")     # THE table (core/google_ads_formats): no limit is written here
+RSA_HEADLINE_MAX_CHARS = _RSA["headline"]["max_chars"]
+RSA_DESCRIPTION_MAX_CHARS = _RSA["description"]["max_chars"]
+RSA_HEADLINES = (_RSA["headline"]["min"], _RSA["headline"]["max"])
+RSA_DESCRIPTIONS = (_RSA["description"]["min"], _RSA["description"]["max"])
 KEYWORD_MAX_CHARS = 80
 
 
@@ -578,15 +582,15 @@ def _validate_campaign_spec(spec: dict) -> list:
             errors.append(f"keyword '{text[:40]}' is empty or over {KEYWORD_MAX_CHARS} chars")
 
     headlines = spec.get("headlines", [])
-    if not 3 <= len(headlines) <= 15:
-        errors.append("headlines must have 3-15 entries")
+    if not RSA_HEADLINES[0] <= len(headlines) <= RSA_HEADLINES[1]:
+        errors.append(f"headlines must have {RSA_HEADLINES[0]}-{RSA_HEADLINES[1]} entries")
     for h in headlines:
         if not h.strip() or len(h) > RSA_HEADLINE_MAX_CHARS:
             errors.append(f"headline '{h[:40]}' is empty or over {RSA_HEADLINE_MAX_CHARS} chars")
 
     descriptions = spec.get("descriptions", [])
-    if not 2 <= len(descriptions) <= 4:
-        errors.append("descriptions must have 2-4 entries")
+    if not RSA_DESCRIPTIONS[0] <= len(descriptions) <= RSA_DESCRIPTIONS[1]:
+        errors.append(f"descriptions must have {RSA_DESCRIPTIONS[0]}-{RSA_DESCRIPTIONS[1]} entries")
     for d in descriptions:
         if not d.strip() or len(d) > RSA_DESCRIPTION_MAX_CHARS:
             errors.append(f"description '{d[:40]}' is empty or over {RSA_DESCRIPTION_MAX_CHARS} chars")
@@ -631,8 +635,8 @@ HARD LIMITS (violations fail validation):
 - name: short, no emoji
 - keywords: 5-20 entries, each max {KEYWORD_MAX_CHARS} chars, each
   {{"text": "Hebrew keyword", "match_type": "PHRASE"|"EXACT"|"BROAD"}}
-- headlines: 5-15 entries, each max {RSA_HEADLINE_MAX_CHARS} CHARACTERS (count them)
-- descriptions: 2-4 entries, each max {RSA_DESCRIPTION_MAX_CHARS} CHARACTERS (count them)
+- headlines: 5-{RSA_HEADLINES[1]} entries, each max {RSA_HEADLINE_MAX_CHARS} CHARACTERS (count them)
+- descriptions: {RSA_DESCRIPTIONS[0]}-{RSA_DESCRIPTIONS[1]} entries, each max {RSA_DESCRIPTION_MAX_CHARS} CHARACTERS (count them)
 
 Return JSON only:
 {{"name": "campaign name",
@@ -1490,17 +1494,17 @@ def optimize_keywords(client_id: int, conn: dict) -> dict:
     return summary
 
 
-AD_COPY_SYSTEM = """You are uallak's Google Ads copywriter for the Israeli market. You are given
+AD_COPY_SYSTEM = f"""You are uallak's Google Ads copywriter for the Israeli market. You are given
 the keywords currently CONVERTING for a live Search campaign, plus the existing ad's headlines.
 Write ONE new Responsive Search Ad variant to test against it.
 
 Hard rules (violating any is a failed ad):
-- Hebrew. 3-15 headlines, each MAX 30 characters. 2-4 descriptions, each MAX 90 characters.
+- Hebrew. {RSA_HEADLINES[0]}-{RSA_HEADLINES[1]} headlines, each MAX {RSA_HEADLINE_MAX_CHARS} characters. {RSA_DESCRIPTIONS[0]}-{RSA_DESCRIPTIONS[1]} descriptions, each MAX {RSA_DESCRIPTION_MAX_CHARS} characters.
 - Never name a competitor. Never invent prices, guarantees, awards, or "#1" claims
   (Google policy AND Israeli consumer-protection rules both bite).
 - Lean into the themes of the converting keywords; differ meaningfully from the existing ad.
 
-Return JSON only: {"headlines": ["..."], "descriptions": ["..."], "rationale": "one English sentence"}"""
+Return JSON only: {{"headlines": ["..."], "descriptions": ["..."], "rationale": "one English sentence"}}"""
 
 
 _EXISTING_ADS_GAQL = """
@@ -1522,10 +1526,10 @@ def _ad_copy_violations(variant: dict) -> list:
     problems = []
     headlines = variant.get("headlines") or []
     descriptions = variant.get("descriptions") or []
-    if not 3 <= len(headlines) <= 15:
-        problems.append(f"headlines must be 3-15, got {len(headlines)}")
-    if not 2 <= len(descriptions) <= 4:
-        problems.append(f"descriptions must be 2-4, got {len(descriptions)}")
+    if not RSA_HEADLINES[0] <= len(headlines) <= RSA_HEADLINES[1]:
+        problems.append(f"headlines must be {RSA_HEADLINES[0]}-{RSA_HEADLINES[1]}, got {len(headlines)}")
+    if not RSA_DESCRIPTIONS[0] <= len(descriptions) <= RSA_DESCRIPTIONS[1]:
+        problems.append(f"descriptions must be {RSA_DESCRIPTIONS[0]}-{RSA_DESCRIPTIONS[1]}, got {len(descriptions)}")
     for h in headlines:
         if not isinstance(h, str) or not h.strip() or len(h.strip()) > RSA_HEADLINE_MAX_CHARS:
             problems.append(f"headline '{str(h)[:30]}' empty or over {RSA_HEADLINE_MAX_CHARS} chars")
