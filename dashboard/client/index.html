@@ -1671,6 +1671,55 @@ body.bs-open { overflow: hidden; }
 .br-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; }
 .br-card { background: var(--card, rgba(255,255,255,.04)); border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 18px; padding: 18px; }
 .br-card.wide { grid-column: 1 / -1; }
+/* The Google page (core/google_page): five stacked sections, the same card language as the branding page */
+.gg-stack { display: flex; flex-direction: column; gap: 16px; }
+.gg-sec { background: var(--card, rgba(255,255,255,.04)); border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 18px; padding: 20px; }
+.gg-sec > h3 { font-size: 18px; font-weight: 800; margin: 0 0 12px; }
+.gg-sec h4 { font-size: 14.5px; font-weight: 800; margin: 16px 0 6px; }
+.gg-sec p { font-size: 14px; line-height: 1.7; margin: 0 0 8px; }
+.gg-muted { color: var(--gray); font-size: 13.5px; line-height: 1.65; }
+.gg-say { border-inline-start: 3px solid var(--accent); padding: 8px 12px; background: var(--accent-dim); border-radius: 8px; font-size: 14px; line-height: 1.6; margin: 0 0 14px; }
+.gg-warn { border: 1px solid rgba(255,200,80,.5); background: rgba(255,200,80,.07); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.65; margin: 0 0 12px; }
+.gg-camp { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
+.gg-camp:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+.gg-camp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 6px; }
+.gg-camp-head b { font-size: 15.5px; }
+.gg-lines { list-style: none; padding: 0; margin: 0 0 6px; display: flex; flex-direction: column; gap: 4px; }
+.gg-lines li { font-size: 14px; line-height: 1.55; padding: 6px 10px; background: var(--panel-2); border-radius: 8px; overflow-wrap: anywhere; }
+.gg-imgs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 6px; }
+.gg-imgs figure { margin: 0; width: 132px; }
+.gg-imgs img { width: 100%; height: 100px; object-fit: contain; background: #000; border-radius: 10px; display: block; }
+.gg-imgs figcaption { font-size: 11.5px; color: var(--gray); margin-top: 4px; line-height: 1.35; }
+.gg-examples { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
+.gg-ex { border: 1px dashed rgba(255,255,255,.25); border-radius: 14px; padding: 12px; }
+.gg-ex .gg-ex-tag { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.gg-ex img { width: 100%; max-height: 150px; object-fit: contain; background: #000; border-radius: 8px; margin-bottom: 8px; display: block; }
+.gg-ex b { display: block; font-size: 14.5px; margin-bottom: 4px; overflow-wrap: anywhere; }
+.gg-ex span { font-size: 13px; color: var(--gray); line-height: 1.5; overflow-wrap: anywhere; }
+.gg-table { width: 100%; border-collapse: collapse; margin: 0 0 8px; }
+.gg-table td { padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
+.gg-table td:last-child { text-align: end; font-weight: 700; white-space: nowrap; }
+.gg-table tr.gg-head td { font-weight: 800; padding-top: 14px; }
+.gg-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.gg-lane { border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+.gg-lane h4 { margin-top: 0; }
+.gg-term { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.gg-term-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.gg-term-top b { font-size: 14.5px; overflow-wrap: anywhere; }
+.gg-term-top button, .gg-links a, .gg-links button { margin-inline-start: auto; background: transparent; color: var(--white); border: 1px solid rgba(255,255,255,.22); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer; text-decoration: none; }
+.gg-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.gg-links a { margin-inline-start: 0; }
+.gg-flag { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.gg-flag textarea { width: 100%; min-height: 64px; background: var(--panel-2); color: var(--white); border: 1px solid var(--border); border-radius: 10px; padding: 10px; font: inherit; font-size: 14px; }
+.gg-flag button { align-self: flex-start; background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 8px 16px; font: inherit; font-weight: 700; cursor: pointer; }
+.gg-flagline { font-size: 13px; color: #ffcf66; margin-top: 4px; line-height: 1.5; }
+.gg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.gg-chips span { background: var(--panel-2); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.gg-change { border: 1px solid rgba(255,200,80,.45); border-radius: 12px; padding: 12px 14px; margin: 0 0 8px; }
+.gg-change .gg-by { display: inline-block; font-size: 12.5px; font-weight: 800; color: #ffcf66; margin: 4px 0; }
+.gg-sec details { margin-top: 12px; }
+.gg-sec summary { cursor: pointer; font-size: 14px; font-weight: 700; }
+.gg-old { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; opacity: .85; }
 .br-card h3 { font-size: 17px; font-weight: 800; margin: 0 0 4px; }
 .br-card .br-sub { font-size: 13px; color: var(--gray); line-height: 1.55; margin-bottom: 14px; }
 .br-lead { border-color: var(--accent); background: linear-gradient(135deg, rgba(255,76,31,.14), rgba(255,76,31,.03)); }
@@ -2034,6 +2083,9 @@ a.media-item:hover { border-color: var(--accent); }
   </button>
   <button class="nav-item" data-view="brand" onclick="showView('brand')">
     <span class="nav-ico">🎨</span><span data-i18n="nav_brand">מיתוג</span>
+  </button>
+  <button class="nav-item" data-view="google" onclick="showView('google')">
+    <span class="nav-ico">🔎</span><span data-i18n="nav_google">גוגל</span>
   </button>
   <button class="nav-item" data-view="avatars" onclick="showView('avatars')">
     <span class="nav-ico">🧑‍🎨</span><span data-i18n="nav_avatars">אווטרים</span>
@@ -3049,6 +3101,19 @@ a.media-item:hover { border-color: var(--accent); }
   <div id="brRoot"><div class="empty-row" data-i18n="loading">טוען…</div></div>
 </div><!-- /viewBrand -->
 
+<!-- ---------- GOOGLE: what Yoav does with the money, in plain words (core/google_page, docs/GOOGLE-PAGE.md) ----------
+     Every line below the title comes from the server in the client's language, under governance §9. -->
+<div class="view" id="viewGoogle">
+  <div class="section-head">
+    <div>
+      <div class="section-title" data-i18n="google_title">גוגל</div>
+      <div class="section-sub" data-i18n="google_sub">מה אנחנו עושים בגוגל בשבילכם: איך המודעות נראות, מה קורה עם הכסף, על אילו ביטויים אנחנו משלמים, ולמה.</div>
+    </div>
+  </div>
+  <div class="av-notice" id="ggNotice" role="status" aria-live="polite"></div>
+  <div id="ggRoot"><div class="empty-row" data-i18n="loading">טוען…</div></div>
+</div><!-- /viewGoogle -->
+
 <div class="view" id="viewAvatars">
   <div class="section-head">
     <div>
@@ -3361,6 +3426,11 @@ const DASH_I18N = {
   gov_overrides: { he:'המלצות שבחרתם לא לקבל', en:'Recommendations you chose not to take', fr:'Recommandations non suivies', ar:'توصيات لم تأخذوا بها', ru:'Рекомендации, которым вы не последовали' },
   av_mine: { he:'ביקשתם', en:'You asked for it', fr:'Votre demande', ar:'بطلبكم', ru:'По вашей просьбе' },
   nav_brand: { he:'מיתוג', en:'Branding', fr:'Identité', ar:'الهوية', ru:'Бренд' },
+  nav_google: { he:'גוגל', en:'Google', fr:'Google', ar:'جوجل', ru:'Google' },
+  google_title: { he:'גוגל', en:'Google', fr:'Google', ar:'جوجل', ru:'Google' },
+  google_sub: { he:'מה אנחנו עושים בגוגל בשבילכם: איך המודעות נראות, מה קורה עם הכסף, על אילו ביטויים אנחנו משלמים, ולמה.', en:'What we do on Google for you: how the ads look, what happens with the money, which phrases we pay for, and why.', fr:'Ce que nous faisons sur Google pour vous : l’apparence des annonces, ce que devient l’argent, les expressions que nous payons, et pourquoi.', ar:'ما نفعله على جوجل من أجلكم: كيف تبدو الإعلانات، ماذا يحدث بالمال، على أي عبارات ندفع، ولماذا.', ru:'Что мы делаем для вас в Google: как выглядят объявления, что происходит с деньгами, за какие фразы мы платим и почему.' },
+  gg_unavailable: { he:'לא הצלחנו לטעון את העמוד כרגע. נסו שוב בעוד רגע.', en:'We couldn’t load this page right now. Try again in a moment.', fr:'Impossible de charger cette page pour l’instant. Réessayez dans un instant.', ar:'تعذّر تحميل الصفحة الآن. حاولوا بعد لحظة.', ru:'Не удалось загрузить страницу. Попробуйте чуть позже.' },
+  gg_failed: { he:'זה לא נשמר. נסו שוב.', en:'That was not saved. Please try again.', fr:'Cela n’a pas été enregistré. Réessayez.', ar:'لم يُحفظ ذلك. حاولوا مجددًا.', ru:'Не сохранилось. Попробуйте ещё раз.' },
   brand_title: { he:'מיתוג', en:'Branding', fr:'Identité de marque', ar:'هوية العلامة', ru:'Бренд' },
   brand_sub: { he:'הלוגו, הצבעים, הגופנים והטון של העסק. מה שמוגדר כאן הוא מה שהצוות עובד איתו — כמו שהוא.', en:'Your logo, colours, typefaces and tone. What is set here is what the team works with — as it is.', fr:'Votre logo, vos couleurs, vos polices et votre ton. Ce qui est défini ici est ce que l’équipe utilise — tel quel.', ar:'شعاركم وألوانكم وخطوطكم ونبرتكم. ما يُحدَّد هنا هو ما يعمل به الفريق — كما هو.', ru:'Логотип, цвета, шрифты и тон. То, что задано здесь, команда использует как есть.' },
   br_unavailable: { he:'לא הצלחנו לטעון את המיתוג כרגע. נסו שוב בעוד רגע.', en:'We couldn’t load the branding right now. Try again in a moment.', fr:'Impossible de charger l’identité pour l’instant. Réessayez dans un instant.', ar:'تعذّر تحميل الهوية الآن. حاولوا بعد قليل.', ru:'Не удалось загрузить бренд. Попробуйте чуть позже.' },
@@ -9372,7 +9442,7 @@ function sendChip(text) {
 // nav button for a missing entry renders fine and silently does nothing. Keep
 // this in the same order as the nav buttons, and add to it in the SAME commit
 // that adds a view.
-const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'avatars', 'personal', 'ownership', 'support', 'brand'];
+const VIEWS = ['home', 'performance', 'leads', 'outreach', 'landing', 'media', 'social', 'avatars', 'personal', 'ownership', 'support', 'brand', 'google'];
 const viewLoaded = {};   // one lazy fetch per section per page load
 
 function showView(name) {
@@ -9397,6 +9467,7 @@ function showView(name) {
   if (name === 'social') loadSocial();        // every open: the queue moves (approvals, new items)
   if (name === 'avatars') loadAvatars();      // every open: new poses arrive, counts move
   if (name === 'brand') loadBrandPage();      // every open: the brief may have moved (an agent, the manager)
+  if (name === 'google') loadGooglePage();    // every open: figures, a new report, a rewritten strategy
   if (name === 'personal' && !viewLoaded.personal) { viewLoaded.personal = true; loadAccount(); }
   if (name === 'ownership' && !viewLoaded.ownership) { viewLoaded.ownership = true; loadOwnership(); }
   if (name === 'support' && !viewLoaded.support) { viewLoaded.support = true; loadSupport(); }
@@ -13510,6 +13581,137 @@ function brTake(data) {
   variants.forEach(v => { brUI.colors[v.label] = Object.assign({}, v.roles || {}); });
   brUI.variants = variants;
 }
+// ---------- GOOGLE page (core/google_page, docs/GOOGLE-PAGE.md) ----------
+// Every sentence comes from the server, already in the client's language and already under governance §9:
+// this code only lays it out. Nothing here names a platform product, a metric acronym or one "the ad".
+const ggUI = { data: null, open: '', busy: false };
+function ggNote(text) { const el = document.getElementById('ggNotice'); if (el) el.textContent = text || ''; }
+function ggSafeUrl(u) { return /^https:\/\//i.test(String(u || '')) || /^\/api\/client\//.test(String(u || '')) ? String(u) : ''; }
+async function loadGooglePage() {
+  const t = uallakI18n.t;
+  try {
+    const res = await fetch('/api/client/google', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const j = await res.json();
+    if (!j.success) throw new Error('unavailable');
+    ggUI.data = j.data || {};
+    renderGooglePage();
+  } catch (e) {
+    console.error('google page load failed', e);
+    const root = document.getElementById('ggRoot');
+    if (root && !ggUI.data) root.innerHTML = '<div class="empty-row">' + esc(t('gg_unavailable')) + '</div>';
+  }
+}
+function ggTable(rows) {
+  return '<table class="gg-table">' + (rows || []).map(r => `<tr><td>${esc(r.label)}</td><td>${esc(r.value)}</td></tr>`).join('') + '</table>';
+}
+function ggAds(s) {
+  if (!s.campaigns.length) return `<p class="gg-muted">${esc(s.empty)}</p>`;
+  const L = s.labels || {};
+  const pics = (list) => '<div class="gg-imgs">' + list.map(i => ggSafeUrl(i.url)
+    ? `<figure><img loading="lazy" src="${esc(ggSafeUrl(i.url))}" alt="${esc(i.label)}"><figcaption>${esc(i.label)}</figcaption></figure>` : '').join('') + '</div>';
+  return (s.google_decides ? `<div class="gg-say">${esc(s.google_decides)}</div>` : '') + s.campaigns.map(c => `
+    <div class="gg-camp">
+      <div class="gg-camp-head"><b>${esc(c.title)}</b><span class="gg-muted">${esc(c.name)}</span><span class="gg-muted">${esc(c.status)}</span></div>
+      ${c.note ? `<p class="gg-muted">${esc(c.note)}</p>` : ''}
+      ${c.images.length ? `<h4>${esc(L.images)}</h4>` + pics(c.images) : ''}
+      ${c.logos.length ? `<h4>${esc(L.logo)}</h4>` + pics(c.logos) : ''}
+      ${c.videos.length ? `<h4>${esc(L.video)}</h4><div class="gg-links">` + c.videos.map(v => ggSafeUrl(v) ? `<a href="${esc(ggSafeUrl(v))}" target="_blank" rel="noopener noreferrer">${esc(L.video)}</a>` : '').join('') + '</div>' : ''}
+      ${c.texts.map(f => `<h4>${esc(f.label)}</h4><ul class="gg-lines">` + f.lines.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>').join('')}
+      ${c.examples.length ? `<h4>${esc(L.examples)}</h4><div class="gg-examples">` + c.examples.map(x => `
+        <div class="gg-ex"><div class="gg-ex-tag">${esc(x.label)}</div>
+          ${ggSafeUrl(x.image) ? `<img loading="lazy" src="${esc(ggSafeUrl(x.image))}" alt="">` : ''}
+          <b>${esc(x.headline)}</b><span>${esc(x.description)}</span></div>`).join('') + '</div>' : ''}
+    </div>`).join('');
+}
+function ggNumbers(s) {
+  let out = '';
+  if (s.missing) out += `<div class="gg-warn">${esc(s.missing)}${s.needs ? '<br>' + esc(s.needs) : ''}</div>`;
+  if (!s.budget) return out;
+  out += `<p class="${s.stale ? 'gg-warn' : 'gg-muted'}">${esc(s.updated)}</p>`;
+  out += `<h4>${esc(s.budget_title)}</h4>` + ggTable(s.budget) + (s.budget_note ? `<p class="gg-muted">${esc(s.budget_note)}</p>` : '');
+  out += `<h4>${esc(s.results_title)}</h4><p class="gg-muted">${esc(s.lanes_note)}</p><div class="gg-lanes">` + (s.lanes || []).map(l => `
+    <div class="gg-lane"><h4>${esc(l.title)}</h4>${l.rows.length ? ggTable(l.rows) : `<p class="gg-muted">${esc(l.empty)}</p>`}
+      ${l.trend ? `<p class="gg-muted"><b>${esc(s.trend_title)}:</b> ${esc(l.trend)}</p>` : ''}</div>`).join('') + '</div>';
+  if (s.trend_mixed) out += `<p class="gg-muted">${esc(s.trend_mixed)}</p>`;
+  return out;
+}
+function ggTerms(s) {
+  let out = s.empty ? `<p class="gg-muted">${esc(s.empty)}</p>` : `<p class="gg-muted">${esc(s.flag.hint)}</p>`;
+  s.blocks.forEach((b, bi) => {
+    out += `<div class="gg-camp"><div class="gg-camp-head"><b>${esc(b.title)}</b><span class="gg-muted">${esc(b.name)}</span></div><p>${esc(b.intro)}</p>`;
+    if (b.kind === 'themes') {
+      out += `<h4>${esc(b.themes_title)}</h4>` + (b.themes.length ? '<div class="gg-chips">' + b.themes.map(x => `<span>${esc(x)}</span>`).join('') + '</div>' : '')
+        + (b.note ? `<p class="gg-muted">${esc(b.note)}</p>` : '');
+    } else {
+      if (b.note) out += `<p class="gg-muted">${esc(b.note)}</p>`;
+      b.groups.forEach((g, gi) => {
+        out += `<h4>${esc(g.theme)}</h4>` + g.terms.map((x, ti) => {
+          const key = bi + '-' + gi + '-' + ti;
+          return `<div class="gg-term"><div class="gg-term-top"><b>${esc(x.text)}</b>
+            ${x.can_flag && !ADMIN_VIEW ? `<button type="button" onclick="ggFlagOpen('${key}')">${esc(s.flag.button)}</button>` : ''}</div>
+            ${x.why ? `<div class="gg-muted">${esc(x.why)}</div>` : ''}
+            ${x.flag_line ? `<div class="gg-flagline">${esc(x.flag_line)}</div>` : ''}
+            ${ggUI.open === key ? `<div class="gg-flag"><textarea id="ggFlagText" maxlength="300" placeholder="${esc(s.flag.placeholder)}"></textarea>
+              <button type="button" onclick="ggFlagSend(${bi},${gi},${ti})">${esc(s.flag.send)}</button></div>` : ''}</div>`;
+        }).join('');
+      });
+    }
+    out += '</div>';
+  });
+  out += `<h4>${esc(s.excluded_title)}</h4>` + (s.excluded.length
+    ? s.excluded.map(x => `<div class="gg-term"><div class="gg-term-top"><b>${esc(x.text)}</b></div><div class="gg-muted">${esc(x.why)}</div><div class="gg-flagline">${esc(x.state)}</div></div>`).join('')
+    : `<p class="gg-muted">${esc(s.excluded_empty)}</p>`);
+  return out;
+}
+function ggReports(s) {
+  let out = `<p class="gg-muted">${esc(s.how)}</p>` + (s.blocked ? `<div class="gg-warn">${esc(s.blocked)}</div>` : '');
+  if (!s.reports.length) return out + `<p class="gg-muted">${esc(s.empty)}</p>`;
+  return out + s.reports.map((r, i) => `<details ${i === 0 ? 'open' : ''}><summary>${esc(r.period)}</summary>
+    <div class="gg-links"><a href="${esc(ggSafeUrl(r.view_url))}" target="_blank" rel="noopener">${esc(s.labels.print)}</a>
+      ${ADMIN_VIEW ? '' : `<a href="${esc(ggSafeUrl(r.word_url))}">${esc(s.labels.word)}</a>`}</div>
+    <p class="gg-muted">${esc(r.note)}</p>
+    <table class="gg-table">${r.rows.map(x => `<tr class="${x[1] === '' ? 'gg-head' : ''}"><td>${esc(x[0])}</td><td>${esc(x[1])}</td></tr>`).join('')}</table></details>`).join('');
+}
+function ggVersion(v, L) {
+  return `<p class="gg-muted">${esc(v.written)}</p>
+    ${v.changed ? `<h4>${esc(L.changed)}</h4><p>${esc(v.changed)}</p>` : ''}
+    <h4>${esc(L.money)}</h4><p>${esc(v.money)}</p>
+    <h4>${esc(L.assumes)}</h4><ul class="gg-lines">${v.assumes.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    <h4>${esc(L.watching)}</h4><ul class="gg-lines">${v.watching.map(x => `<li><b>${esc(x.number)}</b> — ${esc(x.why)}</li>`).join('')}</ul>
+    <h4>${esc(L.change)}</h4>${v.change_course.map(x => `<div class="gg-change"><div>${esc(x.if)}</div><div class="gg-by">${esc(x.by)}</div><div><b>${esc(L.then)}</b> ${esc(x.then)}</div></div>`).join('')}`;
+}
+function ggStrategy(s) {
+  if (!s.current) return `<p class="gg-muted">${esc(s.empty)}</p>`;
+  return `<p class="gg-muted">${esc(s.by)}</p>` + ggVersion(s.current, s.labels) + (s.previous.length
+    ? `<details><summary>${esc(s.labels.previous)}</summary>${s.previous.map(v => `<div class="gg-old">${ggVersion(v, s.labels)}</div>`).join('')}</details>` : '');
+}
+function renderGooglePage() {
+  const root = document.getElementById('ggRoot'), d = ggUI.data;
+  if (!root || !d) return;
+  const sec = (s, body) => `<section class="gg-sec"><h3>${esc(s.title)}</h3>${body}</section>`;
+  root.innerHTML = '<div class="gg-stack">' + sec(d.ads, ggAds(d.ads)) + sec(d.numbers, ggNumbers(d.numbers)) + sec(d.terms, ggTerms(d.terms))
+    + sec(d.reports, ggReports(d.reports)) + sec(d.strategy, ggStrategy(d.strategy)) + '</div>';
+}
+function ggFlagOpen(key) { ggUI.open = ggUI.open === key ? '' : key; renderGooglePage(); const el = document.getElementById('ggFlagText'); if (el) el.focus(); }
+async function ggFlagSend(bi, gi, ti) {
+  const t = uallakI18n.t, d = ggUI.data;
+  if (ggUI.busy || ADMIN_VIEW || !d) return;
+  const block = d.terms.blocks[bi], term = block.groups[gi].terms[ti];
+  const reason = (document.getElementById('ggFlagText') || {}).value || '';
+  ggUI.busy = true;
+  try {
+    const res = await fetch('/api/client/google/flag', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaign: block.campaign, term: term.text, reason: reason }) });
+    if (res.status === 401) { window.location.href = '/login/'; return; }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.success) { ggNote((j && j.detail && j.detail.message) || t('gg_failed')); return; }
+    ggUI.data = j.data; ggUI.open = ''; ggNote(j.data.terms.flag.sent); renderGooglePage();
+  } catch (e) {
+    console.error('google flag failed', e); ggNote(t('gg_failed'));
+  } finally { ggUI.busy = false; }
+}
+
 async function loadBrandPage() {
   const t = uallakI18n.t;
   try {

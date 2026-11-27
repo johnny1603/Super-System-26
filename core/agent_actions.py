@@ -5790,6 +5790,10 @@ ACTIONS["produce_requested_content"]["refusals"] = {"missing_tool": _CREATIVE_RE
 # A paid campaign as ONE card: order -> copy -> media -> checked handover -> verification (2026-11-28) — core/media_order_actions
 from core import media_order_actions as _media_order_actions
 ACTIONS.update(_media_order_actions.build(_sys.modules[__name__]))
+
+# The Google page's two cards: Yoav's strategy and the kept report (2026-11-28) — core/google_page_actions
+from core import google_page_actions as _google_page_actions
+ACTIONS.update(_google_page_actions.build(_sys.modules[__name__]))
 # The Social-tab gate refused at the send itself (core/social_queue.check):
 # the item was not approved there, or its approval was taken back meanwhile
 _NOT_APPROVED = _txt(
@@ -6843,7 +6847,7 @@ def stop_run(row: dict) -> bool:
 # is kept as a draft in the Social tab, waiting for approval — never thrown away.
 STOP_DISCARD = {"advance_organic_plan", "approve_organic_keywords", "build_seo_report", "competitor_digest",
                 "create_brand_mockups", "create_landing_page", "edit_landing_page", "upgrade_to_branding",
-                "upgrade_to_organic", "rerun_post_production", "generate_character_poses"}
+                "upgrade_to_organic", "rerun_post_production", "generate_character_poses", "write_google_strategy"}
 STOP_JOB = {"send_tiktok_to_inbox"}
 STOP_FINISH = {"configure_conversion", "revert_conversion", "publish_youtube_from_media", "update_site_items",
                "update_site_items_without_backup", "clone_voice", "make_presenter_video",

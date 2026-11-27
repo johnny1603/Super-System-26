@@ -1088,6 +1088,11 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   that is MEASURED, never given grammar: `enforce(agent=)` counts failed / net / blocked per agent
   (api_call_counters `speech_*`), `net_report` → `GET /api/admin/client-speech/net` → `/admin/connections/`. Do not
   build agreement fixing. fr/ar/ru forms are `UNREVIEWED_LANGS` — a native check before the first such client.
+- **The client's Google page** (`core/google_page.py`, `docs/GOOGLE-PAGE.md`, store `google_page:{id}`): five sections,
+  all text server-built under §9. Never present one rendering as "the ad" (examples are labelled examples); results
+  are PER LANE from the lane recorded at campaign creation, never a blended number and never a guessed lane; a figure
+  that was not refreshed carries its date; phrases only for a search campaign (themes are a hint, labelled so); the
+  client flags a phrase, Yoav decides; a strategy without a DATED abandon condition is refused and every version is kept.
   Enforced on the OUTPUT: `client_speech.enforce` (named failure → the caller's model rewrite once → the table's
   words → `Blocked`) runs on the chat reply (`_client_chat_answer`, with `allow_from(message)`: a term the client
   used is answered plainly), on every non-admin `agent_actions.card`, and inside `client_agent.log_communication`

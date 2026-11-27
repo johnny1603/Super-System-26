@@ -9385,6 +9385,72 @@ def client_brand_identity_assessment_dismiss(request: Request):
         raise HTTPException(status_code=503, detail={"code": "storage"})
     return {"success": True}
 
+# ─── The Google page "גוגל" (core/google_page, docs/GOOGLE-PAGE.md, 2026-11-28) ─
+# Five sections under governance §9. Plain `def`: the numbers are a Google read
+# (cached by its own reader); everything else is our own data.
+
+@app.get("/api/client/google")
+def client_google(request: Request):
+    client_id = _require_session(request)
+    from core import google_page
+    # staff viewing as the client reads only: the last good figures are not rewritten by a look
+    return {"success": True, "data": google_page.view(client_id, _client_lang(client_id),
+                                                      remember=_admin_view_client(request) is None)}
+
+class GoogleFlagRequest(BaseModel):
+    campaign: str = ""
+    term: str = ""
+    reason: str = ""
+
+@app.post("/api/client/google/flag")
+def client_google_flag(req: GoogleFlagRequest, request: Request):
+    # The client's note on ONE search phrase. It changes nothing in the account: it waits for Yoav, who decides.
+    client_id = _require_session(request)
+    from core import google_page
+    lang = _client_lang(client_id)
+    try:
+        google_page.flag(client_id, req.campaign, req.term, req.reason)
+    except google_page.PageError as e:
+        raise HTTPException(status_code=503 if e.code == "storage" else 400,
+                            detail={"code": e.code, "message": google_page.error_text(e.code, lang)})
+    log_activity(client_id, "client", "google_phrase_flagged", "The client left a note on a search phrase on the Google page")
+    return {"success": True, "data": google_page.view(client_id, lang)}
+
+def _stored_google_report(client_id: int, report_id: str) -> dict:
+    from core import google_page
+    try:
+        found = google_page.report(client_id, report_id)
+    except Exception as e:
+        print(f"[google_page] client {client_id}: stored report unreadable ({type(e).__name__})")
+        raise HTTPException(status_code=503, detail={"code": "ERR_UNAVAILABLE"})
+    if not found:
+        raise HTTPException(status_code=404, detail={"code": "ERR_NOT_FOUND"})
+    return found
+
+@app.get("/api/client/google/report/{report_id}/view")
+def client_google_report_view(report_id: str, request: Request):
+    # One kept report as a printable page (the browser's print makes the file)
+    client_id = _require_session(request)
+    from core import export_service, google_page
+    lang = _client_lang(client_id)
+    table = google_page.report_table(_stored_google_report(client_id, report_id), lang, client_id)
+    page = export_service.print_html(table["title"], table["subtitle"], table["columns"], table["rows"],
+                                     rtl=table["rtl"], lang=lang, summary=table["summary"])
+    return HTMLResponse(page, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+@app.get("/api/client/google/report/{report_id}/export")
+def client_google_report_export(report_id: str, request: Request):
+    # The same kept report as a Word file (core/export_service). No model, no Google call.
+    client_id = _require_session(request)
+    if _admin_view_client(request) is not None:
+        raise HTTPException(status_code=403, detail={"code": "ERR_READ_ONLY"})
+    from core import export_service, google_page
+    table = google_page.report_table(_stored_google_report(client_id, report_id), _client_lang(client_id), client_id)
+    body = export_service.to_docx(table["title"], table["subtitle"], table["columns"], table["rows"],
+                                  summary=table["summary"], rtl=table["rtl"])
+    return Response(content=body, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": 'attachment; filename="google-report.docx"', "Cache-Control": "no-store"})
+
 @app.get("/api/client/avatars")
 def client_avatars(request: Request):
     client_id = _require_session(request)

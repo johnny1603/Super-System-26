@@ -27,6 +27,7 @@ from supabase import create_client as _supabase_client
 
 from core.parallel import single_flight
 from core import google_ads_formats
+from core import governance as _governance
 from core import google_ads_service as gads
 from core import lead_tracking
 from core.agent_base import agent_alert, log_step, timed_step
@@ -874,7 +875,10 @@ def create_search_campaign(client_id: int, spec: dict) -> dict:
     _perf_cache.pop(client_id, None)
     log_activity(client_id, AGENT_NAME, "campaign_created",
                  {"name": name, "daily_budget_ils": spec["daily_budget_ils"],
-                  "keywords": len(spec["keywords"])},
+                  "keywords": len(spec["keywords"]),
+                  # the lane RECORDED at creation (governance §2): what the caller declared, else the work in
+                  # progress; "" when neither — the Google page then shows it as unrecorded, never guessed
+                  "lane": _governance.clean_lane(spec.get("lane")) or _governance.current_lane()},
                  {"campaign_id": campaign_id, "status": "PAUSED"})
     return {"success": True, "campaign_id": campaign_id, "status": "PAUSED",
             "note": "campaign created PAUSED - review it in the Ads UI, then activate"}

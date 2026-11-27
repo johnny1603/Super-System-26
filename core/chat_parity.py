@@ -59,6 +59,12 @@ PARITY = {
     "GET /api/client/governance": (NOT_CHAT, _PAGE_LOAD),
     "POST /api/client/governance/sync-day": (GAP, "P3: choose the weekly-sync evening from the chat"),
     "POST /api/client/governance/approve-week": (GAP, "P2: approve the weekly sync by answering it in the manager's chat"),
+    # ── Google page "גוגל" (core/google_page) ────────────────────────────────
+    "GET /api/client/google": (NOT_CHAT, _PAGE_LOAD),
+    "POST /api/client/google/flag": (NOT_CHAT, "a note on ONE search phrase is left where the phrase is shown; in the "
+                                               "chat the client simply tells Yoav, who decides either way"),
+    "GET /api/client/google/report/{report_id}/view": (CHAT, "build_google_report"),
+    "GET /api/client/google/report/{report_id}/export": (NOT_CHAT, "the stored report as a file, from the page that lists it"),
     # ── Branding page "מיתוג" (core/brand_page) ──────────────────────────────
     "GET /api/client/brand-identity": (NOT_CHAT, _PAGE_LOAD),
     "GET /api/client/brand-identity/file/{file_id}": (NOT_CHAT, _PLUMBING),
