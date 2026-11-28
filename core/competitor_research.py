@@ -49,7 +49,7 @@ not ten times.
 
 The sales chat asks every prospect for their strongest competitors by name
 ("a name or two is gold" — onboarding_agent's MARKET SIGNALS block) and the
-proposal carries a `market_reality` paragraph. Both are already on file before
+answers are on file before
 any agent generates anything, so research starts from real names the client
 gave us rather than from a cold guess at the niche.
 
@@ -60,7 +60,6 @@ branching into separate research paths:
 |---|---|---|
 | competitors the client named in the interview | nothing | all |
 | competitor domains from their paid SEO tool (seo_agent's cache) | nothing | all |
-| the proposal's market_reality paragraph | nothing | all |
 | **real YouTube videos in the niche (Data API, project key)** | **100 quota units/query, no money** | **media only** |
 
 Each one gives the search something true to start from; none of them replaces
@@ -231,21 +230,10 @@ def _client_brief(client_id: int) -> dict:
     return {
         "name": context.get("name", ""),
         "business_summary": context.get("business_summary", ""),
-        # The sales chat asks for competitors by name and writes a market_reality
-        # paragraph — research starts from what the client actually told us.
+        # The sales chat asks for competitors by name: research starts from what the client actually told us.
         "sales_chat_answers": answers,
     }
 
-
-def _market_reality(client_id: int) -> str:
-    """The proposal's own competitive-picture paragraph, if one was written."""
-    try:
-        from agents.support_agent import _latest_lead
-        lead = _latest_lead(client_id)
-        return ((lead.get("proposal") or {}).get("market_reality") or "")[:800]
-    except Exception as e:
-        print(f"[{SERVICE_NAME}] market_reality lookup failed for client {client_id}: {e}")
-        return ""
 
 
 def _client_supplied_competitors(client_id: int) -> list:
@@ -586,7 +574,7 @@ def research(client_id: int, lens: str, extra_context: dict = None,
         client_named = _client_supplied_competitors(client_id)
         payload = {
             "business": brief,
-            "market_reality_from_proposal": _market_reality(client_id),
+
             # Named by the client in the sales chat / found by their paid SEO
             # tool — the prompt is told to start from these before searching wide
             "known_competitor_domains": tool_competitors,

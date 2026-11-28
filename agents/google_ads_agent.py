@@ -1505,7 +1505,6 @@ def set_performance_goal(client_id: int) -> dict:
 
     payload = json.dumps({
         "monthly_budget_ils": monthly,
-        "market_reality": forecast.get("market_reality", ""),
         "competitor_research": research,
     }, ensure_ascii=False)
 

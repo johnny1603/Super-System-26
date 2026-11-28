@@ -707,7 +707,7 @@ to their stated goal and customers, and never re-ask something it already answer
 background, not live metrics — numbers about their campaigns or site come only from the live
 platform fields. Competitor research carries the date it was done ("researched_on"): treat it
 as DATED BACKGROUND, not current fact — frame it as "when we last looked (that date)", never as
-how things stand today. The 90-day goals and kpis are estimates, never promises. Anything not in
+how things stand today. The 90-day list is what we said we would DO, never a result that was promised. Anything not in
 it you don't know yet — ask, or speak generally; never invent it. Asking about it is not live
 data: data_topic stays "" for it. That includes WHICH ad account they are connected to:
 "connected_accounts" states it (connected or not, and the account number exactly as their own
@@ -1426,6 +1426,9 @@ def _build_upgrade_proposal(client_id: int, client: dict, lead: dict,
     proposal = build_proposal(answers, get_api_key(), upgrade_context=upgrade_context,
                               client_id=client_id)
     proposal = qa_check(proposal, answers)
+    # The same number rule as a new prospect's proposal: nothing without a basis (core/sales_truth)
+    from core import sales_truth
+    proposal = sales_truth.enforce(proposal, answers, prospect=False)
 
     packages = proposal.get("packages") or []
     if not proposal.get("approved", True) or not packages:

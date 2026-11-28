@@ -962,6 +962,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   calls `set_performance_goal` (refuses by name: inputs missing / account not measuring).
   `connection_catalog.NOT_BUILT` (merchant_center, creatomate, uppbeat) is never offered.
   `tests/test_conversion_measurement.py`.
+- **No invented number before purchase (2026-11-28, `core/sales_truth.py`)**: uallak holds NO market
+  or industry data, so the sales chat cannot state one. `market_reality` and `kpis` no longer exist on
+  a proposal; `sales_truth.enforce` (last step of `qa_agent_content._enforce_invariants`, both ship
+  paths, and the upgrade proposal) removes every sentence whose number has no basis (`package` = our
+  price list / package contents, `prospect` = a figure they gave, said as theirs) and every market
+  norm said in words. The first period (30-day learning period), what we measure and the prospect's
+  own figures are FIXED words in 5 languages, not the model's. `guard_reply` / `guard_reaction` cover
+  the closer and the one-line reaction; `stored()` keeps old proposals' invented numbers away from the
+  agents and the email. A client who counts SALES gets `sales_30d` (paid orders) as the result target,
+  never an enquiries target. `tests/test_sales_truth.py`.
 - **No vendor names to clients (2026-11-16, `docs/VENDOR-NAMES.md`)**: `core/vendor_names` is THE
   list + plain words; backstops on every model text that reaches a client (chat, idea cards,
   client cards, proposal QA, weekly plan, briefing/interview posts), never on links. Allow-list:

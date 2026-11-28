@@ -82,9 +82,7 @@ _CLIENT_REPORT_I18N = {
     "greeting": {"he":"שלום {name} 👋","en":"Hello {name} 👋","fr":"Bonjour {name} 👋","ar":"مرحبًا {name} 👋","ru":"Здравствуйте, {name} 👋"},
     "greeting_body": {"he":"המערכת סיימה לנתח את העסק שלך ובנתה תכנית עבודה מותאמת אישית.","en":"The system has finished analyzing your business and built a personalized work plan.","fr":"Le système a terminé d'analyser votre entreprise et a élaboré un plan de travail personnalisé.","ar":"انتهى النظام من تحليل عملك وأعدّ خطة عمل مخصصة.","ru":"Система завершила анализ вашего бизнеса и составила персональный план работы."},
     "summary_title": {"he":"📋 תמונת מצב","en":"📋 Situation summary","fr":"📋 État des lieux","ar":"📋 لمحة عن الوضع","ru":"📋 Обзор ситуации"},
-    "market_title": {"he":"📊 תמונת השוק שלך","en":"📊 Your market picture","fr":"📊 Votre situation de marché","ar":"📊 صورة سوقك","ru":"📊 Картина вашего рынка"},
-    "goals_title": {"he":"🎯 היעדים שלנו ל-90 יום","en":"🎯 Our 90-day goals","fr":"🎯 Nos objectifs à 90 jours","ar":"🎯 أهدافنا لـ90 يومًا","ru":"🎯 Наши цели на 90 дней"},
-    "goals_sub": {"he":"הערכות מבוססות ניסיון ונתוני שוק — לא הבטחות מדויקות","en":"Estimates based on experience and market data — not exact promises","fr":"Estimations basées sur l'expérience et les données du marché — pas des promesses exactes","ar":"تقديرات مبنية على الخبرة وبيانات السوق — وليست وعودًا دقيقة","ru":"Оценки на основе опыта и рыночных данных — не точные обещания"},
+    "goals_title": {"he":"🎯 מה נעשה ב-90 הימים הראשונים","en":"🎯 What we will do in the first 90 days","fr":"🎯 Ce que nous ferons pendant les 90 premiers jours","ar":"🎯 ما سنفعله في أول 90 يومًا","ru":"🎯 Что мы сделаем за первые 90 дней"},
     "disclaimers_title": {"he":"💳 עלויות נוספות שחשוב לדעת עליהן","en":"💳 Additional costs you should know about","fr":"💳 Coûts supplémentaires à connaître","ar":"💳 تكاليف إضافية يجب أن تعرفها","ru":"💳 Дополнительные расходы, о которых стоит знать"},
     # Fixed terms — same three bullets the sales chat shows before a package is picked
     "terms_title": {"he":"📌 חשוב לדעת לפני שבוחרים","en":"📌 Good to know before you choose","fr":"📌 À savoir avant de choisir","ar":"📌 من المهم معرفته قبل الاختيار","ru":"📌 Важно знать перед выбором"},
@@ -102,8 +100,25 @@ _CLIENT_REPORT_I18N = {
 }
 
 
+def _fixed_block(block) -> str:
+    """One of the fixed-word blocks core/sales_truth puts on a proposal (the
+    prospect's own figures, what we measure, how the first period works)."""
+    if not isinstance(block, dict) or not block.get("title"):
+        return ""
+    items = "".join(f'<p style="margin:8px 0;color:#3D3D3D;">• '
+                    f'{i if isinstance(i, str) else str(i.get("label", "")) + ": " + str(i.get("value", ""))}</p>'
+                    for i in block.get("items") or [])
+    text = f'<p style="color:#3D3D3D;line-height:1.7;">{block["text"]}</p>' if block.get("text") else ""
+    if not (items or text):
+        return ""
+    return (f'<div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">'
+            f'<h3 style="color:#FF4C1F;margin:0 0 16px;">{block["title"]}</h3>{text}{items}</div>')
+
+
 def send_client_report(client_email: str, client_name: str, proposal: dict, language: str = None):
-    p = proposal
+    # A proposal never leaves by email with a number that has no basis, whatever path built it
+    from core import sales_truth
+    p = sales_truth.stored(proposal)
     lang = _lang_of(language=language)  # no client row exists yet at proposal time
     t = lambda key, **v: _tr(_CLIENT_REPORT_I18N, key, lang, **v)
     packages = p.get('packages', [])
@@ -131,15 +146,13 @@ def send_client_report(client_email: str, client_name: str, proposal: dict, lang
         <h3 style="color:#FF4C1F;margin:0 0 16px;">{t('summary_title')}</h3>
         <p style="color:#3D3D3D;line-height:1.7;">{p.get('business_summary','')}</p>
       </div>
-      {f'''<div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
-        <h3 style="color:#FF4C1F;margin:0 0 16px;">{t('market_title')}</h3>
-        <p style="color:#3D3D3D;line-height:1.7;">{p.get('market_reality','')}</p>
-      </div>''' if p.get('market_reality') else ''}
+      {_fixed_block(p.get('your_figures'))}
       <div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
         <h3 style="color:#FF4C1F;margin:0 0 16px;">{t('goals_title')}</h3>
-        <p style="color:#8A8A8A;font-size:12px;margin:0 0 10px;">{t('goals_sub')}</p>
         {''.join([f'<p style="margin:8px 0;">✅ {g}</p>' for g in p.get('goals_90_days',[])])}
       </div>
+      {_fixed_block(p.get('measured'))}
+      {_fixed_block(p.get('first_period'))}
       {f'''<div style="background:white;border-radius:12px;padding:28px;margin-bottom:20px;">
         <h3 style="color:#FF4C1F;margin:0 0 16px;">{t('disclaimers_title')}</h3>
         {''.join([f'<p style="margin:8px 0;color:#3D3D3D;">• {d}</p>' for d in p.get('cost_disclaimers') or []])}

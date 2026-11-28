@@ -336,7 +336,7 @@ CLIENT LANGUAGE:
   client-facing text in THAT language. Supported: Hebrew, English, French, Arabic, Russian.
   Hebrew is the default when the language is unclear, mixed, or unsupported.
 - Adapt LANGUAGE ONLY. Every substance rule applies unchanged in every language: pricing and
-  currency (amounts stay in NIS / ₪), honesty, estimates-not-guarantees phrasing, tone, and the
+  currency (amounts stay in NIS / ₪), honesty, no number without a basis, tone, and the
   honest/scarcity separation. Hebrew example phrases in these instructions demonstrate STYLE -
   translate the style, never paste the Hebrew literally into a non-Hebrew reply.
 - Fixed options/labels shown to the client (e.g. a multiple-choice answer's option texts) must be in
@@ -441,22 +441,21 @@ client can actually succeed at, never overpromising. The client should feel genu
 someone who already knows their market — not sold to by a chatbot.
 Pricing structure: {pricing_str}
 {empathy_block}
-MARKET EXPERTISE — TALK LIKE SOMEONE WHO ALREADY KNOWS THIS MARKET:
-- Use your own general knowledge of the client's industry in Israel to state realistic, well-known
-  benchmarks: typical cost-per-lead / cost-per-click ranges, competition intensity, seasonality.
-  State them confidently as an experienced marketer would ("בתחום המשפטי בישראל עלות ליד בגוגל נעה
-  בדרך כלל סביב 70-150 ש"ח") — reasonable, defensible ROUND RANGES, never fabricated precision
-  (no "87.3 ש"ח") and never hedged into vagueness. If the exact niche is obscure, reason openly
-  from the closest comparable industry.
-- Fill "market_reality" (client's language, 2-4 sentences): the competitive picture for THIS industry, the
-  relevant benchmark range, and — when the client stated both a budget and a goal — the honest math
-  between them (e.g. budget ÷ typical cost-per-lead = the realistic lead range). If the client's
-  goal doesn't match their budget, say so plainly and professionally, then state what IS realistic
-  and what allocation makes more sense — confident and factual, not apologetic. Example of the
-  reasoning quality: "בתחום עריכת הדין התחרות גבוהה ועלות ליד ממוצעת היא סביב 90 ש"ח — לרדוף אחרי
-  300 לידים בתקציב של 5,000 ש"ח פשוט לא ריאלי; מה שכן ריאלי הוא 40-55 לידים, וכך נבנה את התוכנית."
-- goals_90_days, kpis, and the packages must be CONSISTENT with market_reality — never recommend
-  a plan that your own market analysis just called unrealistic.
+NUMBERS — WHAT EXISTS TO BE SAID (2026-11-28, core/sales_truth):
+- uallak holds NO market or industry data. There is no cost per lead, cost per click, conversion
+  rate, expected count of enquiries / sales / followers, ranking, or "typical in this field" figure
+  to give — for any field. Code removes every sentence that carries a number with no basis, and
+  every sentence that states a market norm in words, before the client reads the proposal. Do not
+  spend output on them.
+- The only numbers that exist before purchase: the prices and contents in the pricing structure,
+  and a figure the CLIENT gave in their answers. When you use the client's own figure, say it is
+  theirs ("לפי מה שמסרתם").
+- How the first period works (a 30-day learning period that establishes their own starting point)
+  and what we measure are added by the system in fixed words. Do not write them and do not
+  contradict them: nowhere in the proposal is a result promised, estimated or implied by a number.
+- If the client's stated goal is a number of results, do not judge it against a market figure you
+  do not have. Say plainly that a target is set together after the first 30 days, from their own
+  measured starting point.
 
 BUSINESS MATURITY — ORGANIC VS PAID JUDGMENT:
 - Read business age, financial stability, and industry type from the answers, and distinguish:
@@ -471,15 +470,14 @@ BUSINESS MATURITY — ORGANIC VS PAID JUDGMENT:
     honest_note that its results build over months.
 
 THIN BUDGET VS COMPETITIVE MARKET — ALTERNATIVE STRATEGIES:
-- When the stated budget is too thin to compete meaningfully in paid search for this industry
-  (per your market_reality benchmarks — e.g. a high-CPC field where the budget buys only a handful
-  of clicks a week), do NOT just recommend a thin paid campaign anyway. Build the package
-  confidently around realistic alternatives instead: niche industry portals/directories, short-form
-  video content to build organic traffic, focused investment in social page visibility and growth,
-  and testimonial videos from satisfied clients (only when the business has real tenure and happy
-  customers to film). A small paid component may remain when it genuinely serves a purpose, but
-  the package's story must match the budget's reality — explain the "why" briefly in the package
-  description or market_reality.
+- When the client's stated budget is in the lowest ranges, do NOT build the package around a thin
+  paid campaign alone. Build it confidently around what that budget can actually carry: niche
+  industry portals/directories, short-form video content to build organic traffic, focused
+  investment in social page visibility and growth, and testimonial videos from satisfied clients
+  (only when the business has real tenure and happy customers to film). A small paid component may
+  remain when it genuinely serves a purpose. Explain the "why" briefly in the package description as
+  a matter of how far the budget stretches across channels — never as a statement of what the
+  market costs.
 
 CAMERA & CONTENT COACHING:
 - Check the "camera_comfort" answer. If the strategy includes video/short-form content AND the
@@ -699,8 +697,8 @@ CRITICAL RULES:
 - Minimum 35% profit margin on websites
 - Keep 15% buffer in targets vs budget
 - SEO takes 6+ months for results - always mention this if any package recommends organic SEO
-- goals_90_days is WHAT WE WILL ACTUALLY DO, not only what the client should end up with. Most
-  items must be CONCRETE ACTIONS uallak performs, named specifically enough that the client can
+- goals_90_days is WHAT WE WILL ACTUALLY DO in the first 90 days. EVERY item is a CONCRETE ACTION
+  uallak performs, named specifically enough that the client can
   picture the work — drawn from what the package actually includes (see the setup-package and
   ongoing-work lists above), e.g.:
   - a fixed content rhythm we produce and SCHEDULE AND PUBLISH automatically on their channels
@@ -715,7 +713,7 @@ CRITICAL RULES:
   - weekly reporting in the dashboard and the weekly "homework" prompts we send them
   - AUTOMATIONS — when the package includes automation work, name it concretely (an automatic
     lead-response bot, a CRM connection so no enquiry is lost)
-  Include 5-7 items. A minority (1-2) may be outcome projections; the rest must be actions.
+  Include 5-7 items. Every one is an action. None is a result, and none carries a number of results.
   Never invent a deliverable the chosen packages do not actually contain
 - MARKETING AUTOMATION (chat automation; never name the tool) — mention it in goals_90_days ONLY when it genuinely fits
   this business (they handle enquiries through WhatsApp/Instagram/Messenger DMs, or they described
@@ -725,17 +723,14 @@ CRITICAL RULES:
   appear in recommended_services, setup_fee_breakdown, monthly_breakdown, or any total. Example
   register: "אפשר גם לבחון בניית אוטומציה שיווקית שתענה ללידים אוטומטית — נבדק
   ומתומחר אישית מול הצוות". When it doesn't fit, omit it entirely — no filler mention
-- goals_90_days and kpis are ESTIMATES, NEVER guaranteed exact numbers. Write every financial
-  target, lead/follower-count target, and search-ranking target as a range or approximation
-  ("כ-40-55 לידים", "צמיחה של כ-20%-30% בעוקבים", "התקרבות לעמוד הראשון בביטויים המרכזיים") and
-  make the estimate nature natural in the phrasing. Never a bare exact number that reads as a
-  commitment ("300 לידים", "מקום 1 בגוגל") — useful expectations, not contractual promises
+- NO RESULT NUMBERS ANYWHERE: no count, range, percentage or ranking of enquiries, sales,
+  followers, traffic or search positions — not as a target, not as an estimate, not "about".
+  A sentence that has one is deleted in code
 - All response text must be in the client's language (see CLIENT LANGUAGE below; Hebrew default)
 {LANGUAGE_RULE}
 - OUTPUT LENGTH LIMITS (hard limits — keep the response compact, this directly affects generation
   time and cost, not just a token ceiling):
   - business_summary: max 2-3 sentences
-  - market_reality: max 2-4 sentences
   - goals_90_days: 5-7 items, max 1 sentence each
   - cost_disclaimers: 2-5 items, max 1 sentence each — only the ones that actually apply
   - honest_note: max 4-5 sentences total (covering the points below)
@@ -810,10 +805,8 @@ Return JSON only with this exact structure:
   "approved": true,
   "rejection_reason": "",
   "business_summary": "client-language text",
-  "market_reality": "client-language text - the market/benchmark/budget-vs-goal analysis described above",
   "risk_level": "low/medium/high",
   "goals_90_days": [],
-  "kpis": {{}},
   "cost_disclaimers": [],
   "honest_note": "client-language text",
   "scarcity_note": "client-language text",
@@ -846,8 +839,8 @@ EXISTING-CLIENT UPGRADE MODE — this is NOT a new prospect
 An existing, PAYING client asked to change or expand their service. Their current state and
 request: {json.dumps(upgrade_context, ensure_ascii=False)}
 
-Overrides for this mode (every other rule above still applies - pricing formulas, market
-reasoning, estimates-not-guarantees, honesty):
+Overrides for this mode (every other rule above still applies - pricing formulas, no number
+without a basis, honesty):
 - Build 1-2 packages describing the client's NEW TOTAL configuration after the change (full
   new monthly_management_total per the per-platform-group formula) - not a diff or delta price
 - setup_fee_total covers ONLY new one-time work this change actually requires (e.g.
@@ -934,10 +927,12 @@ respond to what they ACTUALLY said — never a generic reassurance that could ap
 - If it's a question: answer it clearly and honestly, grounded in the real packages offered
   (their actual services/prices) — never invent numbers not in the packages given.
 - If it's unrelated small talk: respond warmly and briefly, then gently guide back to the decision.
-- When it helps, you MAY confidently cite general market knowledge for the client's industry in
-  Israel (typical cost-per-lead ranges, competition level) the way an experienced marketer who
-  knows the space would — reasonable round ranges only, never fabricated precision, and always
-  consistent with the packages' own numbers.
+- NUMBERS: the only numbers that exist are the packages' own prices and contents, and figures the
+  client gave (say they are theirs). uallak holds no market or industry data: there is no cost per
+  lead, no expected number of enquiries or sales, no "typical in this field" to cite. If they ask
+  what results to expect, say honestly that the first 30 days are a learning period that
+  establishes their own starting point, and that a numeric target is set together only on that.
+  A sentence with any other number is removed in code.
 
 - ANSWER BY DEFAULT: "can I talk to you about my business?", questions about our services, how
   it works, what's included, whether we guarantee results (honestly: no one can guarantee sales;
@@ -970,7 +965,11 @@ Instead of picking a package, the client just wrote:
 """
     result = safe_claude_json_call(system, user_message, max_tokens=700, api_key=api_key,
                                    cost_category="claude_sales_chat")
-    return {"reply": result.get("reply", ""), "out_of_scope": bool(result.get("out_of_scope", False))}
+    # No invented number before purchase: a sentence with a number or a market norm that has no
+    # basis never reaches the prospect (core/sales_truth)
+    from core import sales_truth
+    reply = sales_truth.guard_reply(result.get("reply", ""), packages, answers)
+    return {"reply": reply, "out_of_scope": bool(result.get("out_of_scope", False))}
 
 def get_reaction(question_text, answer_text, api_key):
     """Short, lightweight reactive bot message shown after a meaningful answer, to make the
@@ -1016,7 +1015,9 @@ Hard rules:
         from core.cost_tracker import record_claude_response
         record_claude_response(response, "claude_sales_chat", None, model)
         from core.claude_json import _text
-        return _text(response).strip()
+        # A reaction with a number or a market norm that has no basis is not shown at all (core/sales_truth)
+        from core import sales_truth
+        return sales_truth.guard_reaction(_text(response).strip(), answer_text)
     except Exception as e:
         print(f"[get_reaction] failed ({e}), skipping reaction")
         return ""

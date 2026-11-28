@@ -14,8 +14,8 @@ version that fixes anything that fails:
    or SEO results promised before 6 months
 3. goals_90_days is mostly CONCRETE ACTIONS uallak will perform (content produced and published on
    a schedule, campaign launches and ongoing optimization, research/audit delivery, article and
-   keyword work, lead capture, weekly reporting, automations when included) — not a list of
-   outcome projections. 5-7 items, at most 1-2 of which are pure projections. Every named action
+   keyword work, lead capture, weekly reporting, automations when included) — never an outcome
+   projection. 5-7 items, every one an action. Every named action
    must actually be contained in the packages you were given; delete any that isn't. A mention of
    ManyChat marketing automation is allowed ONLY as a possibility to explore with the team,
    never as an included deliverable and never with a price
@@ -83,16 +83,12 @@ version that fixes anything that fails:
     language — that belongs exclusively in scarcity_note. Fix by REPHRASING the timeline fact
     neutrally in place (do not delete it) and moving any genuinely promotional sentence to
     scarcity_note
-13. GOALS ARE ESTIMATES, NOT COMMITMENTS — every numeric target in goals_90_days and kpis
-    (financial, lead counts, follower counts, search rankings) must read as an estimate or range
-    ("כ-40-55 לידים", "התקרבות לעמוד הראשון"), never as an exact guaranteed number or a promised
-    ranking position. Rewrite any bare exact-number target into a reasonable range around it
-14. MARKET_REALITY SANITY — if the proposal has a market_reality field: its benchmark numbers must
-    be plausible round ranges (not suspicious false precision like "87.3 ש"ח"), any budget-vs-goal
-    math in it must be arithmetically sensible, its tone must be confident and professional (not
-    apologetic, not hedged into vagueness), and goals_90_days/kpis/packages must not contradict it
-    (e.g. market_reality says 300 leads is unrealistic while a goal still promises 300 leads).
-    Keep the field in the returned proposal — never drop it
+13. NO RESULT NUMBERS — uallak holds no market data. Delete any sentence that states a count,
+    range, percentage or ranking of enquiries, sales, followers, traffic or search positions (as a
+    target, an estimate or "about"), and any sentence that states a market norm ("typically in
+    this field", an average cost per lead). Do not replace it with a softer number. The only
+    numbers allowed are the packages' own prices and contents and figures the client gave
+14. The proposal has NO market_reality and NO kpis field. Never add either
 15. AVATAR ADD-ON RELEVANCE — if ANY package's recommended_services includes "avatar" (the
     presenter video add-on), its creative-tool cost disclosure belongs in cost_disclaimers
     (criterion 9 covers whether it is present). Here, check the add-on is genuinely relevant to the business (personal-brand
@@ -171,7 +167,7 @@ def _scrub_seo_vendors(node) -> int:
     return changed
 
 
-def _enforce_invariants(proposal: dict) -> dict:
+def _enforce_invariants(proposal: dict, answers: dict = None) -> dict:
     fixes = []
 
     # Shape guard for the field the client-facing surfaces iterate over. The old
@@ -266,7 +262,10 @@ def _enforce_invariants(proposal: dict) -> dict:
 
     if fixes:
         print(f"QA/Review deterministic fixes applied: {fixes}")
-    return proposal
+    # LAST, on every proposal that ships: no number without a basis, no market norm, and the
+    # first period / what we measure / the prospect's own figures in fixed words (core/sales_truth)
+    from core import sales_truth
+    return sales_truth.enforce(proposal, answers, lang)
 
 
 def review_and_fix_proposal(proposal: dict, answers: dict, client_id: int = None) -> dict:
@@ -282,7 +281,7 @@ def review_and_fix_proposal(proposal: dict, answers: dict, client_id: int = None
                                        client_id=client_id, cost_category="claude_content_qa")
         print(f"QA/Review: approved={result.get('review_approved')} issues={result.get('issues', [])}")
         return {
-            "proposal": _enforce_invariants(result.get("proposal") or proposal),
+            "proposal": _enforce_invariants(result.get("proposal") or proposal, answers),
             "review_approved": result.get("review_approved", True),
             "issues": result.get("issues", []),
         }
@@ -293,7 +292,7 @@ def review_and_fix_proposal(proposal: dict, answers: dict, client_id: int = None
         # report the failure so api_server raises a master-agent alert.
         print(f"QA/Review: LLM review FAILED ({e}) - shipping with deterministic checks only")
         return {
-            "proposal": _enforce_invariants(proposal),
+            "proposal": _enforce_invariants(proposal, answers),
             "review_approved": False,
             "issues": [f"content review LLM call failed ({e}) - proposal shipped with deterministic checks only"],
         }

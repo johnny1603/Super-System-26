@@ -10,10 +10,10 @@ client, on the weekly scan) it pulls together:
   HeyGen, ElevenLabs, SEO tools, WordPress/InstaWP hosting) — pulled via each
   agent's own usage functions, never a second data-collection path.
 - The client's own stated forecast from onboarding (marketing_budget,
-  market_reality) — matched from the `leads` table.
+  what the proposal said we would do) — matched from the `leads` table.
 
 CONFIDENCE LABELS — every figure below carries one. This is the whole point
-of the agent (same rigor already established for market_reality, applied to
+of the agent (applied to
 real historical data instead of pre-sale speculation): never present an
 estimate as a hard fact, and never silently drop a genuine gap.
 
@@ -181,9 +181,10 @@ def _recorded_budget(client_id: int):
 
 
 def get_forecast(client_id: int) -> dict:
-    """The client's own stated budget + the market_reality narrative already
-    generated at proposal time — real intake data, but see `source` for how
-    reliably it's matched to this specific client (module docstring)."""
+    """The client's own stated budget, and what the proposal said we would DO.
+    The proposal's old market paragraph and result targets were written by the
+    model with no source: they are not passed on (core/sales_truth.stored).
+    See `source` for how reliably the lead is matched to this client."""
     lead, source = _lead_row(client_id)
     # The retroactive path (2026-11-28): the monthly budget an EXISTING client approved on the
     # record_target_inputs card (core/target_inputs). It is newer than the sales chat, so it wins.
@@ -192,13 +193,13 @@ def get_forecast(client_id: int) -> dict:
         return {"available": False, "source": source}
     lead = lead or {}
     answers = lead.get("answers") or {}
-    proposal = lead.get("proposal") or {}
+    from core import sales_truth
+    proposal = sales_truth.stored(lead.get("proposal"))
     budget_text = answers.get("marketing_budget") or ""
     if recorded:
         return {"available": True, "source": source, "budget_source": "recorded_by_client",
                 "stated_marketing_budget_text": budget_text, "stated_marketing_budget_ils": recorded,
-                "market_reality": proposal.get("market_reality", ""),
-                "goals_90_days": proposal.get("goals_90_days") or [], "kpis": proposal.get("kpis") or {}}
+                "goals_90_days": proposal.get("goals_90_days") or []}
     # No organic budget is read: organic is a fixed-price package (2026-10-18),
     # and leads from before that may still carry a stale organic_budget answer
     return {
@@ -206,9 +207,7 @@ def get_forecast(client_id: int) -> dict:
         "source": source,
         "stated_marketing_budget_text": budget_text,
         "stated_marketing_budget_ils": _extract_ils_amount(budget_text),
-        "market_reality": proposal.get("market_reality", ""),
         "goals_90_days": proposal.get("goals_90_days") or [],
-        "kpis": proposal.get("kpis") or {},
     }
 
 
@@ -718,9 +717,9 @@ def run_weekly_scan() -> dict:
 # ─── Optional narrative (on-demand LLM call — explains, never invents) ────────
 
 NARRATIVE_SYSTEM = """You are uallak's financial analyst, writing a short internal note for
-Johnny (the agency owner) about ONE client's money picture. Same rigor as the sales-chat's
-market_reality reasoning, but grounded entirely in the real historical numbers you're given —
-never speculation.
+Johnny (the agency owner) about ONE client's money picture, grounded entirely in the real
+historical numbers you're given — never speculation, and never a market or industry figure
+(uallak holds none).
 
 You will receive a JSON object where sections carry an explicit "confidence" field: "hard" (a
 real recorded/API number), "estimate" (arithmetic from a real usage figure times a published

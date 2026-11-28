@@ -138,11 +138,10 @@ const CHROME = {
   risk_high: { he:'גבוהה', en:'High', fr:'Élevé', ar:'مرتفع', ru:'Высокий' },
   risk_medium: { he:'בינונית', en:'Medium', fr:'Moyen', ar:'متوسط', ru:'Средний' },
   risk_low: { he:'נמוכה', en:'Low', fr:'Faible', ar:'منخفض', ru:'Низкий' },
-  proposal_market: { he:'📊 תמונת השוק שלך:', en:'📊 Your market picture:', fr:'📊 Votre marché :', ar:'📊 صورة السوق لديك:', ru:'📊 Картина вашего рынка:' },
   proposal_ready: { he:'✅ התכנית שלך מוכנה!', en:'✅ Your plan is ready!', fr:'✅ Votre plan est prêt !', ar:'✅ خطتك جاهزة!', ru:'✅ Ваш план готов!' },
   proposal_summary: { he:'📋 סיכום:', en:'📋 Summary:', fr:'📋 Résumé :', ar:'📋 ملخص:', ru:'📋 Резюме:' },
   proposal_risk: { he:'⚠️ רמת סיכון:', en:'⚠️ Risk level:', fr:'⚠️ Niveau de risque :', ar:'⚠️ مستوى المخاطرة:', ru:'⚠️ Уровень риска:' },
-  proposal_goals: { he:'🎯 יעדים ל-90 יום (הערכות מבוססות ניסיון, לא הבטחות מדויקות):', en:'🎯 90-day goals (experience-based estimates, not exact promises):', fr:'🎯 Objectifs à 90 jours (estimations fondées sur l\'expérience, pas des promesses) :', ar:'🎯 أهداف 90 يومًا (تقديرات مبنية على الخبرة، وليست وعودًا دقيقة):', ru:'🎯 Цели на 90 дней (оценки на основе опыта, а не точные обещания):' },
+  proposal_goals: { he:'🎯 מה נעשה ב-90 הימים הראשונים:', en:'🎯 What we will do in the first 90 days:', fr:'🎯 Ce que nous ferons pendant les 90 premiers jours :', ar:'🎯 ما سنفعله في أول 90 يومًا:', ru:'🎯 Что мы сделаем за первые 90 дней:' },
   proposal_disclaimers: { he:'💳 עלויות נוספות שחשוב לדעת עליהן:', en:'💳 Additional costs you should know about:', fr:'💳 Coûts supplémentaires à connaître :', ar:'💳 تكاليف إضافية يجب أن تعرفها:', ru:'💳 Дополнительные расходы, о которых стоит знать:' },
   // Fixed terms, shown with EVERY proposal before a package can be picked —
   // deliberately not LLM text, so they never drift or get dropped
@@ -852,7 +851,10 @@ function displayProposal(data) {
   }
   const t = uallakI18n.t;
   const risk = t(p.risk_level==='high'?'risk_high':p.risk_level==='medium'?'risk_medium':'risk_low');
-  const marketBlock = p.market_reality ? `\n\n${t('proposal_market')} ${p.market_reality}` : '';
+  // No market paragraph and no result numbers (core/sales_truth): the server sends, in fixed words,
+  // the prospect's own figures, what we measure and how the first period works.
+  const block = b => (b && b.title && (b.text || (b.items || []).length))
+    ? `\n\n${b.title}${b.text ? `\n${b.text}` : ''}${(b.items || []).length ? `\n${(b.items || []).map(i => `  · ${typeof i === 'string' ? i : `${i.label}: ${i.value}`}`).join('\n')}` : ''}` : '';
   // cost_disclaimers replaced the old "things you can do yourself" tips: what the
   // client pays for beyond our fees. Both lists are defensive — a proposal built
   // before this change has no cost_disclaimers key at all.
@@ -860,7 +862,7 @@ function displayProposal(data) {
   const disclaimers = (p.cost_disclaimers || []).length
     ? `\n\n${t('proposal_disclaimers')}\n${bullets(p.cost_disclaimers)}` : '';
   const terms = `\n\n${t('proposal_terms_title')}\n${bullets([t('proposal_term_third_party'), t('proposal_term_organic_tool'), t('proposal_term_allowance'), t('proposal_term_ownership')])}`;
-  const msg = `${t('proposal_ready')}\n\n${t('proposal_summary')} ${p.business_summary}${marketBlock}\n\n${t('proposal_risk')} ${risk}\n\n${t('proposal_goals')}\n${bullets(p.goals_90_days)}\n\n💡 ${p.honest_note}${disclaimers}${terms}`;
+  const msg = `${t('proposal_ready')}\n\n${t('proposal_summary')} ${p.business_summary}${block(p.your_figures)}\n\n${t('proposal_risk')} ${risk}\n\n${t('proposal_goals')}\n${bullets(p.goals_90_days)}${block(p.measured)}${block(p.first_period)}\n\n💡 ${p.honest_note}${disclaimers}${terms}`;
   addMessage(msg, 'bot');
   setTimeout(() => {
     if (p.scarcity_note) addMessage(`🔥 ${p.scarcity_note}`, 'bot');

@@ -157,10 +157,9 @@ def _competitors(facts: dict, tool_domains: list) -> list:
 
 def _market(client_id: int, proposal: dict, persona_id: str) -> dict:
     from core import competitor_research
+    # The proposal's old market paragraph is NOT passed on: the model wrote it with no source
+    # (core/sales_truth). What an agent knows of the market is the dated research below.
     market = {}
-    if proposal.get("market_reality"):
-        market["market_reality_at_sale_time"] = _clip(proposal["market_reality"],
-                                                      MAX_MARKET_REALITY_CHARS)
     own_lens = PERSONA_LENS.get(persona_id)
     lenses = (own_lens,) if own_lens else competitor_research.LENSES
     limit = MAX_RESEARCH_CHARS_FULL if own_lens else MAX_RESEARCH_CHARS_SLICE
@@ -178,12 +177,11 @@ def _market(client_id: int, proposal: dict, persona_id: str) -> dict:
 def _plan(client_id: int, proposal: dict) -> dict:
     from core import client_journey
     plan = {}
-    if proposal.get("goals_90_days"):
-        plan["goals_90_days"] = proposal["goals_90_days"][:8]
-    if proposal.get("kpis"):
-        plan["kpis"] = proposal["kpis"]
-    if plan:
-        plan["note"] = "estimates set at sale time, never guarantees"
+    from core import sales_truth
+    said = sales_truth.stored(proposal).get("goals_90_days") or []
+    if said:
+        plan["goals_90_days"] = said[:8]
+        plan["note"] = "what we said at sale time we would DO — actions, not results; no result number was ever agreed there"
     # None = the read failed: say nothing, rather than "not started"
     started = _attempt(lambda: client_journey.connections_completed_at(client_id), None)
     if started is None:
