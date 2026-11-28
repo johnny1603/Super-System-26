@@ -190,6 +190,71 @@ class TheGoalsCard(Doors):
             if line.startswith("• ") and ("סף 90%" in line):
                 self.assertIn(" · ", line)                               # every numeric target has its basis beside it
 
+    def busy_store_client(self):
+        """Sales are the result: 12 paid orders, ₪600 of advertising, every input on record."""
+        ti._sales_30 = lambda cid: {"paid_orders": 12, "net_revenue": 4200}
+        ti._ad_spend_30 = lambda cid: 600.0
+        ti.record(27, {"budget_ils": 1500, "sells": "נעליים בעיצוב אישי", "margin_pct": 40})
+
+    def test_a_store_client_past_the_threshold_gets_a_sales_target(self):
+        self.busy_store_client()
+        now = ti.state(27)
+        self.assertEqual((now["kind"], now["thin"], now["missing"]), ("sales", [], []))
+        basis = ti.history_basis(now)
+        self.assertEqual(basis, {"kind": "history", "unit": "sales", "orders": 12, "spend": 600.0, "budget": 1500.0})
+        self.assertEqual(ti.history_ceiling(basis), 30)                  # ₪1,500 at ₪50 an order
+        self.assertEqual(ti.metric_of(now["kind"]), "sales_30d")
+        # the model aims high AND gives an enquiries aim: the card carries ONE target, in sales, capped
+        out = self.spec["prepare"](27, {"posts_per_week": 3, "sales_aim": 500, "leads_aim": 80}, {"language": "he"}, [])
+        params = self.spec["validate_stored"](27, out["params"])
+        self.assertEqual(params["sales_aim"], 30)
+        self.assertNotIn("leads_aim", params)
+        self.assertNotIn("learning", params)
+        for lang in LANGS:
+            self.aa._lang = lambda cid, _l=lang: _l
+            shown = self.spec["display"](27, params)["lines"]
+            self.assertIn(qg.pick(qg.T["m_sales_30d"], lang), shown, lang)
+            self.assertNotIn(qg.pick(qg.T["m_leads_30d"], lang), shown, lang)
+            self.assertIn(ti.basis_line(basis, lang), shown, lang)       # the sales number rests on their own store
+            self.assertEqual(client_speech.expectation_problems(shown), [], lang)
+        shown = self.spec["display"](27, dict(params))["lines"] if not setattr(self.aa, "_lang", lambda cid: "he") else ""
+        self.assertIn("מכירות ב-30 יום: 26 ", shown)                      # 30 less the internal margin, floored
+        self.assertIn("12 מכירות בחנות ב-30 הימים האחרונים (כל המכירות, לא רק אלה שהגיעו מפרסום)", shown)
+
+    def test_the_sales_target_is_built_measured_and_judged(self):
+        basis = {"kind": "history", "unit": "sales", "orders": 12, "spend": 600.0, "budget": 1500.0}
+        targets = qg.build_targets([], 3, {"sales_30d": 30}, baseline={"sales_30d": {"paid_orders": 12}},
+                                   bases={"sales_30d": basis})
+        row = [t for t in targets if t["metric"] == "sales_30d"][0]
+        self.assertEqual((row["target"], row["baseline"], row["basis"]), (26, 12, basis))
+        with self.assertRaises(ValueError):
+            qg.build_targets([], 3, {"sales_30d": 30})                   # no basis, no sales target
+        kept = qg._sales_30
+        try:
+            qg._sales_30 = lambda cid: {"paid_orders": 24, "net_revenue": 9000}
+            rows = qg.evaluate(27, {"targets": targets, "baseline": {"captured_at": "2026-11-28T00:00:00+00:00"}})
+            sales = [r for r in rows if r["metric"] == "sales_30d"][0]
+            self.assertEqual((sales["current"], sales["threshold"], sales["met"]), (24, 23.4, True))
+            for lang in LANGS:
+                self.assertIn(qg.pick(qg.T["m_sales_30d"], lang), qg.target_line(sales, lang), lang)
+            qg._sales_30 = lambda cid: None                               # the store is not readable: not measured, never zero
+            self.assertIsNone(qg.current_value(27, {}, "sales_30d"))
+        finally:
+            qg._sales_30 = kept
+        self.assertIn("sales_30d", qg.METRICS)
+        self.assertIn("sales_30d", qg.BUFFERED)
+
+    def test_a_stored_sales_target_needs_its_own_basis(self):
+        good = {"kind": "history", "unit": "sales", "orders": 12, "spend": 600.0, "budget": 1500.0}
+        for bad in ({"keywords": [], "sales_aim": 9},
+                    {"keywords": [], "sales_aim": 9, "sales_basis": {"kind": "history", "leads": 20, "spend": 600, "budget": 1500}},
+                    {"keywords": [], "sales_aim": 9, "sales_basis": {**good, "orders": 3}},
+                    {"keywords": [], "sales_aim": 9, "sales_basis": good, "leads_aim": 5,
+                     "leads_basis": {"kind": "history", "leads": 20, "spend": 600, "budget": 1500}}):
+            with self.assertRaises((ValueError, KeyError), msg=bad):
+                self.spec["validate_stored"](27, bad)
+        self.assertEqual(self.spec["validate_stored"](27, {"keywords": [], "sales_aim": 9, "sales_basis": good})["sales_aim"], 9)
+
     def test_a_stored_result_target_without_a_basis_is_refused(self):
         for bad in ({"keywords": [], "leads_aim": 6},
                     {"keywords": [], "leads_aim": 6, "leads_basis": {"kind": "history", "leads": 2, "spend": 0, "budget": 900}},

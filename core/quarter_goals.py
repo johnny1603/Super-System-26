@@ -42,10 +42,12 @@ MET_RATIO = 0.9
 # Never in client text, an agent's data or the terms.
 BUFFER = 0.15
 # metric -> where its "now" comes from. All "more is better".
-METRICS = ("leads_30d", "positions_gained", "posts_per_week")
+METRICS = ("leads_30d", "sales_30d", "positions_gained", "posts_per_week")
+# The RESULT metrics counted in whole results: enquiries, or paid orders for a client who counts sales.
+COUNTED = ("leads_30d", "sales_30d")
 # Result metrics carry the buffer; posts_per_week is our own output (the
 # agreed number IS the target).
-BUFFERED = ("leads_30d", "positions_gained")
+BUFFERED = ("leads_30d", "sales_30d", "positions_gained")
 
 
 def committed_target(metric: str, aim) -> float:
@@ -56,7 +58,7 @@ def committed_target(metric: str, aim) -> float:
     if metric not in BUFFERED:
         return round(aim, 1) if aim != int(aim) else int(aim)
     value = aim / (1 + BUFFER)
-    return max(1, math.floor(value)) if metric == "leads_30d" else max(1.0, round(value, 1))
+    return max(1, math.floor(value)) if metric in COUNTED else max(1.0, round(value, 1))
 
 
 def threshold(target) -> float:
@@ -230,12 +232,16 @@ def build_targets(words: list, posts: int, aims: dict, baseline: dict = None, ba
     baseline, bases = baseline or {}, bases or {}
     out = [{"metric": "posts_per_week", "target": committed_target("posts_per_week", posts),
             "baseline": baseline.get("posts_week"), "basis": {"kind": "own_output"}}]
-    if aims.get("leads_30d"):
-        basis = bases.get("leads_30d") or {}
+    for metric in COUNTED:
+        if not aims.get(metric):
+            continue
+        basis = bases.get(metric) or {}
         if basis.get("kind") != "history":
             raise ValueError("a result target with nothing it rests on")
-        out.append({"metric": "leads_30d", "target": committed_target("leads_30d", aims["leads_30d"]),
-                    "baseline": baseline.get("leads_30d"), "basis": basis})
+        start = baseline.get(metric)
+        if isinstance(start, dict):                 # the store's 30 days: the target counts its paid orders
+            start = start.get("paid_orders")
+        out.append({"metric": metric, "target": committed_target(metric, aims[metric]), "baseline": start, "basis": basis})
     if words and aims.get("positions_gained"):
         out.append({"metric": "positions_gained", "target": committed_target("positions_gained", aims["positions_gained"]),
                     "baseline": 0, "basis": {"kind": "plan"}})
@@ -274,6 +280,8 @@ def current_value(client_id: int, value: dict, metric: str):
     try:
         if metric == "leads_30d":
             return _count_leads(client_id, 30, 0)
+        if metric == "sales_30d":
+            return (_sales_30(client_id) or {}).get("paid_orders")      # no store / unreadable = not measured
         if metric == "posts_per_week":
             return _posts_week(client_id)
         if metric == "positions_gained":
@@ -400,6 +408,12 @@ T = {
                       "Органическая оценка: заметное движение по фразам примерно за {c} мес."),
     "m_leads_30d": _five("פניות ב-30 יום", "Enquiries in 30 days", "Demandes sur 30 jours", "الاستفسارات خلال 30 يومًا",
                          "Обращений за 30 дней"),
+    "m_sales_30d": _five("מכירות ב-30 יום", "Sales in 30 days", "Ventes sur 30 jours", "المبيعات خلال 30 يومًا", "Продаж за 30 дней"),
+    "base_sales": _five("מכירות ב-30 יום: {n}", "sales in 30 days: {n}", "ventes sur 30 jours : {n}", "مبيعات خلال 30 يومًا: {n}",
+                        "продаж за 30 дней: {n}"),
+    "monthly_sales": _five("מכירות ב-30 יום: {a} (בהתחלה: {b})", "Sales in 30 days: {a} (at the start: {b})",
+                           "Ventes sur 30 jours : {a} (au départ : {b})", "المبيعات خلال 30 يومًا: {a} (في البداية: {b})",
+                           "Продаж за 30 дней: {a} (в начале: {b})"),
     "m_positions_gained": _five("שיפור ממוצע בדירוג בביטויים שסיכמנו (מקומות)",
                                 "Average ranking gain on the agreed phrases (positions)",
                                 "Gain moyen de classement sur les expressions convenues (places)",
@@ -507,6 +521,8 @@ def _baseline_line(value: dict, lang: str) -> str:
     if not base:
         return ""
     parts = [_t("base_leads", lang, n=_fmt(base.get("leads_30d"), lang))]
+    if isinstance(base.get("sales_30d"), dict):          # a store is connected: its sales are part of the starting point
+        parts.append(_t("base_sales", lang, n=_fmt(base["sales_30d"].get("paid_orders"), lang)))
     words = value.get("keywords") or []
     if words:
         positions = base.get("positions")
@@ -562,6 +578,9 @@ def monthly_report(client_id: int, value: dict, lang: str = None) -> str:
     except Exception:
         now_leads = None
     lines.append("• " + _t("monthly_leads", lang, a=_fmt(now_leads, lang), b=_fmt(base.get("leads_30d"), lang)))
+    if isinstance(base.get("sales_30d"), dict):
+        lines.append("• " + _t("monthly_sales", lang, a=_fmt(current_value(client_id, value, "sales_30d"), lang),
+                               b=_fmt(base["sales_30d"].get("paid_orders"), lang)))
     words = value.get("keywords") or []
     try:
         now_pos = _positions(client_id, words) if words else {}

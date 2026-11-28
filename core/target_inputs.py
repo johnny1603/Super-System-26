@@ -403,6 +403,12 @@ BASIS = {
                      "sur la base de vos chiffres : {leads} demandes ces 30 derniers jours pour {spend} dépensés en publicité, et un budget mensuel de {budget}",
                      "بناءً على أرقامكم: {leads} استفسارات في آخر 30 يومًا مقابل {spend} إنفاق على الإعلان، وميزانية شهرية {budget}",
                      "на основе ваших цифр: {leads} обращений за последние 30 дней при расходе на рекламу {spend} и месячном бюджете {budget}"),
+    "history_sales": _five(
+        "על בסיס הנתונים שלכם: {leads} מכירות בחנות ב-30 הימים האחרונים (כל המכירות, לא רק אלה שהגיעו מפרסום), הוצאה של {spend} על פרסום, ותקציב חודשי של {budget}",
+        "based on your own figures: {leads} sales in the store in the last 30 days (all sales, not only those that came from advertising), {spend} spent on advertising, and a monthly budget of {budget}",
+        "sur la base de vos chiffres : {leads} ventes dans la boutique ces 30 derniers jours (toutes les ventes, pas seulement celles venues de la publicité), {spend} dépensés en publicité, et un budget mensuel de {budget}",
+        "بناءً على أرقامكم: {leads} مبيعات في المتجر في آخر 30 يومًا (كل المبيعات، لا تلك القادمة من الإعلان فقط)، و{spend} إنفاق على الإعلان، وميزانية شهرية {budget}",
+        "на основе ваших цифр: {leads} продаж в магазине за последние 30 дней (все продажи, не только пришедшие с рекламы), расход на рекламу {spend} и месячный бюджет {budget}"),
     "plan": _five("זו הערכה שלנו לפי מחקר הביטויים שאישרתם, לא מדד מהשוק", "our own estimate from the phrase research you approved, not a market figure",
                   "notre estimation d'après la recherche d'expressions que vous avez approuvée, pas un chiffre du marché",
                   "تقديرنا بحسب بحث العبارات الذي وافقتم عليه، وليس مؤشرًا من السوق",
@@ -497,17 +503,30 @@ def history_basis(now: dict):
     """The basis of a RESULT target, or None when the client's own history
     cannot carry one (thin, or no budget)."""
     money = (now["inputs"].get("budget") or {}).get("value")
-    if now["thin"] or not money or now.get("kind") != "leads":      # the one result metric a target exists for is enquiries
+    if now["thin"] or not money:
         return None
     base = now["baseline"]
-    return {"kind": "history", "leads": int(base["leads"]), "spend": round(float(base["spend"]), 2), "budget": float(money)}
+    out = {"kind": "history", "spend": round(float(base["spend"]), 2), "budget": float(money)}
+    if now.get("kind") == "sales":          # this client counts sales: the basis is the store's paid orders
+        return {**out, "unit": "sales", "orders": int(base["orders"])}
+    return {**out, "leads": int(base["leads"])}
+
+
+def basis_results(basis: dict):
+    """The measured results a history basis rests on, in its own unit."""
+    return basis.get("orders") if basis.get("unit") == "sales" else basis.get("leads")
+
+
+def metric_of(kind: str) -> str:
+    """The quarter-goals RESULT metric for what this client counts."""
+    return "sales_30d" if kind == "sales" else "leads_30d"
 
 
 def history_ceiling(basis: dict) -> int:
     """The most enquiries in 30 days the client's own history supports at the
     recorded budget (budget / what one enquiry cost). An aim above it has no
     basis, so the card never carries one."""
-    cost_per = float(basis["spend"]) / float(basis["leads"])
+    cost_per = float(basis["spend"]) / float(basis_results(basis))
     return int(float(basis["budget"]) // cost_per)
 
 
@@ -520,8 +539,10 @@ def basis_line(basis: dict, lang: str) -> str:
         raise BasisMissing("no basis type on the number")
     text = _pick(BASIS[kind], lang)
     if kind == "history":
-        if any(basis.get(k) in (None, "") for k in ("leads", "spend", "budget")):
+        if any(v in (None, "") for v in (basis_results(basis), basis.get("spend"), basis.get("budget"))):
             raise BasisMissing("a history basis without its figures")
-        text = (text.replace("{leads}", str(int(basis["leads"]))).replace("{spend}", _money(basis["spend"], lang))
+        if basis.get("unit") == "sales":
+            text = _pick(BASIS["history_sales"], lang)
+        text = (text.replace("{leads}", str(int(basis_results(basis)))).replace("{spend}", _money(basis["spend"], lang))
                 .replace("{budget}", _money(basis["budget"], lang)))
     return text

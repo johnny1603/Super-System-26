@@ -109,11 +109,15 @@ def build(aa) -> dict:
             # A thin baseline carries NO result target, whatever the model aimed for:
             # the first period is a learning period, and the card says so
             clean["learning"] = target_inputs.learning(now)
-        elif (params or {}).get("leads_aim") not in (None, ""):
-            basis = target_inputs.history_basis(now)
-            aim = min(int(float(params["leads_aim"])), target_inputs.history_ceiling(basis)) if basis else 0
-            if aim >= 1:                      # never above what the client's own history supports
-                clean["leads_aim"], clean["leads_basis"] = aim, basis
+        else:
+            # The RESULT target is in what THIS client counts: sales for a store, enquiries otherwise.
+            # An aim in the other unit is dropped (a store client gets no enquiries target).
+            key = "sales" if now.get("kind") == "sales" else "leads"
+            if (params or {}).get(f"{key}_aim") not in (None, ""):
+                basis = target_inputs.history_basis(now)
+                aim = min(int(float(params[f"{key}_aim"])), target_inputs.history_ceiling(basis)) if basis else 0
+                if aim >= 1:                      # never above what the client's own history supports
+                    clean[f"{key}_aim"], clean[f"{key}_basis"] = aim, basis
         if rows:
             return {"params": clean, "supersedes": rows[0].get("id")}
         return {"params": clean}
@@ -130,22 +134,32 @@ def build(aa) -> dict:
                 out[key] = max(0.5, min(24.0, float(params[key])))
         if params.get("learning"):
             out["learning"] = v_learning(params["learning"])
-        if params.get("leads_aim") not in (None, ""):
+        for key in ("leads", "sales"):
+            if params.get(f"{key}_aim") in (None, ""):
+                continue
             if out.get("learning"):
                 raise ValueError("a learning period carries no result target")
-            out["leads_aim"] = v_leads(params["leads_aim"], client_id)
-            out["leads_basis"] = v_basis(params.get("leads_basis"))
+            out[f"{key}_aim"] = v_leads(params[f"{key}_aim"], client_id)
+            out[f"{key}_basis"] = v_basis(params.get(f"{key}_basis"), key)
+        if out.get("leads_aim") and out.get("sales_aim"):
+            raise ValueError("one result target: what this client counts")
         if params.get("positions_aim") not in (None, "") and out["keywords"]:
             out["positions_aim"] = v_positions(params["positions_aim"], client_id)
         return out
 
-    def v_basis(value):
+    def v_basis(value, key="leads"):
         """REQUIRED with a result target: the client's own history, with its figures."""
         value = value if isinstance(value, dict) else {}
         if value.get("kind") != "history":
             raise ValueError("a result target with nothing it rests on")
-        out = {"kind": "history", "leads": int(value["leads"]), "spend": float(value["spend"]), "budget": float(value["budget"])}
-        if target_inputs.thin({"leads": out["leads"], "spend": out["spend"]}) or out["budget"] <= 0:
+        out = {"kind": "history", "spend": float(value["spend"]), "budget": float(value["budget"])}
+        if key == "sales":
+            if value.get("unit") != "sales":
+                raise ValueError("a sales target rests on measured sales")
+            out.update(unit="sales", orders=int(value["orders"]))
+        else:
+            out["leads"] = int(value["leads"])
+        if target_inputs.thin({"leads": out.get("leads"), "orders": out.get("orders"), "spend": out["spend"]}, key) or out["budget"] <= 0:
             raise ValueError("the history is too thin to carry a result target")
         return out
 
@@ -184,10 +198,11 @@ def build(aa) -> dict:
         return text
 
     def aims_of(params):
-        return {"leads_30d": params.get("leads_aim"), "positions_gained": params.get("positions_aim")}
+        return {"leads_30d": params.get("leads_aim"), "sales_30d": params.get("sales_aim"),
+                "positions_gained": params.get("positions_aim")}
 
     def bases_of(params):
-        return {"leads_30d": params.get("leads_basis")}
+        return {"leads_30d": params.get("leads_basis"), "sales_30d": params.get("sales_basis")}
 
     def display(client_id, params):
         lang = aa._lang(client_id)
@@ -320,7 +335,9 @@ def build(aa) -> dict:
                     "client sees). The click starts the 3-month clock and captures the dated baseline. "
                     "ORDER (target_inputs in your data): while target_inputs.missing is not empty the system shows NO card — "
                     "it tells the client what is missing; get it and record it with record_target_inputs first. When the "
-                    "measured baseline is too thin (code decides), the card carries NO enquiries target: it states a learning "
+                    "measured baseline is too thin (code decides), the card carries NO result target: it states a learning "
+                    "period instead. The result target is in what the client COUNTS: sales_aim for a store client "
+                    "(target_inputs.kind = sales), leads_aim otherwise — the other one is dropped. With a thin baseline: a learning "
                     "period instead. Never say a result number yourself in either case.",
             "params": {
                 "keywords": {"required": False, "validate": v_keywords,
@@ -332,6 +349,10 @@ def build(aa) -> dict:
                 "leads_aim": {"required": False, "validate": v_leads,
                               "hint": "your honest aim: enquiries in 30 days at the end of the 3 months (a number). "
                                       "The card shows the client a committed number computed in code"},
+                "sales_aim": {"required": False, "validate": v_leads,
+                              "hint": "ONLY for a client who counts SALES (target_inputs.kind = sales): your honest aim for "
+                                      "paid orders in the store in 30 days at the end of the 3 months (a number). Use this "
+                                      "INSTEAD of leads_aim for them; code caps it at what their own history supports"},
                 "positions_aim": {"required": False, "validate": v_positions,
                                   "hint": "organic only: your honest aim for the average positions gained on the agreed "
                                           "phrases (a number, e.g. 5). Never 'page one'"},
