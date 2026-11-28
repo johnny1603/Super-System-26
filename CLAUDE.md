@@ -962,6 +962,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   calls `set_performance_goal` (refuses by name: inputs missing / account not measuring).
   `connection_catalog.NOT_BUILT` (merchant_center, creatomate, uppbeat) is never offered.
   `tests/test_conversion_measurement.py`.
+- **Characterisation run again (2026-11-28, `core/intake_reset.py`)**: `/admin/connections/` → "אפיון מחדש". `plan()`
+  reads only (what would be deleted / kept, whether the interview can open); `run()` needs the typed phrase, copies every
+  removed row into `intake_reset:<id>` FIRST, and removes ONLY the characterised mark, the earlier run's captured facts,
+  the agreed goals and an open goals card (the sales lead only when asked). It has no write to connections, keys, the
+  brand brief, folders, media, poses or references — do not add one. After a reset the interview reads only what was said
+  since (`_reset_since`), and an interview answer never overwrites an approved brief or an existing `never_say` (admin
+  alert with the proposed text). The goals card reports a sales business in sales, never enquiries (`_counts_sales`);
+  `audit()` lists agreed targets that contradict the client's stated result. `tests/test_intake_reset.py`.
 - **The two search reports (2026-11-29, `core/search_reports.py`)**: what people typed
   (`search_term_view`, search campaigns only) as a DECISION list — exclude / add candidates that exist
   ONLY while the account is `measuring` — and impression share per campaign, NEVER one number: lost to

@@ -3156,6 +3156,36 @@ def admin_google_ads_measurement(request: Request, client_id: int = 27):
     from core import conversion_measurement
     return {"success": True, "data": conversion_measurement.refresh(client_id)}
 
+class IntakeResetRequest(BaseModel):
+    confirm: str = ""
+    include_lead: bool = False
+
+@app.get("/api/admin/intake-reset/{client_id}")
+def admin_intake_reset_plan(client_id: int, request: Request):
+    # READS ONLY: exactly what a characterisation reset would delete and what it keeps, whether the
+    # interview can open afterwards, and the phrase to type (core/intake_reset).
+    _require_admin(request)
+    from core import intake_reset
+    return {"success": True, "data": intake_reset.plan(client_id)}
+
+@app.post("/api/admin/intake-reset/{client_id}")
+def admin_intake_reset_run(client_id: int, req: IntakeResetRequest, request: Request):
+    # The reset itself: typed phrase required, every removed row copied first, connections and the
+    # brand brief verified unchanged afterwards. Never disconnects or re-authorises anything.
+    _require_admin(request)
+    from core import intake_reset
+    try:
+        return {"success": True, "data": intake_reset.run(client_id, req.confirm, include_lead=req.include_lead)}
+    except intake_reset.ResetError as e:
+        raise HTTPException(status_code=400, detail={"code": e.code, "message": e.detail})
+
+@app.get("/api/admin/targets/audit")
+def admin_targets_audit(request: Request):
+    # Every client's agreed result target against what that client says a result is (READS ONLY)
+    _require_admin(request)
+    from core import intake_reset
+    return {"success": True, "data": intake_reset.audit()}
+
 @app.get("/api/admin/google-ads/search-reports")
 def admin_google_ads_search_reports(request: Request, client_id: int = 27):
     # What people searched and the impression share SPLIT (lost to budget / lost to rank) for one

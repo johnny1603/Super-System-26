@@ -971,7 +971,7 @@ def _settings_keys(ids: list) -> list:
                                      # the stored organic SEO report (core/seo_report)
                                      f"seo_report:{int(i)}",
                                      # the weekly content plan (core/content_team)
-                                     f"content_plan:{int(i)}", f"social_queue:{int(i)}", f"post_drafts:{int(i)}", f"slide_templates:{int(i)}", f"drive_folders:{int(i)}", f"drive_assets:{int(i)}", f"drive_assets_lock:{int(i)}", f"asset_feedback:{int(i)}", f"governance:{int(i)}", f"brand_brief:{int(i)}", f"media_library:{int(i)}", f"media_deletions:{int(i)}", f"working_copies:{int(i)}", f"pose_approvals:{int(i)}", f"business_avatars:{int(i)}", f"media_orders:{int(i)}", f"google_page:{int(i)}", f"target_inputs:{int(i)}", f"conversion_measurement:{int(i)}", f"search_reports:{int(i)}",
+                                     f"content_plan:{int(i)}", f"social_queue:{int(i)}", f"post_drafts:{int(i)}", f"slide_templates:{int(i)}", f"drive_folders:{int(i)}", f"drive_assets:{int(i)}", f"drive_assets_lock:{int(i)}", f"asset_feedback:{int(i)}", f"governance:{int(i)}", f"brand_brief:{int(i)}", f"media_library:{int(i)}", f"media_deletions:{int(i)}", f"working_copies:{int(i)}", f"pose_approvals:{int(i)}", f"business_avatars:{int(i)}", f"media_orders:{int(i)}", f"google_page:{int(i)}", f"target_inputs:{int(i)}", f"conversion_measurement:{int(i)}", f"search_reports:{int(i)}", f"intake_reset:{int(i)}",
                                      # a post production's progress record (core/production_progress)
                                      f"production_progress:{int(i)}",
                                      f"avatar_photos:{int(i)}", f"invite_resume:{int(i)}",

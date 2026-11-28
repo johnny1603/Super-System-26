@@ -153,10 +153,32 @@ def _transcript(client_id: int) -> list:
     # channel filter is done by the query, and the text column is `content`
     # (client_communications) — not `message`.
     rows = get_communications(client_id, limit=40, channel="dashboard_chat") or []
+    # A characterisation run again (core/intake_reset) reads only what was said SINCE the reset:
+    # an existing client's chat history would otherwise fill the turn limit and end it at once.
+    since = _reset_since(client_id)
+    if since:
+        rows = [row for row in rows if str(row.get("created_at") or "") >= since]
     turns = [{"role": "assistant" if row.get("direction") == "outbound" else "user",
               "text": (row.get("content") or "")[:1500]}
              for row in reversed(rows)]
     return turns[-(MAX_TURNS * 2):]
+
+
+def _reset_since(client_id: int) -> str:
+    try:
+        from core import intake_reset
+        return intake_reset.since(client_id)
+    except Exception:
+        return ""
+
+
+def _brief_is_settled(client_id: int) -> bool:
+    """True when the brand brief already holds the client's answer or was
+    approved by the manager: the interview then PROPOSES, it never writes."""
+    from core import brand_brief, brand_voice
+    if brand_voice.read(client_id)["text"]:
+        return True
+    return (brand_brief.current(client_id) or {}).get("status") == "approved"
 
 
 # ─── The conversation ─────────────────────────────────────────────────────────
@@ -496,6 +518,18 @@ def _store_never_say(client_id: int, captured) -> int:
     (core/brand_voice). Their own words, kept as said. 1 when stored."""
     text = str((captured or {}).get("never_say") or "").strip() if isinstance(captured, dict) else ""
     if len(text) < 2:
+        return 0
+    try:
+        settled = _brief_is_settled(client_id)
+    except Exception as e:
+        print(f"[{AGENT_NAME}] brief state unreadable for client {client_id}: {type(e).__name__}")
+        settled = True                          # unknown = do not write over work that may exist
+    if settled:
+        # An existing brief is never replaced by an interview answer: the change is proposed to the manager
+        agent_alert(AGENT_NAME, [
+            f"client {client_id}: the characterisation heard an answer to 'what may never be said about you' while the brand "
+            f"brief is approved or already holds one. NOT written. Proposed: \"{text[:300]}\". If it should change the brief, "
+            f"edit the brief (or the client edits it on their branding page)."])
         return 0
     try:
         from core import brand_voice

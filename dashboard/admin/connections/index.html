@@ -103,6 +103,23 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
     </div>
     <div id="gaConnOut" class="muted" style="margin-top:10px;"></div>
   </div>
+  <!-- Run a client's characterisation again (core/intake_reset). The first button READS ONLY: what would be
+       deleted and what is kept. The reset needs the typed phrase. Nothing here disconnects or re-authorises. -->
+  <div class="card" id="intakeReset">
+    <h2>אפיון מחדש ללקוח קיים</h2>
+    <div class="muted">מוחק רק את סימון ״מאופיין״, את מה שנאסף בריצת האפיון הקודמת ואת היעדים שאושרו. חיבורים, מפתחות, תדריך המותג, תיקיות, ספריית המדיה, פוזות ותמונות ייחוס לא נוגעים בהם. לכל שורה שנמחקת נשמר עותק.</div>
+    <div class="row">
+      <label class="muted" style="margin:0;">מספר לקוח <input type="text" dir="ltr" id="irClient" value="27" inputmode="numeric" style="width:90px;"></label>
+      <button id="irPlanBtn">מה יימחק ומה יישמר (קריאה בלבד)</button>
+      <button id="irAuditBtn">יעדים שסותרים את הגדרת התוצאה — כל הלקוחות</button>
+    </div>
+    <div id="irOut" class="muted" style="margin-top:10px;"></div>
+    <div class="row" id="irRunRow" style="display:none;">
+      <label class="muted" style="margin:0;">להקליד <code id="irPhrase" dir="ltr"></code> <input type="text" dir="ltr" id="irConfirm" style="width:170px;"></label>
+      <label class="muted" id="irLeadWrap" style="margin:0;display:none;"><input type="checkbox" id="irLead"> למחוק גם את ליד המכירה מהריצה הקודמת</label>
+      <button id="irRunBtn">לאפס עכשיו</button>
+    </div>
+  </div>
   <!-- How agents speak to clients: READ-ONLY (GET /api/admin/client-speech/net). How often an agent's
        text failed the client-language check and the automatic replacement went out. OUR count. -->
   <div class="card" id="speechNet">
@@ -377,6 +394,78 @@ async function gaSearchReports() {
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
 }
 document.getElementById("gaSearchBtn").onclick = gaSearchReports;
+// Characterisation reset (core/intake_reset): the plan is a read; the reset needs the typed phrase.
+const IR_WHY = { package_unresolved: "לא ניתן לקרוא מה הלקוח רכש (אין רכישה ואין הרשאת שירותים של חשבון פנימי) — האפיון לא ייפתח עד שזה מוגדר",
+  no_required_connections: "החבילה לא כוללת שירות שדורש חיבור — השער לא ייפתח", connections_missing: "חסרים חיבורים נדרשים", unreadable: "מצב החיבורים לא נקרא" };
+const IR_METRIC = { leads_30d: "פניות ב-30 יום", sales_30d: "מכירות ב-30 יום" };
+function irStart(s) {
+  return s.ready ? "האפיון יכול להיפתח: כל החיבורים הנדרשים קיימים."
+    : "האפיון לא יכול להיפתח: " + esc(IR_WHY[s.reason] || s.reason) + (s.missing ? " (" + esc(s.missing.join(", ")) + ")" : "");
+}
+function irContra(c) {
+  return `לקוח ${esc(c.client_id)}: התוצאה המוצהרת היא <b>${c.stated_result === "sales" ? "מכירות" : "פניות"}</b>, והיעד המאושר נספר ב-`
+    + (c.targets || []).map(t => `${esc(IR_METRIC[t.metric] || t.metric)} (${esc(t.target)})`).join(", ") + ` · אושר ${esc(String(c.agreed_at || "").slice(0, 10))}`;
+}
+async function irPlan() {
+  const out = document.getElementById("irOut"), cid = parseInt(document.getElementById("irClient").value, 10);
+  document.getElementById("irRunRow").style.display = "none";
+  if (!cid) { out.textContent = "חסר מספר לקוח"; return; }
+  out.textContent = "קורא…";
+  try {
+    const d = await api("/api/admin/intake-reset/" + cid), x = d.delete, k = d.keep, g = x.agreed_goals || {};
+    const li = a => a.map(v => `<li>${v}</li>`).join("");
+    const del = [
+      `סימון ״מאופיין״: ${x.characterised_mark.length ? x.characterised_mark.map(r => esc(String(r.created_at).slice(0, 10))).join(", ") : "אין"}`,
+      `מה שנאסף בריצה הקודמת: ${x.captured_facts.length} רשומות`,
+      g.agreed_at ? `היעדים שאושרו ב-${esc(g.agreed_at.slice(0, 10))} (נקודת התחלה ${esc(String(g.baseline_captured_at || "").slice(0, 10))}): `
+        + g.targets.map(t => `${esc(IR_METRIC[t.metric] || t.metric)} ${esc(t.target)}`).join(" · ") : "יעדים מאושרים: אין",
+      `כרטיס יעדים פתוח: ${x.open_goals_card.length ? x.open_goals_card.length + " (יבוטל)" : "אין"}`,
+      x.sales_lead.id ? `ליד מכירה ${esc(x.sales_lead.id)} מ-${esc(String(x.sales_lead.created_at).slice(0, 10))} (${x.sales_lead.answers} תשובות${x.sales_lead.has_proposal ? ", עם הצעה" : ""}) — <b>נשמר</b> אלא אם מסמנים למטה` : "ליד מכירה מקושר: אין"];
+    const b = k.brand_brief;
+    const keep = [`חיבורים ומפתחות (${k.connections.length}): ${esc(k.connections.map(c => c.split(":").slice(0, 2).join(" ")).join(", ") || "אין")}`,
+      `תדריך המותג: גרסה ${esc(b.v === null || b.v === undefined ? "—" : b.v)}, ${esc(b.status || "—")}, ${esc(b.versions)} גרסאות`,
+      ...Object.values(k.stored).filter(v => !/brand brief/.test(v)).map(esc), ...k.also.map(esc)];
+    out.innerHTML = `<div><b>יימחק</b> (עם עותק):</div><ul>${li(del)}</ul><div><b>לא נוגעים</b>:</div><ul>${li(keep)}</ul>`
+      + (d.contradiction && d.contradiction.counted ? `<div>${irContra(d.contradiction)}</div>` : "")
+      + `<div style="margin-top:6px;">${irStart(d.intake_can_start)}</div>`
+      + (d.nothing_to_reset ? "<div>אין מה לאפס אצל הלקוח הזה.</div>" : "");
+    if (!d.nothing_to_reset) {
+      document.getElementById("irPhrase").textContent = d.confirm_phrase;
+      document.getElementById("irConfirm").value = ""; document.getElementById("irLead").checked = false;
+      document.getElementById("irLeadWrap").style.display = x.sales_lead.id && x.sales_lead.deletable ? "" : "none";
+      document.getElementById("irRunRow").style.display = "";
+    }
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הקריאה נכשלה — לנסות שוב"; }
+}
+async function irRun() {
+  const out = document.getElementById("irOut"), cid = parseInt(document.getElementById("irClient").value, 10);
+  const confirm = document.getElementById("irConfirm").value.trim();
+  if (confirm !== document.getElementById("irPhrase").textContent) { out.insertAdjacentHTML("beforeend", "<div>המשפט שהוקלד לא תואם — לא בוצע דבר.</div>"); return; }
+  try {
+    const d = await api("/api/admin/intake-reset/" + cid, { confirm, include_lead: document.getElementById("irLead").checked });
+    document.getElementById("irRunRow").style.display = "none";
+    const b = d.brand_brief;
+    out.innerHTML = `<div><b>בוצע.</b> סימון ״מאופיין״: ${esc(d.did.characterised_mark)} · נאסף: ${esc(d.did.captured_facts)} · יעדים: ${d.did.agreed_goals ? "נמחקו" : "לא היו"} · כרטיסים שבוטלו: ${esc(d.did.open_goals_card)} · ליד: ${d.did.sales_lead ? "נמחק" : "נשמר"}</div>
+      <div>${d.kept_unchanged ? "חיבורים, תדריך המותג וכל השאר נבדקו אחרי האיפוס: לא השתנו." : "<b>משהו שלא אמור להשתנות השתנה בזמן האיפוס:</b> " + esc(d.moved.join("; "))}</div>
+      <div>תדריך המותג: גרסה ${esc(b.v === null || b.v === undefined ? "—" : b.v)}, ${esc(b.status || "—")}</div>
+      ${d.still_marked ? "<div><b>הלקוח עדיין מסומן — האיפוס לא הושלם.</b></div>" : ""}
+      <div style="margin-top:6px;">${irStart(d.intake_can_start)}</div>`;
+  } catch (e) { if (e.message !== "auth") out.insertAdjacentHTML("beforeend", "<div>האיפוס נכשל — לא ידוע מה בוצע; ללחוץ שוב על ״מה יימחק ומה יישמר״.</div>"); }
+}
+async function irAudit() {
+  const out = document.getElementById("irOut");
+  document.getElementById("irRunRow").style.display = "none";
+  out.textContent = "קורא…";
+  try {
+    const d = await api("/api/admin/targets/audit");
+    out.innerHTML = `<div>לקוחות עם יעדים מאושרים: ${esc(d.checked)} (${esc(d.clients.join(", ") || "אין")}) · מתוכם עם יעד תוצאה: ${esc(d.with_result_target)}</div>`
+      + (d.contradictions.length ? "<ul>" + d.contradictions.map(c => `<li>${irContra(c)}</li>`).join("") + "</ul>" : "<div>אין יעד שסותר את הגדרת התוצאה של הלקוח.</div>")
+      + (d.unknown.length ? `<div>לא ניתן לבדוק (הגדרת התוצאה לא נקראה): ${esc(d.unknown.map(u => u.client_id).join(", "))}</div>` : "");
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הקריאה נכשלה — לנסות שוב"; }
+}
+document.getElementById("irPlanBtn").onclick = irPlan;
+document.getElementById("irRunBtn").onclick = irRun;
+document.getElementById("irAuditBtn").onclick = irAudit;
 const GA_GOAL_REFUSED = {
   "no stated monthly budget — cannot set a goal": "אין תקציב חודשי רשום. הלקוח מאשר אותו בצ׳אט (כרטיס ״הנתונים שעליהם נבנה היעדים״).",
   required_inputs_missing: "חסרים נתוני חובה לפני יעד",

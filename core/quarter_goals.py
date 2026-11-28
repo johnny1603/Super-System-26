@@ -387,6 +387,14 @@ T = {
                          "Mesuré : {a} demandes ces 30 derniers jours, contre {b} les 30 précédents",
                          "مقاس: {a} استفسارات خلال آخر 30 يومًا مقابل {b} في الثلاثين التي قبلها",
                          "Измерено: {a} обращений за последние 30 дней против {b} за предыдущие 30"),
+    "improve_now_sales": _five("נמדד: {a} מכירות ב-30 הימים האחרונים", "Measured: sales in the last 30 days: {a}",
+                               "Mesuré : {a} ventes ces 30 derniers jours", "مقاس: {a} مبيعات خلال آخر 30 يومًا",
+                               "Измерено: продаж за последние 30 дней: {a}"),
+    "improve_next_sales": _five("הצוות ממשיך לחזק את הערוצים שמביאים קונים לאתר",
+                                "The team keeps strengthening the channels that bring buyers to the site",
+                                "L'équipe renforce les canaux qui amènent des acheteurs sur le site",
+                                "يواصل الفريق تقوية القنوات التي تجلب المشترين إلى الموقع",
+                                "Команда продолжает усиливать каналы, которые приводят покупателей на сайт"),
     "improve_next": _five("לענות לכל פנייה חדשה מהר; הצוות ממשיך לחזק את הערוצים שמביאים אותן",
                           "Answer every new enquiry quickly; the team keeps strengthening the channels that bring them",
                           "Répondre vite à chaque nouvelle demande ; l'équipe renforce les canaux qui les apportent",
@@ -500,9 +508,30 @@ def _organic(client_id: int, value: dict, lang: str) -> dict:
     return out
 
 
+def _counts_sales(client_id: int):
+    """True when this client's stated result is SALES (core/target_inputs),
+    False when enquiries, None when it cannot be read. A business that counts
+    sales is never reported in enquiries (client 27's live card did that)."""
+    try:
+        from core import target_inputs
+        return target_inputs.result_kind(target_inputs._conversion(client_id)) == "sales"
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: result definition unreadable ({type(e).__name__})")
+        return None
+
+
 def _improve(client_id: int, value: dict, lang: str) -> dict:
     out = {"key": "improve", "persona": "general",
            "goal": _t("improve_goal", lang, x=value.get("improve") or pick(T["improve_default"], lang))}
+    sales = _counts_sales(client_id)
+    if sales or sales is None:
+        orders = current_value(client_id, value, "sales_30d") if sales else None
+        if orders is None:
+            out.update(now=_t("not_measured", lang), measured=False)
+        else:
+            out.update(now=_t("improve_now_sales", lang, a=num(orders)), measured=True)
+        out["next"] = _t("improve_next_sales" if sales else "improve_next", lang)
+        return out
     try:
         a, b = _count_leads(client_id, 30, 0), _count_leads(client_id, 60, 30)
         out.update(now=_t("improve_now", lang, a=a, b=b), measured=True)
@@ -516,11 +545,11 @@ def _fmt(value, lang: str) -> str:
     return pick(T["not_measured"], lang) if value is None else str(value)
 
 
-def _baseline_line(value: dict, lang: str) -> str:
+def _baseline_line(value: dict, lang: str, client_id: int = None) -> str:
     base = value.get("baseline") or {}
     if not base:
         return ""
-    parts = [_t("base_leads", lang, n=_fmt(base.get("leads_30d"), lang))]
+    parts = [] if (client_id is not None and _counts_sales(client_id)) else [_t("base_leads", lang, n=_fmt(base.get("leads_30d"), lang))]
     if isinstance(base.get("sales_30d"), dict):          # a store is connected: its sales are part of the starting point
         parts.append(_t("base_sales", lang, n=_fmt(base["sales_30d"].get("paid_orders"), lang)))
     words = value.get("keywords") or []
@@ -577,7 +606,8 @@ def monthly_report(client_id: int, value: dict, lang: str = None) -> str:
         now_leads = _count_leads(client_id, 30, 0)
     except Exception:
         now_leads = None
-    lines.append("• " + _t("monthly_leads", lang, a=_fmt(now_leads, lang), b=_fmt(base.get("leads_30d"), lang)))
+    if not _counts_sales(client_id):                      # a business that counts sales is not reported in enquiries
+        lines.append("• " + _t("monthly_leads", lang, a=_fmt(now_leads, lang), b=_fmt(base.get("leads_30d"), lang)))
     if isinstance(base.get("sales_30d"), dict):
         lines.append("• " + _t("monthly_sales", lang, a=_fmt(current_value(client_id, value, "sales_30d"), lang),
                                b=_fmt(base["sales_30d"].get("paid_orders"), lang)))
@@ -642,7 +672,7 @@ def track(client_id: int, lang: str = None) -> dict:
     estimate = _t("estimate", lang, c=num(plan["committed_months"])) if plan.get("committed_months") else ""
     rows = evaluate(client_id, value)
     return {"agreed": True, "title": pick(T["title"], lang), "month": _t("month", lang, m=month),
-            "honest": pick(T["honest"], lang), "baseline": _baseline_line(value, lang), "estimate": estimate,
+            "honest": pick(T["honest"], lang), "baseline": _baseline_line(value, lang, client_id), "estimate": estimate,
             "targets_title": pick(T["targets_title"], lang) if rows else "",
             "targets": [dict(r, text=target_line(r, lang)) for r in rows],
             "learning": learning_lines(value, lang),
