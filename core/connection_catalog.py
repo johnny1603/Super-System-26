@@ -91,6 +91,21 @@ NAMES = {
     "uppbeat": "Uppbeat", "manychat": "אוטומציית שיחות",
 }
 
+# NOT BUILT (2026-11-28): rows that existed in the table with a sign-up link and NO code behind
+# them — a client could register, press "done", and nothing could happen or be verified.
+# Merchant Center was built and retired on 2026-10-21; the other two never had an integration.
+# Whatever the table says, these are never offered: no link, no "do you have an account", no
+# "the team will get back to you". ONE honest line. To bring one back: build it, add it to
+# PLATFORMS / VENDOR_TOOLS (so "done" can be verified), then remove it from here.
+NOT_BUILT = ("merchant_center", "creatomate", "uppbeat")
+NOT_BUILT_LINE = {
+    "he": "החיבור של {name} עוד לא זמין אצלנו. אין מה לפתוח או לחבר כרגע, ונעדכן כאן כשזה יהיה אפשרי.",
+    "en": "Connecting {name} is not available with us yet. There is nothing to open or connect right now; we will say so here when it is.",
+    "fr": "La connexion de {name} n'est pas encore disponible chez nous. Rien à ouvrir ni à connecter pour l'instant ; nous l'indiquerons ici quand ce sera possible.",
+    "ar": "ربط {name} غير متاح لدينا بعد. لا شيء لفتحه أو ربطه حاليًا، وسنذكر ذلك هنا عندما يصبح ممكنًا.",
+    "ru": "Подключение {name} у нас пока недоступно. Сейчас нечего открывать или подключать; сообщим здесь, когда это станет возможно.",
+}
+
 CHIP_HAS = "יש לי חשבון"
 CHIP_NONE = "אין לי עדיין"
 CHIP_DONE = "סיימתי"
@@ -206,6 +221,9 @@ def _clean(row: dict) -> dict:
         if out[k] and not out[k].startswith("https://"):
             out[k] = ""   # only https links ever reach a client
     out["enabled"] = bool(out["enabled"])
+    out["available"] = out["key"] not in NOT_BUILT
+    if not out["available"]:          # nothing behind it: never enabled, never a link — whatever the table holds
+        out.update(enabled=False, signup_url="", pricing_url="")
     return out
 
 
@@ -236,6 +254,8 @@ def admin_update(key: str, changes: dict) -> dict:
     be https. Raises ValueError on a bad value or unknown key."""
     if not entry(key) and not any(r["key"] == key for r in rows(fresh=True)):
         raise ValueError("unknown_key")
+    if key in NOT_BUILT:
+        raise ValueError("not_built")     # there is no integration to switch on
     clean = {}
     for field in ("signup_url", "pricing_url", "recommended_plan_note", "help_notes", "tier", "enabled"):
         if field not in changes:
@@ -440,6 +460,9 @@ def flow(client_id: int, key: str, step: str, lang: str = None) -> dict:
         from core import chat_automation
         return {"show": True, "key": key, "persona": "general", "connect": "", "support": False, "chips": [],
                 "messages": [chat_automation.pitch(lang)], "card_action": chat_automation.CALL_ACTION}
+    if key in NOT_BUILT:
+        return {"show": True, "key": key, "persona": PERSONA.get(key, "general"), "connect": "", "support": False,
+                "chips": [], "available": False, "messages": [(NOT_BUILT_LINE.get(lang) or NOT_BUILT_LINE["he"]).format(name=_name(key))]}
     row = entry(key)
     if row and row["tier"] == "included":
         return {"show": False}

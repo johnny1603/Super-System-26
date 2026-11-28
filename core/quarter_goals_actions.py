@@ -46,6 +46,25 @@ IMPROVE_SALES = {"he": "יותר מכירות באתר, חודש אחרי חוד
 MET_FROM = {"he": "סף 90%:", "en": "90% threshold:", "fr": "seuil 90 % :", "ar": "عتبة 90%:", "ru": "порог 90%:"}
 
 
+def set_ads_goal(client_id: int) -> dict:
+    """google_ads_agent.set_performance_goal, called once the client recorded a
+    budget (and by the admin route). Never raises; a refusal is logged with its
+    name so the Control Room shows WHY no goal exists."""
+    try:
+        from agents.google_ads_agent import set_performance_goal
+        out = set_performance_goal(client_id)
+    except Exception as e:
+        out = {"success": False, "error": f"{type(e).__name__}"}
+    if not out.get("success"):
+        try:
+            from agents.client_agent import log_activity
+            log_activity(client_id, "google_ads_agent", "ads_goal_not_set",
+                         {"error": out.get("error"), "missing": out.get("missing"), "measurement": out.get("measurement")}, {})
+        except Exception:
+            pass
+    return out
+
+
 def build(aa) -> dict:
     _txt = aa._txt
 
@@ -267,6 +286,11 @@ def build(aa) -> dict:
     def run_inputs(client_id, params, background_tasks):
         target_inputs.record(client_id, params, by="client")
         quarter_goals._block_cache.pop(int(client_id), None)
+        if params.get("budget_ils") and background_tasks is not None:
+            # The budget is what google_ads_agent.set_performance_goal waited for (it had no caller):
+            # the internal 90-day target, set after the click. It refuses by name while an input is
+            # missing or the account is not measuring — see set_ads_goal.
+            background_tasks.add_task(set_ads_goal, client_id)
         return {"missing": target_inputs.missing(client_id)}
 
     def inputs_done_message(result, lang):

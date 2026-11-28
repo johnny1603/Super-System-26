@@ -1049,9 +1049,37 @@ def _fetch_two_window_metrics(conn: dict) -> list:
     return list(campaigns.values())
 
 
-def _check_performance_problems(client_id: int, campaigns: list) -> list:
+def _zero_conversion_alert(label: str, last: dict, prev: dict, measuring: str, campaign_id: str) -> tuple:
+    """(issue key, message) for money spent with no counted conversion — WHAT
+    IT ACTUALLY IS, by the account's measurement state (core/conversion_measurement).
+    "Zero conversions" is said only of an account that is measuring."""
+    spent = f"{label} spent {last['cost']} ILS in the last 7 days"
+    if measuring == "measuring":
+        return (f"perf_zeroconv_{campaign_id}",
+                f"{spent} with ZERO conversions (previous week: {prev['conversions']} conversions)")
+    if measuring == "not_measured":
+        return (f"unmeasured_spend_{campaign_id}",
+                f"MONEY IS GOING OUT AND NOTHING IS BEING MEASURED: {spent} and the Google Ads account has NO "
+                f"conversion action at all. This is not a campaign with zero conversions — nobody is counting. "
+                f"Set up conversion measurement before judging or changing this campaign.")
+    if measuring == "configured_silent":
+        return (f"silent_measurement_{campaign_id}",
+                f"{spent} and the account's conversion actions counted NOTHING in 30 days. Either there were no "
+                f"results or the measurement is broken (tag not firing / event not imported) — check the "
+                f"measurement before treating this as a failing campaign.")
+    return (f"measurement_unknown_{campaign_id}",
+            f"{spent} and the account's conversion measurement state could not be read ({measuring}). "
+            f"Not reported as zero conversions: it is not known whether anything is measured.")
+
+
+def _check_performance_problems(client_id: int, campaigns: list, measuring: str = None) -> list:
     """Performance problems worth an immediate alert (never an auto-pause -
-    'working but expensive' is a human decision). Returns issue messages raised."""
+    'working but expensive' is a human decision). Returns issue messages raised.
+    `measuring`: the account's measurement state; read from the stored state
+    when not given — never assumed to be measuring."""
+    if measuring is None:
+        from core import conversion_measurement
+        measuring = conversion_measurement.state(client_id)
     raised = []
     for c in campaigns:
         if c["status"] != "ENABLED":
@@ -1060,9 +1088,8 @@ def _check_performance_problems(client_id: int, campaigns: list) -> list:
         label = f"campaign '{c['name']}' ({c['id']})"
 
         if last["cost"] >= PERF_ZERO_CONV_MIN_COST_ILS and last["conversions"] == 0:
-            msg = (f"{label} spent {last['cost']} ILS in the last 7 days with ZERO conversions "
-                   f"(previous week: {prev['conversions']} conversions)")
-            if _raise_issue(client_id, f"perf_zeroconv_{c['id']}", msg):
+            key, msg = _zero_conversion_alert(label, last, prev, measuring, c["id"])
+            if _raise_issue(client_id, key, msg):
                 raised.append(msg)
 
         if (last["conversions"] > 0 and prev["conversions"] > 0
@@ -1168,9 +1195,22 @@ def run_health_scan() -> dict:
                     if _raise_issue(client_id, f"primary_{cid}_{primary_status}", msg):
                         summary["issues"].append(msg)
 
+            # 3b. Is anything being measured? Read from the account, stored, and compared with the
+            # site's published tags (core/conversion_measurement). Everything below reads this state.
+            from core import conversion_measurement
+            measure = conversion_measurement.refresh(client_id, conn)
+            summary.setdefault("measurement", {})[str(client_id)] = measure.get("state")
+            if (measure.get("site") or {}).get("mismatch") == "tags_present_import_missing":
+                msg = ("the site's published Tag Manager container has our event tags "
+                       f"({', '.join(measure['site'].get('site_types') or [])}) but the Google Ads account has NO "
+                       "conversion action imported from them — tags present, import missing. The import is a "
+                       "manual step in Google Ads (Goals > Conversions > import from Google Analytics).")
+                if _raise_issue(client_id, "measurement_import_missing", msg):
+                    summary["issues"].append(msg)
+
             # 4. Performance problems (alert only)
             campaigns = _fetch_two_window_metrics(conn)
-            summary["issues"].extend(_check_performance_problems(client_id, campaigns))
+            summary["issues"].extend(_check_performance_problems(client_id, campaigns, measure.get("state")))
 
             # 5. Autonomous optimization (STATE 3). Deliberately LAST: a campaign
             # policy-paused in step 2 must not be optimized on its way out, and
@@ -1364,7 +1404,17 @@ def _log_optimization(client_id: int, action: str, reason: str,
 def _apply(client_id: int, action: str, reason: str, details: dict, mutate):
     """Single choke point for every optimization write. Decides identically in
     every mode; only the mutation itself is gated, so dry-run logs are a faithful
-    preview of what live would have done."""
+    preview of what live would have done.
+
+    HARD GATE (core/conversion_measurement): every lever here decides from
+    conversion data, so nothing is decided or written unless the account is
+    `measuring` — whatever the mode. A refusal, named and logged."""
+    from core import conversion_measurement
+    try:
+        conversion_measurement.require_measuring(client_id)
+    except conversion_measurement.NotMeasuring as e:
+        _log_optimization(client_id, action, f"REFUSED account_not_measuring ({e.state}): {reason}", details, applied=False)
+        return False
     if OPTIMIZATION_MODE != "live":
         _log_optimization(client_id, action, reason, details, applied=False)
         return False
@@ -1438,6 +1488,15 @@ def set_performance_goal(client_id: int) -> dict:
     monthly = _monthly_budget_ceiling_ils(client_id)
     if not monthly:
         return {"success": False, "error": "no stated monthly budget — cannot set a goal"}
+    # No target before its inputs (governance §5), and no goal counted in conversions for an
+    # account that is not counting any: both are refusals with a name, never a quiet guess.
+    from core import conversion_measurement, target_inputs
+    gaps = target_inputs.missing(client_id)
+    if gaps:
+        return {"success": False, "error": "required_inputs_missing", "missing": gaps}
+    measuring = conversion_measurement.state(client_id)
+    if measuring != "measuring":
+        return {"success": False, "error": "account_not_measuring", "measurement": measuring}
 
     from core import competitor_research
     from agents.budget_agent import get_forecast
@@ -1521,6 +1580,11 @@ def optimize_keywords(client_id: int, conn: dict) -> dict:
     are recorded (they inform ad copy and any future expansion) but never
     silently duplicated — adding near-identical keywords competes with itself."""
     summary = {"paused": 0, "winners": 0, "winner_keywords": []}
+    from core import conversion_measurement
+    try:        # "30 clicks and zero conversions" means nothing in an account that counts no conversions
+        conversion_measurement.require_measuring(client_id)
+    except conversion_measurement.NotMeasuring as e:
+        return {**summary, "refused": "account_not_measuring", "measurement": e.state}
     try:
         keywords = _keyword_performance(conn)
     except Exception as e:
@@ -1797,6 +1861,14 @@ def run_optimization_cycle(client_id: int, conn: dict, campaigns: list) -> dict:
     if OPTIMIZATION_MODE == "off":
         return {"skipped": "OPTIMIZATION_MODE=off"}
 
+    # HARD GATE, before anything is read or decided: not a warning, a refusal with its name
+    from core import conversion_measurement
+    try:
+        conversion_measurement.require_measuring(client_id)
+    except conversion_measurement.NotMeasuring as e:
+        log_step(AGENT_NAME, "optimization", f"client {client_id}: REFUSED — {e}")
+        return {"refused": "account_not_measuring", "measurement": e.state, "reason": str(e)}
+
     ceiling = _monthly_budget_ceiling_ils(client_id)
     if not ceiling:
         # Fail closed: no confirmed ceiling means no autonomous spending changes
@@ -1825,6 +1897,10 @@ def run_90_day_checkpoint(client_id: int) -> dict:
     if not (conn.get("access_token") and conn.get("account_id")):
         return {"available": False, "reason": "google_ads not connected"}
 
+    from core import conversion_measurement
+    measuring = conversion_measurement.state(client_id)
+    if measuring != "measuring":       # a HIT/MISSED verdict needs counted conversions
+        return {"available": False, "reason": "account_not_measuring", "measurement": measuring}
     goal = active["goal"]
     campaigns = _fetch_two_window_metrics(conn)
     # Actuals over the goal window come from the same metrics the scan already

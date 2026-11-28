@@ -253,11 +253,11 @@ class DoneAndReminder(Base):
         self.assertIn("connected", r)
         r = cc.flow(7, "website", "done")
         self.assertIn("connected", r)
-        rows = [dict(x) for x in ROWS] + [{"key": "creatomate", "tier": "paid_account",
+        rows = [dict(x) for x in ROWS] + [{"key": "newtool", "tier": "paid_account",     # a row whose "done" cannot be checked
                                              "signup_url": "https://s.example", "pricing_url": "",
                                              "recommended_plan_note": "", "help_notes": "", "enabled": True}]
         cc.rows = lambda fresh=False: rows
-        r = cc.flow(7, "creatomate", "done")
+        r = cc.flow(7, "newtool", "done")
         self.assertNotIn("connected", r)
         self.assertIn("הצוות", r["messages"][0])
 

@@ -3147,6 +3147,23 @@ def admin_google_ads_connection(request: Request, client_id: int = 27):
     from agents.google_ads_agent import connection_probe
     return {"success": True, "data": connection_probe(client_id)}
 
+@app.get("/api/admin/google-ads/measurement")
+def admin_google_ads_measurement(request: Request, client_id: int = 27):
+    # Is anything being measured in this client's Google Ads account? Reads the account NOW (two
+    # operations), compares with the site's published tags, stores and returns the state:
+    # measuring / configured_silent / not_measured / unknown / not_connected (core/conversion_measurement).
+    _require_admin(request)
+    from core import conversion_measurement
+    return {"success": True, "data": conversion_measurement.refresh(client_id)}
+
+@app.post("/api/admin/google-ads/goal")
+def admin_google_ads_goal(request: Request, client_id: int = 27):
+    # Runs google_ads_agent.set_performance_goal for one client (one model call) and returns the
+    # goal or the named refusal: no budget / required inputs missing / account not measuring.
+    _require_admin(request)
+    from core.quarter_goals_actions import set_ads_goal
+    return {"success": True, "data": set_ads_goal(client_id)}
+
 @app.get("/api/admin/client-speech/net")
 def admin_client_speech_net(request: Request, days: int = 30):
     # READ-ONLY: how often an agent's text failed the client-language check and the automatic

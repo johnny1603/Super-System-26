@@ -13693,7 +13693,11 @@ function renderGooglePage() {
   const root = document.getElementById('ggRoot'), d = ggUI.data;
   if (!root || !d) return;
   const sec = (s, body) => `<section class="gg-sec"><h3>${esc(s.title)}</h3>${body}</section>`;
-  root.innerHTML = '<div class="gg-stack">' + sec(d.ads, ggAds(d.ads)) + sec(d.numbers, ggNumbers(d.numbers)) + sec(d.terms, ggTerms(d.terms))
+  // Are results measured at all (core/conversion_measurement)? Said BEFORE the numbers, because it decides what a zero in them means
+  const m = d.measurement && d.measurement.title ? d.measurement : null;
+  const measure = m ? sec(m, `<div class="${m.ok ? 'gg-muted' : 'gg-warn'}">${esc(m.text || '')}</div>`
+    + (m.notes || []).map(n => `<div class="gg-muted" style="margin-top:6px;">${esc(n)}</div>`).join('')) : '';
+  root.innerHTML = '<div class="gg-stack">' + sec(d.ads, ggAds(d.ads)) + measure + sec(d.numbers, ggNumbers(d.numbers)) + sec(d.terms, ggTerms(d.terms))
     + sec(d.reports, ggReports(d.reports)) + sec(d.strategy, ggStrategy(d.strategy)) + '</div>';
 }
 function ggFlagOpen(key) { ggUI.open = ggUI.open === key ? '' : key; renderGooglePage(); const el = document.getElementById('ggFlagText'); if (el) el.focus(); }

@@ -951,6 +951,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   goals card carries a basis (`basis_line` raises on a bare one). A thin baseline
   (`MIN_BASELINE_RESULTS` = 5 results of the client's own kind in 30 days, or no ad spend) gets a
   learning period, never a softer number. `tests/test_target_inputs.py`.
+- **Is anything measured? (2026-11-28, `core/conversion_measurement.py`)**: the Google Ads account's
+  conversion actions are READ and stored (`conversion_measurement:<id>`): `measuring` /
+  `configured_silent` / `not_measured`, plus `unknown` when unreadable or older than 36h. A zero is
+  never "no results" unless the state is `measuring`. HARD GATE `require_measuring` at the
+  optimisation cycle, the keyword lever and `_apply` (holds in live mode); the zero-conversion alert
+  becomes "money out, nothing measured" in `not_measured`; the state is on the Google page and on
+  `/admin/connections/`; site tags with no imported conversion action = `tags_present_import_missing`.
+  `get_forecast` reads the budget an existing client recorded (`record_target_inputs`), and that click
+  calls `set_performance_goal` (refuses by name: inputs missing / account not measuring).
+  `connection_catalog.NOT_BUILT` (merchant_center, creatomate, uppbeat) is never offered.
+  `tests/test_conversion_measurement.py`.
 - **No vendor names to clients (2026-11-16, `docs/VENDOR-NAMES.md`)**: `core/vendor_names` is THE
   list + plain words; backstops on every model text that reaches a client (chat, idea cards,
   client cards, proposal QA, weekly plan, briefing/interview posts), never on links. Allow-list:

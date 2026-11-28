@@ -391,3 +391,15 @@ skill). YouTube equivalent is built (own skill and own callback, on the SAME
 six-scope consent since 2026-11-10 — docs/GOOGLE-SCOPES.md §One consent; not this
 agent, since it's a content-publishing platform like Meta/TikTok, not an
 Ads-family product).
+
+## Is anything being measured? (2026-11-28)
+
+`core/conversion_measurement.py` reads the account's conversion actions (two operations) and stores
+one of `measuring`, `configured_silent`, `not_measured` (`unknown` = unreadable or older than 36h).
+`metrics.conversions` is a real count ONLY in `measuring`; in every other state a zero means "not
+measured". No optimisation decision runs outside `measuring` (`require_measuring` — the cycle, the
+keyword lever, `_apply`), `set_performance_goal` and the 90-day checkpoint refuse, and the
+zero-conversion alert is replaced by one that says what it is. The daily scan refreshes the state;
+`GET /api/admin/google-ads/measurement?client_id=` reads it now. The two GAQL queries were written
+from Google's reference and have not run against a live account from this code: a refused query
+gives `unknown` with Google's message, the safe side.

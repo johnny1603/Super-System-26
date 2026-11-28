@@ -170,16 +170,35 @@ def _lead_row(client_id: int) -> tuple:
     return client_sales_lead(client_id=client_id)
 
 
+def _recorded_budget(client_id: int):
+    """The monthly budget the client recorded after purchase, or None."""
+    try:
+        from core import target_inputs
+        return float(target_inputs.recorded(client_id).get("budget_ils") or 0) or None
+    except Exception as e:
+        print(f"[budget_agent] client {client_id}: recorded budget unreadable ({type(e).__name__})")
+        return None
+
+
 def get_forecast(client_id: int) -> dict:
     """The client's own stated budget + the market_reality narrative already
     generated at proposal time — real intake data, but see `source` for how
     reliably it's matched to this specific client (module docstring)."""
     lead, source = _lead_row(client_id)
-    if not lead:
+    # The retroactive path (2026-11-28): the monthly budget an EXISTING client approved on the
+    # record_target_inputs card (core/target_inputs). It is newer than the sales chat, so it wins.
+    recorded = _recorded_budget(client_id)
+    if not lead and not recorded:
         return {"available": False, "source": source}
+    lead = lead or {}
     answers = lead.get("answers") or {}
     proposal = lead.get("proposal") or {}
     budget_text = answers.get("marketing_budget") or ""
+    if recorded:
+        return {"available": True, "source": source, "budget_source": "recorded_by_client",
+                "stated_marketing_budget_text": budget_text, "stated_marketing_budget_ils": recorded,
+                "market_reality": proposal.get("market_reality", ""),
+                "goals_90_days": proposal.get("goals_90_days") or [], "kpis": proposal.get("kpis") or {}}
     # No organic budget is read: organic is a fixed-price package (2026-10-18),
     # and leads from before that may still carry a stale organic_budget answer
     return {

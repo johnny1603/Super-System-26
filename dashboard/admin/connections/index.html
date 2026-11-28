@@ -97,6 +97,8 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
     <div class="row">
       <label class="muted" style="margin:0;">מספר לקוח <input type="text" dir="ltr" id="gaClient" value="27" inputmode="numeric" style="width:90px;"></label>
       <button id="gaBtn">בדיקת חיבור מול גוגל (פעולה אחת)</button>
+      <button id="gaMeasureBtn">האם משהו נמדד? (שתי פעולות)</button>
+      <button id="gaGoalBtn">קביעת יעד 90 יום פנימי (קריאת מודל)</button>
     </div>
     <div id="gaConnOut" class="muted" style="margin-top:10px;"></div>
   </div>
@@ -134,6 +136,11 @@ async function api(path, body) {
 
 function rowHtml(r) {
   const usable = r.tier === "included" || (r.enabled && (r.signup_url || r.key === "website"));
+  if (r.available === false) {
+    // Nothing behind this row (core/connection_catalog.NOT_BUILT): shown as it is, with nothing to edit or switch on
+    return `<div class="card" data-key="${esc(r.key)}"><h2><code>${esc(r.key)}</code> <span class="badge warn">לא זמין עדיין</span></h2>
+      <div class="muted">אין קוד מאחורי החיבור הזה: לקוח לא יכול לחבר אותו והמערכת לא יכולה לאמת ״סיימתי״. הוא לא מוצע ללקוחות, בלי קשר למה שכתוב בטבלה. כדי להחזיר אותו צריך קודם לבנות את החיבור.</div></div>`;
+  }
   return `<div class="card" data-key="${esc(r.key)}">
     <h2><code>${esc(r.key)}</code> <span class="badge">${esc(TIER_NAMES[r.tier] || r.tier)}</span>
       ${usable ? '<span class="badge ok">פעיל</span>' : '<span class="badge warn">עזרה מאדם</span>'}</h2>
@@ -308,6 +315,60 @@ async function gaConnection() {
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
 }
 document.getElementById("gaBtn").onclick = gaConnection;
+// Is anything measured in the account (core/conversion_measurement)? Three states, never one.
+const GA_MEASURE = {
+  measuring: ["ok", "נמדד — יש פעולות המרה והחשבון ספר המרות ב-30 הימים האחרונים"],
+  configured_silent: ["warn", "מוגדר ושותק — יש פעולות המרה, ושום המרה לא נספרה ב-30 יום"],
+  not_measured: ["warn", "לא נמדד — אין בחשבון אף פעולת המרה. אפס המרות כאן פירושו ״אף אחד לא סופר״"],
+  not_connected: ["warn", "Google Ads לא מחובר ללקוח הזה — אין מה לקרוא"],
+  unknown: ["warn", "לא ידוע — הקריאה מגוגל נכשלה. עד שתצליח, שום החלטה שתלויה בהמרות לא רצה"],
+};
+const GA_MISMATCH = {
+  tags_present_import_missing: "באתר (Tag Manager, הגרסה שפורסמה) יש תגי אירוע שלנו, אבל בחשבון Google Ads אין פעולת המרה מיובאת מהם. תגים קיימים, ייבוא חסר. הייבוא ידני ב-Google Ads.",
+  import_present_tags_missing: "בחשבון Google Ads יש פעולת המרה מיובאת, אבל בגרסה שפורסמה ב-Tag Manager אין תג אירוע פעיל.",
+  site_side_unknown: "צד האתר לא נבדק: Tag Manager לא מחובר או לא נקרא.",
+};
+async function gaMeasurement() {
+  const out = document.getElementById("gaConnOut");
+  const cid = parseInt(document.getElementById("gaClient").value, 10);
+  if (!cid) { out.textContent = "חסר מספר לקוח"; return; }
+  out.textContent = "קורא מגוגל…";
+  try {
+    const d = await api("/api/admin/google-ads/measurement?client_id=" + cid);
+    const s = GA_MEASURE[d.state] || ["warn", d.state];
+    const site = d.site || {};
+    const acts = (d.actions || []).map(a => `<tr><td>${esc(a.name || a.id)}</td><td dir="ltr">${esc(a.type || "—")}</td><td>${a.counted === true ? "נספרת" : a.counted === false ? "לא נספרת" : "משותפת מחשבון אחר"}</td><td>${esc(a.conversions_30d)}</td><td>${esc(a.recorded_30d)}</td></tr>`).join("");
+    out.innerHTML = `<div>לקוח ${esc(cid)}: <span class="badge ${s[0]}">${esc(s[1])}</span></div>
+      ${d.recorded_not_counted ? `<div>נרשמה פעילות (${esc(d.recorded_30d)}) אבל אף פעולה שנספרת כהמרה לא רשמה דבר.</div>` : ""}
+      ${acts ? `<table style="margin-top:8px;"><tr><th>פעולת המרה</th><th>סוג</th><th>נספרת כהמרה</th><th>המרות 30 יום</th><th>נרשם 30 יום</th></tr>${acts}</table>` : ""}
+      ${site.mismatch ? `<div style="margin-top:6px;">מול האתר: ${esc(GA_MISMATCH[site.mismatch] || site.mismatch)}</div>` : (d.site ? `<div style="margin-top:6px;">מול האתר: אין אי-התאמה (${esc((site.site_types || []).join(", ") || "אין תגים")}).</div>` : "")}
+      ${d.error ? `<div dir="ltr" style="text-align:left;">error: <code>${esc(d.error)}</code></div>` : ""}`;
+    gaQuota();
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
+}
+document.getElementById("gaMeasureBtn").onclick = gaMeasurement;
+const GA_GOAL_REFUSED = {
+  "no stated monthly budget — cannot set a goal": "אין תקציב חודשי רשום. הלקוח מאשר אותו בצ׳אט (כרטיס ״הנתונים שעליהם נבנה היעדים״).",
+  required_inputs_missing: "חסרים נתוני חובה לפני יעד",
+  account_not_measuring: "החשבון לא מודד המרות — יעד שנספר בהמרות חסר משמעות עד שזה מתוקן",
+  "goal failed self-verification": "היעד שהמודל הציע נכשל בבדיקה העצמית ולא נשמר",
+};
+async function gaGoal() {
+  const out = document.getElementById("gaConnOut");
+  const cid = parseInt(document.getElementById("gaClient").value, 10);
+  if (!cid) { out.textContent = "חסר מספר לקוח"; return; }
+  out.textContent = "מריץ…";
+  try {
+    const d = await api("/api/admin/google-ads/goal?client_id=" + cid, {});
+    if (d.success) {
+      const g = d.goal || {};
+      out.innerHTML = `<div>לקוח ${esc(cid)}: <span class="badge ok">יעד פנימי נשמר</span> ${esc(g.expected_results_90d)} תוצאות ב-90 יום, כ-${esc(g.expected_cost_per_result_ils)} ₪ לתוצאה, בתקציב ${esc(d.monthly_budget_ils)} ₪ לחודש.</div><div class="muted">יעד פנימי שלנו, תחזית של מודל. לא מוצג ללקוח ולא הבטחה.</div>`;
+    } else {
+      out.innerHTML = `<div>לקוח ${esc(cid)}: <span class="badge warn">לא נקבע יעד</span> ${esc(GA_GOAL_REFUSED[d.error] || d.error || "")}${d.missing ? ": " + esc(d.missing.join(", ")) : ""}${d.measurement ? " (" + esc(d.measurement) + ")" : ""}</div>`;
+    }
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "ההרצה נכשלה — לנסות שוב"; }
+}
+document.getElementById("gaGoalBtn").onclick = gaGoal;
 async function speechNet() {
   const out = document.getElementById("speechNetOut");
   try {

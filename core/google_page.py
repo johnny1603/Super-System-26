@@ -878,6 +878,14 @@ def clean_strategy(raw: dict, found: list, waiting: list, previous: dict, lang: 
     return {"version": version, "terms": terms, "decisions": decisions}
 
 
+def _measurement_block(client_id: int) -> dict:
+    try:
+        from core import conversion_measurement
+        return conversion_measurement.prompt_block(client_id)
+    except Exception:
+        return {}
+
+
 def has_material(client_id: int) -> bool:
     """Something to plan with: a campaign we prepared, or a stated budget."""
     return bool(campaigns(client_id)) or _budget(client_id) is not None
@@ -905,7 +913,8 @@ def write_strategy(client_id: int, lang: str = "he", reason: str = "", call=None
     client_speech.speak_for(client_id)
     try:
         payload = {"language": client_language.payload(lang), "today": today.isoformat(), "business": knowledge,
-                   "monthly_budget_ils": _budget(client_id), "what_a_result_is_called": client_speech.words("conversion", lang),
+                   "monthly_budget_ils": _budget(client_id), "results_measurement": _measurement_block(client_id),
+                   "what_a_result_is_called": client_speech.words("conversion", lang),
                    "campaigns": [{"id": c["id"], "where_it_appears": client_speech.words(c["type"], "en", "long"),
                                   "advertises": c.get("name") or "", "state": c.get("status"), "search_phrases": c.get("keywords") or []}
                                  for c in found],
@@ -1020,11 +1029,25 @@ def reports_view(client_id: int, kept: dict, lang: str, can_build: bool) -> dict
 
 # ─── The page ────────────────────────────────────────────────────────────────
 
+def _measurement(client_id: int, lang: str, numbers_state: str) -> dict:
+    """Are results being measured at all (core/conversion_measurement)? {} when
+    the account is not connected or cannot be read now — the numbers section
+    already says that, with what it takes."""
+    if numbers_state not in ("live", "no_data"):
+        return {}
+    try:
+        from core import conversion_measurement
+        return conversion_measurement.view(client_id, lang)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: measurement view failed ({type(e).__name__})")
+        return {}
+
+
 def view(client_id: int, lang: str = "he", today: date = None, remember=True) -> dict:
     lang = lang if lang in LANGS else "he"
     kept = store(client_id)
     found = campaigns(client_id)
     numbers = numbers_view(client_id, lang, kept, today, remember)
     return {"language": lang, "direction": client_language.direction(lang),
-            "ads": ads_view(found, lang), "numbers": numbers, "terms": terms_view(found, kept, lang),
+            "ads": ads_view(found, lang), "numbers": numbers, "measurement": _measurement(client_id, lang, numbers["state"]), "terms": terms_view(found, kept, lang),
             "reports": reports_view(client_id, kept, lang, numbers["state"] == "live"), "strategy": strategy_view(kept, lang)}

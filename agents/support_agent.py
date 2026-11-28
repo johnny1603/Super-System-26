@@ -1117,6 +1117,11 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             inputs_block = target_inputs.prompt_block(client_id)
             if inputs_block:
                 payload["target_inputs"] = inputs_block
+            # Is anything measured in the advertising account? A zero is not "no results" (core/conversion_measurement)
+            from core import conversion_measurement
+            measurement_block = conversion_measurement.prompt_block(client_id)
+            if measurement_block:
+                payload["results_measurement"] = measurement_block
             from core import organic_plan
             organic_block = organic_plan.prompt_block(client_id)
             if organic_block:
