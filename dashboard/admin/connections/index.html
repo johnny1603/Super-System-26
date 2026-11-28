@@ -103,6 +103,12 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
     </div>
     <div id="gaConnOut" class="muted" style="margin-top:10px;"></div>
   </div>
+  <!-- How long the intake really takes (core/intake_sla): READ-ONLY, measured in production. -->
+  <div class="card" id="intakeTimes">
+    <h2>זמני האפיון — מדידה אמיתית (90 יום)</h2>
+    <div class="muted">מה שנמדד בפועל, לא הערכה. מספר שנשען על פחות מ-5 מדידות עוד לא ראוי להיכתב בדף הנחיתה. התראה נשלחת כשבניית הצעה עוברת את הקו, כשטיוטת תדריך לא נוצרה תוך שעה, וכשטיוטה מחכה לאישור יותר מיום.</div>
+    <div id="intakeTimesOut" class="muted" style="margin-top:10px;">טוען…</div>
+  </div>
   <!-- Run a client's characterisation again (core/intake_reset). The first button READS ONLY: what would be
        deleted and what is kept. The reset needs the typed phrase. Nothing here disconnects or re-authorises. -->
   <div class="card" id="intakeReset">
@@ -394,6 +400,24 @@ async function gaSearchReports() {
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
 }
 document.getElementById("gaSearchBtn").onclick = gaSearchReports;
+// Measured intake times (core/intake_sla). A figure is shown with the number of samples it rests on.
+async function intakeTimes() {
+  const out = document.getElementById("intakeTimesOut");
+  try {
+    const d = await api("/api/admin/intake-times");
+    const mins = s => s >= 90 ? (Math.round(s / 6) / 10) + " דק׳" : Math.round(s) + " שנ׳";
+    const line = (name, x, fmt) => x.n
+      ? `<tr><td>${name}</td><td>${esc(x.n)}</td><td>${esc(fmt(x.median))}</td><td>${esc(fmt(x.p90))}</td><td>${esc(fmt(x.max))}</td></tr>`
+      : `<tr><td>${name}</td><td>0</td><td colspan="3">עוד לא נמדד</td></tr>`;
+    const p = d.proposal, w = d.brief_approval.waiting;
+    out.innerHTML = `<table><tr><th>שלב</th><th>מדידות</th><th>חציון</th><th>90%</th><th>האיטי ביותר</th></tr>
+      ${line("בניית הצעה ותכנית עבודה", p, mins)}${line("יצירת טיוטת תדריך המותג", d.brief_draft, mins)}${line("המתנה לאישור התדריך", d.brief_approval, h => h + " שעות")}</table>
+      <div style="margin-top:6px;">הצעות: נכשלו ${esc(p.failed)} · עברו את קו ההתראה (${esc(p.alert_line_seconds)} שנ׳) ${esc(p.over_alert_line)} · רצות עכשיו ${esc(p.running)}${d.measured_since ? " · נמדד מאז " + esc(d.measured_since.slice(0, 10)) : " · המדידה מתחילה מההצעה הבאה"}</div>
+      ${d.brief_draft.overdue.length ? `<div><b>טיוטה שלא נוצרה תוך שעה:</b> לקוח ${esc(d.brief_draft.overdue.join(", "))}</div>` : ""}
+      ${w.length ? `<div>טיוטות שמחכות לאישור: ${w.map(x => `לקוח ${esc(x.client_id)} (${esc(x.hours)} שעות)`).join(" · ")}</div>` : ""}`;
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הקריאה נכשלה"; }
+}
+intakeTimes();
 // Characterisation reset (core/intake_reset): the plan is a read; the reset needs the typed phrase.
 const IR_WHY = { package_unresolved: "לא ניתן לקרוא מה הלקוח רכש (אין רכישה ואין הרשאת שירותים של חשבון פנימי) — האפיון לא ייפתח עד שזה מוגדר",
   no_required_connections: "החבילה לא כוללת שירות שדורש חיבור — השער לא ייפתח", connections_missing: "חסרים חיבורים נדרשים", unreadable: "מצב החיבורים לא נקרא" };

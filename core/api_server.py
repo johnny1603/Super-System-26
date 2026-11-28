@@ -181,8 +181,11 @@ def onboarding(req: OnboardingRequest):
     from core.redaction import redact_obj
     req.answers = redact_obj(req.answers)
     try:
-        with _sales_cost_owner(req.lead_id):
-            result = run_full_onboarding(req.answers)
+        # Timed and alerted when slow (core/intake_sla): the number the landing page states must come from here
+        from core import intake_sla
+        with intake_sla.proposal(req.lead_id):
+            with _sales_cost_owner(req.lead_id):
+                result = run_full_onboarding(req.answers)
         proposal = result["proposal"]
         review = result.get("review", {})
         if is_agent_active("master_agent") and not review.get("approved", True):
@@ -3178,6 +3181,14 @@ def admin_intake_reset_run(client_id: int, req: IntakeResetRequest, request: Req
         return {"success": True, "data": intake_reset.run(client_id, req.confirm, include_lead=req.include_lead)}
     except intake_reset.ResetError as e:
         raise HTTPException(status_code=400, detail={"code": e.code, "message": e.detail})
+
+@app.get("/api/admin/intake-times")
+def admin_intake_times(request: Request, days: int = 90):
+    # MEASURED intake times (READS ONLY): proposal builds, brief drafts, the wait for approval —
+    # median / 90th percentile / slowest, with the number of samples each rests on (core/intake_sla)
+    _require_admin(request)
+    from core import intake_sla
+    return {"success": True, "data": intake_sla.report(max(1, min(365, int(days))))}
 
 @app.get("/api/admin/targets/audit")
 def admin_targets_audit(request: Request):
@@ -8752,6 +8763,13 @@ def tiktok_uploads_run():
         data["brand_brief"] = brand_brief.run_due(left) if left > 75 else {"skipped": "no budget left"}
     except Exception as e:
         data["brand_brief"] = {"error": type(e).__name__}
+    # Intake deadlines (core/intake_sla): a draft not created within the hour, a draft waiting for
+    # approval more than a day, a proposal build that never came back. At most once per 10 minutes.
+    try:
+        from core import intake_sla
+        data["intake_sla"] = intake_sla.sweep()
+    except Exception as e:
+        data["intake_sla"] = {"error": type(e).__name__}
     # The client-side backup (core/drive_backup): approved produced files → the
     # client's own "uallak" folder. What is left of the budget, at most 40 s
     left = min(40.0, tiktok_uploads.TICK_BUDGET_S + 30 - (_time.monotonic() - started))

@@ -962,6 +962,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   calls `set_performance_goal` (refuses by name: inputs missing / account not measuring).
   `connection_catalog.NOT_BUILT` (merchant_center, creatomate, uppbeat) is never offered.
   `tests/test_conversion_measurement.py`.
+- **Intake times, measured and enforced (2026-11-28, `core/intake_sla.py`)**: every proposal build is timed around the ONE
+  call in `/api/onboarding` (app_settings `intake_sla`); brief draft and approval times are READ from the brief's own
+  record. Owner alerts, once each: a build past `PROPOSAL_ALERT_SECONDS` (240) or never back, a draft not created within
+  the hour, a draft waiting for approval more than a day (`sweep()` on the minute tick, at most every 10 min). Admin read
+  `GET /api/admin/intake-times` on `/admin/connections/`, each figure with its sample count. The landing page's "72" is
+  NOT changed until Google's review closes — then it is written from these numbers. `tests/test_intake_sla.py`.
 - **Characterisation run again (2026-11-28, `core/intake_reset.py`)**: `/admin/connections/` → "אפיון מחדש". `plan()`
   reads only (what would be deleted / kept, whether the interview can open); `run()` needs the typed phrase, copies every
   removed row into `intake_reset:<id>` FIRST, and removes ONLY the characterised mark, the earlier run's captured facts,
