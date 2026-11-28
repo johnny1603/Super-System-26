@@ -209,6 +209,29 @@ What is in motion (the reason the table is dated):
   length runs on connected TV only and must be horizontal; an in-feed video
   needs a minimum length before it can build a remarketing list.
 
+### 4.1 Reading the account — the two search reports
+
+Code: `core/search_reports.py`. These are rules of judgement, not of format.
+
+- **Neither report means anything in an account that is not measuring
+  conversions. Check that first, always** (`core/conversion_measurement`). A
+  term that "produced nothing" in an account that counts nothing has not been
+  shown to be waste, and more showings are not worth buying before we know
+  what a showing brings.
+- **Impression share is never reported without its split.** Share lost to
+  budget and share lost to rank demand opposite responses: lost to budget
+  means the campaign is too small and more money buys more; lost to rank
+  means relevance, quality or bid is the problem and more money only burns
+  faster. One blended number is a number nobody can act on. Recommending more
+  budget where the loss is to rank is active harm.
+- **A search terms report is read for waste first and opportunity second.**
+  Most accounts lose more to terms that should never have matched than they
+  gain from terms they have not added.
+- **Performance Max is not Search.** It has no search terms report, only
+  category insights (a separate, more limited resource), and impression share
+  is not reported for it the way it is for Search. Say what cannot be seen;
+  never show an insight category as a search term, or a missing share as zero.
+
 ---
 
 ## 5. Known gaps — to research

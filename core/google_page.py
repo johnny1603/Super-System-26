@@ -694,7 +694,7 @@ def terms_key(words: list) -> str:
     return hashlib.sha1("\n".join(sorted(words)).encode("utf-8")).hexdigest()[:16]
 
 
-def terms_view(found: list, kept: dict, lang: str) -> dict:
+def terms_view(found: list, kept: dict, lang: str, seen: dict = None) -> dict:
     flags = {(f.get("campaign"), f.get("term")): f for f in reversed(kept.get("flags") or [])}
     written = kept.get("terms") or {}
     blocks = []
@@ -724,7 +724,14 @@ def terms_view(found: list, kept: dict, lang: str) -> dict:
                            "note": "" if c.get("themes") else t("k_themes_none", lang)})
     excluded = [{"text": x.get("text") or "", "why": x.get("why") or "",
                  "state": t("x_done" if x.get("applied") else "x_pending", lang)} for x in kept.get("excluded") or []]
-    return {"title": t("sec_terms", lang), "blocks": blocks,
+    # ...and what is ALREADY excluded in the account, read from what people searched (core/search_reports)
+    listed = {x["text"] for x in excluded}
+    excluded += [{"text": x["text"], "why": x["why"], "state": t("x_done", lang)}
+                 for x in (seen or {}).get("excluded_in_account") or [] if x["text"] not in listed]
+    from core import search_reports
+    to_add = [{"text": x.get("text") or "", "why": x.get("why") or "",
+               "state": search_reports.t("add_done" if x.get("applied") else "add_pending", lang)} for x in kept.get("to_add") or []]
+    return {"title": t("sec_terms", lang), "blocks": blocks, "to_add_title": search_reports.t("add_title", lang), "to_add": to_add,
             "empty": "" if any(b["kind"] == "phrases" for b in blocks) else t("k_none", lang),
             "flag": {"hint": t("g_hint", lang), "button": t("g_button", lang), "placeholder": t("g_placeholder", lang),
                      "send": t("g_send", lang), "sent": t("g_sent", lang)},
@@ -775,7 +782,10 @@ with their money and what would make it stop.
 You receive: the business, the monthly budget (null = none is on record: say so, never invent one), the campaigns we prepared
 (type, what is advertised, the search phrases of a search campaign), the latest figures when the account is connected (null =
 no figures: plan from what is known and say the plan rests on no account data yet), the previous strategy when there is one,
-the client's notes on single search phrases, and today's date.
+the client's notes on single search phrases, today's date, and "search_reports" when the account was read: what people
+actually typed when a search ad was shown (with candidates to exclude and to add — present ONLY when the account measures
+results) and, per campaign, how much of the relevant searches we appeared in, ALWAYS split into what was lost to budget and
+what was lost to ranking.
 
 Write in the language named in "language". Plain words a business owner uses. NEVER a platform's vocabulary: no product
 names, no acronyms, no metric jargon, no names of our internals. Name a campaign by where it appears ("ads in Google search").
@@ -792,19 +802,28 @@ Return JSON only:
  "changed": "ONLY when a previous strategy is given: what changed and why, 1 to 3 sentences; else empty",
  "themes": {"<campaign id>": [{"theme": "a short name for a group of phrases",
                                "terms": [{"text": "the phrase EXACTLY as given", "why": "why we pay for it, one sentence"}]}]},
- "flag_decisions": [{"id": "the note's id", "decision": "keep" | "remove", "why": "one sentence the client reads"}]}
+ "flag_decisions": [{"id": "the note's id", "decision": "keep" | "remove", "why": "one sentence the client reads"}],
+ "term_decisions": [{"id": "the candidate's id", "decision": "exclude" | "add" | "leave", "why": "one sentence the client reads"}]}
 
 Rules that are checked: "watching" has 2 or 3 entries. "change_course" has at least one entry and every "by" is a real date
 after today and within 180 days. Every search phrase given appears in exactly one theme of its campaign; you never add a
 phrase. Decide EVERY client note: their knowledge of their field is valuable, the decision is yours — remove a phrase that
-means something else in their field or is a competitor's name, keep one that is right and say why."""
+means something else in their field or is a competitor's name, keep one that is right and say why.
+
+The two search reports (search_reports): decide EVERY exclude candidate and add candidate by its id — read for waste first,
+opportunity second; "leave" needs its reason too. Never decide a term that is not a candidate, and when the conclusions are
+withheld (the account is not measuring results) decide nothing and conclude nothing about which searches work. The share of
+searches is never one number: lost to budget means the campaign is too small and more money buys more; lost to ranking means
+the ads and phrases do not fit well enough and more money only spends faster. NEVER propose more budget for a campaign whose
+leading loss is ranking or both; say what is fixed first. Where no share is reported for a campaign, say so, never a zero."""
 
 
 def _line(value, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit]
 
 
-def clean_strategy(raw: dict, found: list, waiting: list, previous: dict, lang: str, today: date = None, speak=None) -> dict:
+def clean_strategy(raw: dict, found: list, waiting: list, previous: dict, lang: str, today: date = None, speak=None,
+                   candidates: dict = None) -> dict:
     """The model's answer → {"version", "terms", "decisions"} or PageError.
     A strategy with no DATED abandon condition is refused: it would be a wish."""
     today = today or date.today()
@@ -873,15 +892,41 @@ def clean_strategy(raw: dict, found: list, waiting: list, previous: dict, lang: 
         if isinstance(d, dict) and d.get("id") in open_ids and d.get("decision") in ("keep", "remove") and _line(d.get("why"), 240):
             decisions.append({"id": d["id"], "decision": d["decision"], "why": said(d.get("why"), 240)})
             open_ids.pop(d["id"])
+    # The search-terms decisions: only a candidate code produced may be decided (never a term the model picked itself)
+    open_terms, term_decisions = dict(candidates or {}), []
+    for d in raw.get("term_decisions") or []:
+        if isinstance(d, dict) and d.get("id") in open_terms and d.get("decision") in ("exclude", "add", "leave") and _line(d.get("why"), 240):
+            item = open_terms.pop(d["id"])
+            if d["decision"] != "leave" and d["decision"] != item["group"]:
+                continue                       # a wasteful term is never "added", a working one never "excluded"
+            term_decisions.append({"id": d["id"], "decision": d["decision"], "why": said(d.get("why"), 240),
+                                   "text": item["term"], "campaign": item["campaign"]})
     version = {"written_at": _now().isoformat(), "lang": lang, "money": money, "assumes": assumes, "watching": watching,
                "change_course": change, "changed": changed}
-    return {"version": version, "terms": terms, "decisions": decisions}
+    return {"version": version, "terms": terms, "decisions": decisions, "term_decisions": term_decisions}
 
 
 def _measurement_block(client_id: int) -> dict:
     try:
         from core import conversion_measurement
         return conversion_measurement.prompt_block(client_id)
+    except Exception:
+        return {}
+
+
+def _search_block(client_id: int) -> dict:
+    """The two search reports as the strategy is given them (core/search_reports)."""
+    try:
+        from core import search_reports
+        return search_reports.prompt_block(client_id)
+    except Exception:
+        return {}
+
+
+def _search_candidates(client_id: int) -> dict:
+    try:
+        from core import search_reports
+        return search_reports.candidates(client_id)
     except Exception:
         return {}
 
@@ -914,6 +959,7 @@ def write_strategy(client_id: int, lang: str = "he", reason: str = "", call=None
     try:
         payload = {"language": client_language.payload(lang), "today": today.isoformat(), "business": knowledge,
                    "monthly_budget_ils": _budget(client_id), "results_measurement": _measurement_block(client_id),
+                   "search_reports": _search_block(client_id),
                    "what_a_result_is_called": client_speech.words("conversion", lang),
                    "campaigns": [{"id": c["id"], "where_it_appears": client_speech.words(c["type"], "en", "long"),
                                   "advertises": c.get("name") or "", "state": c.get("status"), "search_phrases": c.get("keywords") or []}
@@ -933,7 +979,7 @@ def write_strategy(client_id: int, lang: str = "he", reason: str = "", call=None
             raise
         except Exception as e:
             raise PageError("writing_failed", type(e).__name__)
-        cleaned = clean_strategy(raw, found, waiting, previous, lang, today)
+        cleaned = clean_strategy(raw, found, waiting, previous, lang, today, candidates=_search_candidates(client_id))
     finally:
         client_speech.speak_for(None)
     version = {**cleaned["version"], "n": len(versions) + 1}
@@ -947,13 +993,30 @@ def write_strategy(client_id: int, lang: str = "he", reason: str = "", call=None
             f.update({"status": d["decision"], "why": d["why"], "decided_at": _now().isoformat()})
             if d["decision"] == "remove":
                 removed.append({"text": f["term"], "campaign": f["campaign"], "why": d["why"], "decided_at": f["decided_at"], "applied": False})
+    # What Yoav decided on the search-terms candidates: this is what fills the excluded list
+    stamp, added = _now().isoformat(), []
+    known = {(x.get("campaign"), x.get("text")) for x in (kept.get("excluded") or []) + (kept.get("to_add") or [])}
+    for d in cleaned.get("term_decisions") or []:
+        if d["decision"] == "leave" or (d["campaign"], d["text"]) in known:
+            continue
+        row = {"text": d["text"], "campaign": d["campaign"], "why": d["why"], "decided_at": stamp, "applied": False,
+               "source": "search_terms"}
+        (removed if d["decision"] == "exclude" else added).append(row)
+    kept["term_decisions"] = ([{**d, "decided_at": stamp} for d in cleaned.get("term_decisions") or []]
+                              + (kept.get("term_decisions") or []))[:200]
+    kept["to_add"] = ((kept.get("to_add") or []) + added)[-200:]
     kept["excluded"] = ((kept.get("excluded") or []) + removed)[-200:]
     _write(client_id, kept)
+    if added:
+        _alert([f"client {client_id}: Yoav decided to ADD {len(added)} search phrase(s) from what people actually searched — "
+                + "; ".join(f"\"{r['text'][:60]}\"" for r in added)
+                + ". Nothing was changed in the Google account: add them there, the page says it is not done yet."])
     if removed:
-        _alert([f"client {client_id}: Yoav decided to EXCLUDE {len(removed)} search phrase(s) the client flagged — "
+        _alert([f"client {client_id}: Yoav decided to EXCLUDE {len(removed)} search phrase(s) (client notes and search-terms waste) — "
                 + "; ".join(f"\"{r['text'][:60]}\"" for r in removed)
                 + ". Nothing was changed in the Google account: apply it there, the page says it is not done yet."])
-    return {"version": version["n"], "decided": len(cleaned["decisions"]), "removed": len(removed), "explained": len(cleaned["terms"])}
+    return {"version": version["n"], "decided": len(cleaned["decisions"]), "removed": len(removed), "explained": len(cleaned["terms"]),
+            "to_add": len(added), "term_decisions": len(cleaned.get("term_decisions") or [])}
 
 
 def strategy_view(kept: dict, lang: str) -> dict:
@@ -979,8 +1042,14 @@ def build_report(client_id: int, lang: str = "he", today: date = None) -> dict:
         raise PageError("no_numbers", found["state"])
     kept = _read(client_id)
     current = (kept.get("strategy") or [{}])[0]
+    try:        # how much of the demand we captured (always split) and what people searched, as they stood that day
+        from core import search_reports
+        searched = search_reports.snapshot(client_id)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: search reports not kept in the report ({type(e).__name__})")
+        searched = {}
     report = {"id": uuid.uuid4().hex[:10], "built_at": _now().isoformat(), "since": found["since"], "until": found["until"],
-              "lang": lang, "figures": found, "watching": current.get("watching") or []}
+              "lang": lang, "figures": found, "watching": current.get("watching") or [], "search": searched}
     kept["reports"] = ([report] + (kept.get("reports") or []))[:KEEP_REPORTS]
     _write(client_id, kept)
     return report
@@ -1002,6 +1071,9 @@ def report_table(report: dict, lang: str, client_id=None) -> dict:
     if report.get("watching"):
         rows.append([t("p_watching", lang), ""])
         rows += [[w.get("number") or "", w.get("why") or ""] for w in report["watching"]]
+    if report.get("search"):
+        from core import search_reports
+        rows += search_reports.report_rows(report["search"], lang)
     period = t("p_period", lang, since=client_language.fmt_date(report.get("since"), lang), until=client_language.fmt_date(report.get("until"), lang))
     return {"title": t("p_title", lang), "subtitle": period, "lines": rows,
             # the shape core/export_service takes: (key, header) columns and one dict per row
@@ -1043,11 +1115,26 @@ def _measurement(client_id: int, lang: str, numbers_state: str) -> dict:
         return {}
 
 
+def _searched(client_id: int, lang: str, numbers_state: str, found: list) -> dict:
+    """What people searched and how much of the demand we captured
+    (core/search_reports). {} when the account is not connected or readable."""
+    if numbers_state not in ("live", "no_data"):
+        return {}
+    try:
+        from core import search_reports
+        return search_reports.view(client_id, lang)
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: search reports view failed ({type(e).__name__})")
+        return {}
+
+
 def view(client_id: int, lang: str = "he", today: date = None, remember=True) -> dict:
     lang = lang if lang in LANGS else "he"
     kept = store(client_id)
     found = campaigns(client_id)
     numbers = numbers_view(client_id, lang, kept, today, remember)
+    seen = _searched(client_id, lang, numbers["state"], found)
     return {"language": lang, "direction": client_language.direction(lang),
-            "ads": ads_view(found, lang), "numbers": numbers, "measurement": _measurement(client_id, lang, numbers["state"]), "terms": terms_view(found, kept, lang),
+            "ads": ads_view(found, lang), "numbers": numbers, "measurement": _measurement(client_id, lang, numbers["state"]),
+            "terms": terms_view(found, kept, lang, seen), "search_terms": seen.get("terms") or {}, "demand_share": seen.get("share") or {},
             "reports": reports_view(client_id, kept, lang, numbers["state"] == "live"), "strategy": strategy_view(kept, lang)}

@@ -109,6 +109,24 @@ TERMS = {
     "impressions": ((r"impressions?", r"אימפרש(?:ן|נס|נים)"),
                     _five("כמה פעמים המודעה הוצגה", "how many times the ad was shown", "combien de fois l'annonce a été affichée",
                           "كم مرة عُرض الإعلان", "сколько раз объявление было показано"), ("en", "fr")),
+    # ── Google: the two search reports (core/search_reports) ──
+    "search_terms": ((r"search terms? (?:report|view)s?", r"search queries report", r"סרץ'? טרמס?", r"דוח (?:ה)?שאילתות"),
+                     _five("המילים שאנשים הקלידו בגוגל כשהמודעה שלכם הוצגה", "the words people typed into Google when your ad was shown",
+                           "les mots que les gens ont saisis dans Google quand votre annonce a été affichée",
+                           "الكلمات التي كتبها الناس في جوجل عندما عُرض إعلانكم", "слова, которые люди вводили в Google, когда показывалось ваше объявление"), ()),
+    "impression_share": ((r"(?:search )?impression share", r"אימפרשן שר", r"taux d'impressions"),
+                         _five("איזה אחוז מהחיפושים הרלוונטיים המודעה שלכם הופיעה בהם", "what percentage of the relevant searches your ad appeared in",
+                               "dans quel pourcentage des recherches pertinentes votre annonce est apparue",
+                               "في أي نسبة من عمليات البحث المناسبة ظهر إعلانكم", "в каком проценте подходящих поисков появилось ваше объявление"), ()),
+    "lost_budget": ((r"(?:search )?(?:lost is|impression share lost|lost impression share) \(?budget\)?", r"budget lost impression share"),
+                    _five("כמה מהחיפושים הרלוונטיים פספסנו כי התקציב היומי נגמר", "how many of the relevant searches we missed because the daily budget ran out",
+                          "combien de recherches pertinentes nous avons manquées parce que le budget quotidien était épuisé",
+                          "كم من عمليات البحث المناسبة فاتتنا لأن الميزانية اليومية انتهت", "сколько подходящих поисков мы пропустили, потому что закончился дневной бюджет"), ()),
+    "lost_rank": ((r"(?:search )?(?:lost is|impression share lost|lost impression share) \(?rank\)?", r"rank lost impression share",
+                   r"ad rank", r"אד ראנק"),
+                  _five("כמה מהחיפושים הרלוונטיים פספסנו כי גוגל העדיפה מודעות אחרות על שלנו", "how many of the relevant searches we missed because Google preferred other ads to ours",
+                        "combien de recherches pertinentes nous avons manquées parce que Google a préféré d'autres annonces aux nôtres",
+                        "كم من عمليات البحث المناسبة فاتتنا لأن جوجل فضّلت إعلانات أخرى على إعلاناتنا", "сколько подходящих поисков мы пропустили, потому что Google предпочёл нашим другие объявления"), ()),
     # ── never mentioned, in any form ──
     "asset_group": ((r"asset groups?", r"אסט גרופ", r"קבוצ(?:ת|ות) (?:ה)?נכסים", r"групп\w+ объектов"), None, ()),
     "ad_strength": ((r"ad strength", r"אד סטרנג'?ת'?", r"חוזק (?:ה)?מודע(?:ה|ות)", r"עוצמת (?:ה)?מודע(?:ה|ות)"), None, ()),
@@ -158,6 +176,10 @@ SHORT = {
     # otherwise the ACTUAL action is said (ACTION_WORDS below). "המרות" is standard Hebrew.
     "conversion": _five("המרות", "conversions", "conversions", "تحويلات", "конверсии"),
     "impressions": _five("חשיפות", "times shown", "affichages", "مرات الظهور", "показы"),
+    "search_terms": _five("מה אנשים חיפשו", "what people searched", "ce que les gens ont cherché", "ما بحث عنه الناس", "что искали люди"),
+    "impression_share": _five("נתח החשיפות", "share of showings", "part d'affichages", "حصة الظهور", "доля показов"),
+    "lost_budget": _five("הפסדנו בגלל תקציב", "lost to budget", "perdu faute de budget", "خسرنا بسبب الميزانية", "потеряно из-за бюджета"),
+    "lost_rank": _five("הפסדנו בגלל דירוג", "lost to ranking", "perdu à cause du classement", "خسرنا بسبب الترتيب", "потеряно из-за рейтинга"),
 }
 FORMS = ("short", "long")
 

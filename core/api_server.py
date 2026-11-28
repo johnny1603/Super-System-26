@@ -3156,6 +3156,15 @@ def admin_google_ads_measurement(request: Request, client_id: int = 27):
     from core import conversion_measurement
     return {"success": True, "data": conversion_measurement.refresh(client_id)}
 
+@app.get("/api/admin/google-ads/search-reports")
+def admin_google_ads_search_reports(request: Request, client_id: int = 27):
+    # What people searched and the impression share SPLIT (lost to budget / lost to rank) for one
+    # client, read NOW (two operations) and stored (core/search_reports). The decision groups are
+    # empty, and say why, unless the account is measuring.
+    _require_admin(request)
+    from core import search_reports
+    return {"success": True, "data": search_reports.refresh(client_id)}
+
 @app.post("/api/admin/google-ads/goal")
 def admin_google_ads_goal(request: Request, client_id: int = 27):
     # Runs google_ads_agent.set_performance_goal for one client (one model call) and returns the

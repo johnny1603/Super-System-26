@@ -98,6 +98,7 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
       <label class="muted" style="margin:0;">מספר לקוח <input type="text" dir="ltr" id="gaClient" value="27" inputmode="numeric" style="width:90px;"></label>
       <button id="gaBtn">בדיקת חיבור מול גוגל (פעולה אחת)</button>
       <button id="gaMeasureBtn">האם משהו נמדד? (שתי פעולות)</button>
+      <button id="gaSearchBtn">מה חיפשו ונתח החשיפות (שתי פעולות)</button>
       <button id="gaGoalBtn">קביעת יעד 90 יום פנימי (קריאת מודל)</button>
     </div>
     <div id="gaConnOut" class="muted" style="margin-top:10px;"></div>
@@ -347,6 +348,35 @@ async function gaMeasurement() {
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
 }
 document.getElementById("gaMeasureBtn").onclick = gaMeasurement;
+// The two search reports (core/search_reports). Impression share is NEVER one number: the split, and which loss leads.
+const GA_LEAD = { budget: "מוביל: תקציב — הקמפיין קטן מהביקוש", rank: "מוביל: דירוג — תוספת תקציב לא תפתור", both: "תקציב ודירוג באותה מידה — קודם דירוג", none: "כמעט לא הפסדנו" };
+async function gaSearchReports() {
+  const out = document.getElementById("gaConnOut");
+  const cid = parseInt(document.getElementById("gaClient").value, 10);
+  if (!cid) { out.textContent = "חסר מספר לקוח"; return; }
+  out.textContent = "קורא מגוגל…";
+  try {
+    const d = await api("/api/admin/google-ads/search-reports?client_id=" + cid);
+    if (!d.connected) { out.textContent = "Google Ads לא מחובר ללקוח הזה — אין מה לקרוא"; return; }
+    const pc = v => v === null || v === undefined ? "—" : Math.abs(v - 0.0999) < 1e-4 ? "<10%" : Math.abs(v - 0.9001) < 1e-4 ? ">90%" : Math.round(v * 100) + "%";
+    const dec = d.decisions || {};
+    const shares = (d.shares || []).map(c => c.available
+      ? `<tr><td>${esc(c.campaign_name)}</td><td>${pc(c.share)}</td><td>${pc(c.lost_budget)}</td><td>${pc(c.lost_rank)}</td><td>${esc(GA_LEAD[c.dominant] || "")}</td></tr>`
+      : `<tr><td>${esc(c.campaign_name)}</td><td colspan="4">גוגל לא מוסרת נתח חשיפות לסוג הזה (${esc(c.channel)})</td></tr>`).join("");
+    const list = rows => (rows || []).map(t => `<tr><td>${esc(t.term)}</td><td>${esc(t.matched || "—")}</td><td>${esc(t.clicks)}</td><td>₪${esc(t.cost)}</td><td>${esc(t.conversions)}</td></tr>`).join("");
+    const head = "<tr><th>מה חיפשו</th><th>הביטוי שהתאים</th><th>קליקים</th><th>עלות</th><th>המרות</th></tr>";
+    out.innerHTML = `<div>לקוח ${esc(cid)} · מצב מדידה: <b>${esc(d.measurement)}</b> · מילות חיפוש: ${esc(d.terms_total === undefined ? "לא נקרא" : d.terms_total)}</div>
+      ${d.shares && !d.shares.length ? "<div>אף קמפיין לא הוצג ב-30 הימים האחרונים. שני הדוחות ריקים עד שקמפיין ירוץ — זה צפוי, לא תקלה.</div>" : ""}
+      ${shares ? `<table style="margin-top:8px;"><tr><th>קמפיין</th><th>הופענו</th><th>הפסדנו בגלל תקציב</th><th>הפסדנו בגלל דירוג</th><th>מה מוביל</th></tr>${shares}</table>` : ""}
+      ${dec.gated ? `<div style="margin-top:6px;">מועמדים להוצאה ולהוספה: <b>לא מוסקים</b> — החשבון לא מודד (${esc(dec.gated)}).</div>`
+        : `<div style="margin-top:8px;">מועמדים להוצאה (${(dec.exclude || []).length})</div>${(dec.exclude || []).length ? `<table>${head}${list(dec.exclude)}</table>` : ""}
+           <div style="margin-top:8px;">מועמדים להוספה (${(dec.add || []).length})</div>${(dec.add || []).length ? `<table>${head}${list(dec.add)}</table>` : ""}`}
+      ${(d.terms || []).length ? `<details style="margin-top:8px;"><summary>20 הכי יקרים</summary><table>${head}${list(d.terms.slice(0, 20))}</table></details>` : ""}
+      ${["error", "terms_error", "shares_error"].filter(k => d[k]).map(k => `<div dir="ltr" style="text-align:left;">${k}: <code>${esc(d[k])}</code></div>`).join("")}`;
+    gaQuota();
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
+}
+document.getElementById("gaSearchBtn").onclick = gaSearchReports;
 const GA_GOAL_REFUSED = {
   "no stated monthly budget — cannot set a goal": "אין תקציב חודשי רשום. הלקוח מאשר אותו בצ׳אט (כרטיס ״הנתונים שעליהם נבנה היעדים״).",
   required_inputs_missing: "חסרים נתוני חובה לפני יעד",

@@ -1208,6 +1208,14 @@ def run_health_scan() -> dict:
                 if _raise_issue(client_id, "measurement_import_missing", msg):
                     summary["issues"].append(msg)
 
+            # 3c. What people searched and how much of the demand we capture, always split (two more
+            # operations; core/search_reports). Its conclusions are gated on the state read just above.
+            from core import search_reports
+            searched = search_reports.refresh(client_id, conn, measure.get("state"))
+            summary.setdefault("search_reports", {})[str(client_id)] = {
+                "terms": searched.get("terms_total"), "campaigns": len(searched.get("shares") or []),
+                "errors": [k for k in ("terms_error", "shares_error") if searched.get(k)]}
+
             # 4. Performance problems (alert only)
             campaigns = _fetch_two_window_metrics(conn)
             summary["issues"].extend(_check_performance_problems(client_id, campaigns, measure.get("state")))

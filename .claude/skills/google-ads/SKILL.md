@@ -403,3 +403,15 @@ zero-conversion alert is replaced by one that says what it is. The daily scan re
 `GET /api/admin/google-ads/measurement?client_id=` reads it now. The two GAQL queries were written
 from Google's reference and have not run against a live account from this code: a refused query
 gives `unknown` with Google's message, the safe side.
+
+## What people searched, and how much of the demand we capture (2026-11-29)
+
+`core/search_reports.py` — two operations a read, stored in `search_reports:<id>`, refreshed by the
+daily scan right after the measurement state; `GET /api/admin/google-ads/search-reports?client_id=`
+reads now. Search terms come from `search_term_view` for SEARCH campaigns only; the exclude / add
+candidates are computed in code and exist only while the account is `measuring`. Impression share is
+never one number: `lost_budget` and `lost_rank` are opposite actions and the attached sentence follows
+whichever leads. Performance Max has no typed-searches list (its category insights are NOT read here)
+and no share is reported for it: both are said. The two GAQL queries are from Google's reference and
+have not run against a live account from this code; a refused query stores the error and concludes
+nothing.

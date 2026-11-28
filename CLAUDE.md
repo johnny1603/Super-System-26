@@ -962,6 +962,16 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   calls `set_performance_goal` (refuses by name: inputs missing / account not measuring).
   `connection_catalog.NOT_BUILT` (merchant_center, creatomate, uppbeat) is never offered.
   `tests/test_conversion_measurement.py`.
+- **The two search reports (2026-11-29, `core/search_reports.py`)**: what people typed
+  (`search_term_view`, search campaigns only) as a DECISION list — exclude / add candidates that exist
+  ONLY while the account is `measuring` — and impression share per campaign, NEVER one number: lost to
+  budget vs lost to rank, with the action of whichever leads (more budget is never attached to a
+  rank-led loss, nor before the account measures). Performance Max: no typed-searches list and no
+  share shown as zero — said. Two operations a read, in the daily scan after the measurement state.
+  On the Google page, in the strategy payload (Yoav decides each candidate → fills the excluded list),
+  in the monthly report. Words: `client_speech` rows `search_terms`, `impression_share`,
+  `lost_budget`, `lost_rank`. Craft rules: `knowledge/paid-media-craft.md` §4.1.
+  `tests/test_search_reports.py`.
 - **No invented number before purchase (2026-11-28, `core/sales_truth.py`)**: uallak holds NO market
   or industry data, so the sales chat cannot state one. `market_reality` and `kpis` no longer exist on
   a proposal; `sales_truth.enforce` (last step of `qa_agent_content._enforce_invariants`, both ship

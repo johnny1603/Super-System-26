@@ -1700,6 +1700,8 @@ body.bs-open { overflow: hidden; }
 .gg-table td { padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
 .gg-table td:last-child { text-align: end; font-weight: 700; white-space: nowrap; }
 .gg-table tr.gg-head td { font-weight: 800; padding-top: 14px; }
+.gg-table th { padding: 8px 4px; font-size: 12.5px; color: var(--gray); text-align: start; font-weight: 700; border-bottom: 1px solid var(--border); }
+.gg-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .gg-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
 .gg-lane { border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
 .gg-lane h4 { margin-top: 0; }
@@ -13665,7 +13667,38 @@ function ggTerms(s) {
   out += `<h4>${esc(s.excluded_title)}</h4>` + (s.excluded.length
     ? s.excluded.map(x => `<div class="gg-term"><div class="gg-term-top"><b>${esc(x.text)}</b></div><div class="gg-muted">${esc(x.why)}</div><div class="gg-flagline">${esc(x.state)}</div></div>`).join('')
     : `<p class="gg-muted">${esc(s.excluded_empty)}</p>`);
+  if ((s.to_add || []).length) out += `<h4>${esc(s.to_add_title)}</h4>`
+    + s.to_add.map(x => `<div class="gg-term"><div class="gg-term-top"><b>${esc(x.text)}</b></div><div class="gg-muted">${esc(x.why)}</div><div class="gg-flagline">${esc(x.state)}</div></div>`).join('');
   return out;
+}
+// What people actually searched (core/search_reports): a DECISION list first, the raw table under it.
+// The two groups exist only when the account measures results; otherwise the note says why they do not.
+function ggSearched(s) {
+  let out = `<p class="gg-muted">${esc(s.long)}</p>`;
+  if (s.empty) return out + `<p class="gg-muted">${esc(s.empty)}</p>` + (s.notes || []).map(n => `<p class="gg-muted">${esc(n)}</p>`).join('');
+  (s.groups || []).forEach(g => {
+    out += `<h4>${esc(g.title)}</h4>` + (g.rows.length
+      ? g.rows.map(x => `<div class="gg-term"><div class="gg-term-top"><b>${esc(x.text)}</b></div><div class="gg-muted">${esc(x.why)}</div></div>`).join('')
+      : `<p class="gg-muted">${esc(g.empty)}</p>`);
+  });
+  out += (s.notes || []).map(n => `<div class="${(s.groups || []).length ? 'gg-muted' : 'gg-warn'}" style="margin-top:6px;">${esc(n)}</div>`).join('');
+  if (s.table) out += `<details style="margin-top:10px;"><summary>${esc(s.table.title)}</summary><div style="overflow-x:auto;"><table class="gg-table"><tr>`
+    + s.table.columns.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>'
+    + s.table.rows.map(r => '<tr>' + r.map(v => `<td>${esc(v)}</td>`).join('') + '</tr>').join('') + '</table></div></details>';
+  return out + `<p class="gg-muted">${esc(s.checked)}</p>`;
+}
+// How much of the demand we capture: NEVER one number. The split per campaign, then the action of whichever loss leads.
+function ggShare(s) {
+  let out = `<p class="gg-muted">${esc(s.long)}</p>`;
+  if (s.empty) return out + `<p class="gg-muted">${esc(s.empty)}</p>`;
+  s.campaigns.forEach(c => {
+    out += `<div class="gg-camp"><div class="gg-camp-head"><b>${esc(c.title)}</b><span class="gg-muted">${esc(c.name)}</span></div>`
+      + (c.note ? `<p class="gg-muted">${esc(c.note)}</p>`
+        : c.rows.map(r => `<div class="gg-row"><span>${esc(r.label)}</span><b>${esc(r.value)}</b></div>`).join('')
+          + `<div class="${c.lead === 'rank' || c.lead === 'both' ? 'gg-warn' : 'gg-muted'}" style="margin-top:8px;">${esc(c.action)}</div>`)
+      + '</div>';
+  });
+  return out + `<p class="gg-muted">${esc(s.checked)}</p>`;
 }
 function ggReports(s) {
   let out = `<p class="gg-muted">${esc(s.how)}</p>` + (s.blocked ? `<div class="gg-warn">${esc(s.blocked)}</div>` : '');
@@ -13697,7 +13730,10 @@ function renderGooglePage() {
   const m = d.measurement && d.measurement.title ? d.measurement : null;
   const measure = m ? sec(m, `<div class="${m.ok ? 'gg-muted' : 'gg-warn'}">${esc(m.text || '')}</div>`
     + (m.notes || []).map(n => `<div class="gg-muted" style="margin-top:6px;">${esc(n)}</div>`).join('')) : '';
-  root.innerHTML = '<div class="gg-stack">' + sec(d.ads, ggAds(d.ads)) + measure + sec(d.numbers, ggNumbers(d.numbers)) + sec(d.terms, ggTerms(d.terms))
+  const searched = d.search_terms && d.search_terms.title ? sec(d.search_terms, ggSearched(d.search_terms)) : '';
+  const share = d.demand_share && d.demand_share.title ? sec(d.demand_share, ggShare(d.demand_share)) : '';
+  root.innerHTML = '<div class="gg-stack">' + sec(d.ads, ggAds(d.ads)) + measure + sec(d.numbers, ggNumbers(d.numbers)) + share
+    + sec(d.terms, ggTerms(d.terms)) + searched
     + sec(d.reports, ggReports(d.reports)) + sec(d.strategy, ggStrategy(d.strategy)) + '</div>';
 }
 function ggFlagOpen(key) { ggUI.open = ggUI.open === key ? '' : key; renderGooglePage(); const el = document.getElementById('ggFlagText'); if (el) el.focus(); }
