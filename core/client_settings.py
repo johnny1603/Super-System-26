@@ -74,6 +74,11 @@ FIELDS = {
     "weekly_sync_escalation": {
         "type": "bool", "paying": True, "exempt": False,
         "label_he": "סיכום שבועי שלא אושר — התראה ומייל לג׳וני"},
+    "publish_without_item_approval": {
+        # governance §1: with the client's brief approved BY THE CLIENT, the weekly plan they approve is the
+        # approval of its items. OFF for every client, internal ones included: the owner turns it on per client.
+        "type": "bool", "paying": False, "exempt": False,
+        "label_he": "פריטי התכנית השבועית מאושרים בלי אישור לכל פריט (רק כשהלקוח אישר את התדריך ואת התכנית)"},
     "drive_assets_free_items": {
         "type": "int", "paying": 150, "exempt": 150, "min": 0, "max": 100000,
         "label_he": "תיקיות דרייב — פריטים שמאונדקסים בחינם"},

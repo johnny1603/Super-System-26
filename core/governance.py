@@ -172,15 +172,48 @@ def _alert(lines: list):
 # ─── Authority (§1, 4.6) ─────────────────────────────────────────────────────
 
 def authority(client_id: int) -> dict:
-    """{"mode": "decide" | "ask", "brief_status"} — no approved brand brief,
-    no strategic authority. An unreadable brief is "ask" (the safe side)."""
+    """{"mode": "decide" | "ask", "brief_status", "granted_by"} — no brief
+    approved BY THE CLIENT (or by the owner on a silent client's behalf,
+    recorded as such), no strategic authority. A draft is still read as
+    information; an unreadable brief is "ask" (the safe side)."""
     try:
         from core import brand_brief
-        status = str(brand_brief.current(client_id).get("status") or "missing")
+        grant = brand_brief.granted(client_id)
     except Exception as e:
         print(f"[{SERVICE_NAME}] client {client_id}: brief status unreadable ({type(e).__name__})")
-        status = "unknown"
-    return {"mode": "decide" if status == "approved" else "ask", "brief_status": status}
+        return {"mode": "ask", "brief_status": "unknown", "granted_by": ""}
+    return {"mode": "decide" if grant["granted"] else "ask", "brief_status": grant["status"], "granted_by": grant["by"]}
+
+
+def _plan_decided_by(client_id: int, plan_id: str) -> str:
+    """Who approved this weekly plan's card ("client" | "staff" | "")."""
+    from agents.client_agent import _db
+    rows = (_db().table("agent_actions").select("params,decided_by").eq("client_id", int(client_id))
+            .eq("action", "approve_content_plan").order("id", desc=True).limit(10).execute().data or [])
+    for row in rows:
+        if str((row.get("params") or {}).get("plan")) == str(plan_id):
+            return str(row.get("decided_by") or "")
+    return ""
+
+
+def _switch_on(client_id: int) -> bool:
+    from core import client_settings
+    return client_settings.get(client_id).get("publish_without_item_approval") is True
+
+
+def plan_is_approval(client_id: int, plan_id: str) -> bool:
+    """§1 made real: the weekly plan the client approved IS the approval of
+    its items — no second approval per item — ONLY when all three hold:
+    the client's switch is on (off for everyone by default, the owner turns it
+    on per client), the brief is granted (authority "decide"), and the plan's
+    card was approved by the CLIENT (never by staff: §4, a silent client never
+    triggers a publish). Any doubt = False = the item waits as always."""
+    try:
+        return (_switch_on(client_id) and authority(client_id)["mode"] == "decide"
+                and _plan_decided_by(client_id, plan_id) == "client")
+    except Exception as e:
+        print(f"[{SERVICE_NAME}] client {client_id}: plan authority unreadable ({type(e).__name__}) — the item waits")
+        return False
 
 
 # ─── Lanes (§2, 4.2) ─────────────────────────────────────────────────────────

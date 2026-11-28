@@ -3851,7 +3851,10 @@ def admin_brand_brief_approve(client_id: int, req: BrandBriefApproveRequest, req
     _require_admin(request)
     from core import brand_brief
     try:
-        brand_brief.approve(client_id, by=_brief_by(req.by_name))
+        # The CLIENT approves the brief (governance §1). The owner may approve only on behalf of a client who
+        # was asked and stayed silent 24 h; refused by name otherwise; recorded and shown as on-behalf.
+        from core import brief_approval
+        brief_approval.approve_on_behalf(client_id, req.by_name)
     except brand_brief.BriefError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"success": True, "data": brand_brief.admin_view(client_id)}
@@ -9292,6 +9295,20 @@ def client_brand_identity_typefaces_other(req: BrandTextRequest, request: Reques
         _brand_fail(e, lang)
     log_activity(client_id, "client", "brand_typefaces_other_asked", "The client asked for a different brand font on the branding page")
     return {"success": True, "message": got["message"], "data": brand_page.view(client_id, lang)}
+
+# The client approves what we understood about them: THE grant of the system's authority
+# (governance §1, core/brief_approval). Not in READ_ENDPOINTS: staff viewing as the client cannot.
+@app.post("/api/client/brand-identity/approve")
+def client_brand_identity_approve(request: Request):
+    client_id = _require_session(request)
+    from core import brand_brief, brand_page, brief_approval
+    lang = _client_lang(client_id)
+    try:
+        brief_approval.approve_by_client(client_id)
+    except brand_brief.BriefError as e:
+        raise HTTPException(status_code=400, detail={"code": str(e)})
+    log_activity(client_id, "client", "brand_brief_approved", "The client approved what the team understood about the business (branding page)")
+    return {"success": True, "data": brand_page.view(client_id, lang)}
 
 # The client does not edit the tone (it is the system's work). ONE question is theirs:
 # what may never be said about them — a hard constraint on every text (core/brand_voice).

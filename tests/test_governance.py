@@ -76,18 +76,20 @@ class TheDoctrineReachesEveryAgent(unittest.TestCase):
 class Authority(unittest.TestCase):
     def test_no_approved_brief_means_ask(self):
         from core import brand_brief
-        real = brand_brief.current
+        real = brand_brief.granted
         try:
-            for status, mode in (("approved", "decide"), ("draft", "ask"), ("missing", "ask")):
-                brand_brief.current = lambda cid, s=status: {"status": s}
-                self.assertEqual(gov.authority(27), {"mode": mode, "brief_status": status})
+            # approved BY THE CLIENT (or on their behalf) = decide; approved by anyone else, a draft, nothing = ask
+            for status, by, mode in (("approved", "client", "decide"), ("approved", "owner_on_behalf", "decide"),
+                                     ("approved", "", "ask"), ("draft", "", "ask"), ("missing", "", "ask")):
+                brand_brief.granted = lambda cid, s=status, b=by: {"exists": s != "missing", "status": s, "granted": bool(b), "by": b, "at": ""}
+                self.assertEqual(gov.authority(27), {"mode": mode, "brief_status": status, "granted_by": by})
 
             def broken(cid):
                 raise RuntimeError("db")
-            brand_brief.current = broken
+            brand_brief.granted = broken
             self.assertEqual(gov.authority(27)["mode"], "ask")
         finally:
-            brand_brief.current = real
+            brand_brief.granted = real
 
 
 class Lanes(Base):

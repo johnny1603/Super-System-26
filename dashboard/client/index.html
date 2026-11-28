@@ -13994,6 +13994,12 @@ function renderBrandPage() {
   const d = brUI.data, t = uallakI18n.t;
   if (!root || !d) return;
   const parts = [];
+  // The client's approval of what we understood (core/brief_approval): THEIR click grants the team its authority.
+  // All words come from the server, in their language. Staff viewing as the client see it and cannot click.
+  const ap = d.approval || {};
+  if (ap.state === 'waiting') parts.push(`<div class="br-card wide br-note"><h3>${esc(ap.title)}</h3><p>${esc(ap.text)}</p>
+    ${ADMIN_VIEW ? '' : `<div class="br-row"><button class="sugg-btn approve" data-br-brief-approve>${esc(ap.button)}</button></div>`}</div>`);
+  else if (ap.state === 'granted') parts.push(`<div class="br-card wide"><div class="br-sub">${esc(ap.line)}</div></div>`);
   if (!d.lead) parts.push(brHeroHtml());
   parts.push(brNeverHtml());
   if (d.lead) {
@@ -14086,6 +14092,8 @@ function brReadColors() {
         .then(ok => { if (ok) { brUI.neverOpen = false; renderBrandPage(); } });
     } else if (btn.hasAttribute('data-br-font-approve')) {        // the server approves ITS OWN choice: no name is sent
       brJson('/api/client/brand-identity/typefaces/approve', {});
+    } else if (btn.hasAttribute('data-br-brief-approve')) {       // the client's own yes to what we understood
+      brJson('/api/client/brand-identity/approve', {});
     } else if (btn.hasAttribute('data-br-font-other') || btn.hasAttribute('data-br-font-other-cancel')) {
       brUI.fontOther = btn.hasAttribute('data-br-font-other');
       renderBrandPage();

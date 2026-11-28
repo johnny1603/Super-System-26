@@ -962,6 +962,17 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   calls `set_performance_goal` (refuses by name: inputs missing / account not measuring).
   `connection_catalog.NOT_BUILT` (merchant_center, creatomate, uppbeat) is never offered.
   `tests/test_conversion_measurement.py`.
+- **The CLIENT approves the brief; "decide" means something (2026-11-28, governance §1, `core/brief_approval.py`)**: a
+  draft is INFORMATION (every agent reads it), approval is AUTHORITY, and work is never blocked on approval.
+  `brand_brief.approve(grant=)` is called only from `brief_approval`: the client's click on the branding page
+  (`POST /api/client/brand-identity/approve`, not in READ_ENDPOINTS), or the owner ON BEHALF only when the client was
+  asked (`present_due`, once, after the characterisation) and stayed silent 24 h — recorded as `owner_on_behalf` and
+  said on the client's page. `brand_brief.granted()` is what `governance.authority` reads: a brief approved before this
+  rule (by the manager / a migrated file, client 27 included) is "approved" with NO grant → authority "ask" until the
+  client approves. Switch `client_settings.publish_without_item_approval` (OFF for everyone): with it on + the grant +
+  a weekly plan the CLIENT approved, `content_team._queue_for_approval` approves the plan's items without a second
+  approval (`governance.plan_is_approval`; flagged items always wait; a staff-approved plan never counts). It APPROVES
+  only — there is still no automatic publisher (`AUTO_PUBLISH` False, no publish call). `tests/test_brief_approval.py`.
 - **Intake times, measured and enforced (2026-11-28, `core/intake_sla.py`)**: every proposal build is timed around the ONE
   call in `/api/onboarding` (app_settings `intake_sla`); brief draft and approval times are READ from the brief's own
   record. Owner alerts, once each: a build past `PROPOSAL_ALERT_SECONDS` (240) or never back, a draft not created within

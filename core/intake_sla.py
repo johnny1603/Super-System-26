@@ -196,8 +196,10 @@ def sweep(now: datetime = None, force: bool = False) -> dict:
                           f"without a brief for this client. Draft it by hand from the brief page in the Control Room."))
         if (item["waiting_hours"] or 0) >= APPROVAL_DUE_HOURS:
             lines.append((f"approval:{cid}",
-                          f"client {cid}: the brand brief has been a DRAFT waiting for your approval for more than "
-                          f"{APPROVAL_DUE_HOURS} hours. Until it is approved the agents ask instead of deciding (governance §1)."))
+                          f"client {cid}: the brand brief has been a DRAFT for more than {APPROVAL_DUE_HOURS} hours and the "
+                          f"client has not approved it. Until the CLIENT approves, the agents ask instead of deciding "
+                          f"(governance §1). Get the client to approve on their branding page; if they were asked and stayed "
+                          f"silent 24 hours you may approve on their behalf in the Control Room."))
     fresh = [(key, text) for key, text in lines if key not in alerted]
     sent = []
     for key, text in fresh:
@@ -219,7 +221,13 @@ def sweep(now: datetime = None, force: bool = False) -> dict:
                 if row.get("id") in lost and "seconds" not in row:
                     row.update(seconds=None, ok=False, lost=True)
         _update(change)
-    return {"alerted": sent, "due": len(lines)}
+    # The client is asked ONCE to approve what we understood (core/brief_approval), after the characterisation
+    try:
+        from core import brief_approval
+        asked = brief_approval.present_due()
+    except Exception as e:
+        asked = {"error": type(e).__name__}
+    return {"alerted": sent, "due": len(lines), "approval_asked": asked}
 
 
 # ─── The report (reads only) ─────────────────────────────────────────────────

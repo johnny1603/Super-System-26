@@ -143,8 +143,8 @@ def load_context(client_id: int) -> dict:
     facts = parse_brand(got.get("source_text", "").strip()) if got["status"] != "missing" else parse_brand("")
     return {"craft": craft, "brand": brand, "brand_facts": facts, "brand_status": got["status"],
             "brand_lacks": got["lacks"], "governance": doctrine,
-            # §1: no approved brief, no strategic authority
-            "authority": "decide" if got["status"] == "approved" else "ask"}
+            # §1: no brief approved by the client, no strategic authority (the draft above is still read)
+            "authority": governance.authority(client_id)["mode"]}
 
 
 def try_context(client_id: int) -> dict:

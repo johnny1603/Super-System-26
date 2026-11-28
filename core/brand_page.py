@@ -679,6 +679,11 @@ def _package(client_id: int, lang: str) -> dict:
 
 # ─── The page ────────────────────────────────────────────────────────────────
 
+def _approval(client_id: int, lang: str) -> dict:
+    from core import brief_approval
+    return brief_approval.view(client_id, lang)
+
+
 def view(client_id: int, lang: str = "he") -> dict:
     cur = brand_brief.current(client_id)
     body = cur.get("text", "")
@@ -705,6 +710,8 @@ def view(client_id: int, lang: str = "he") -> dict:
     assets = [r for r in rows if r["version"] == ASSET]
     return {
         "brief_status": cur.get("status") or "missing",
+        # the client's approval of what we understood: waiting (title, text, button) / granted (the line) / none
+        "approval": _approval(client_id, lang),
         "colors": {"variants": variants, "roles": list(brand_brief.COLOR_ROLES), "stated": stated,
                    "provisional": bool(variants) and not stated, "segmented": len(variants) > 1},
         "typefaces": _typefaces(body),

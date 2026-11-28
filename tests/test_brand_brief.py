@@ -220,12 +220,12 @@ class ManagerReview(WithDB):
         v = bb.save_edit(CID, new_text, by="manager:דנה")
         self.assertEqual((v["kind"], v["status"], v["v"]), ("edited", "draft", 2))
         self.assertIn("emoji_policy: none at all [stated]", bb.text(CID))
-        a = bb.approve(CID, by="manager:דנה")
+        a = bb.approve(CID, by="client")                                  # the client approves (governance §1)
         self.assertEqual((a["kind"], a["status"], a["v"]), ("approved", "approved", 3))
         text = bb.text(CID)
         self.assertIn("emoji_policy: none at all [stated]", text)        # the correction survived
         self.assertNotIn("Status: DRAFT", text)                           # the draft state is cleared
-        self.assertIn("Status: APPROVED by the manager", text)
+        self.assertIn("Status: APPROVED by the client", text)
         self.assertEqual(pb.load_context(CID)["brand_status"], "approved")
         self.assertEqual([h["kind"] for h in bb.admin_view(CID)["history"]], ["approved", "edited", "migrated"])
         self.assertEqual(bb.current(CID)["palette"], PALETTE_27)          # untouched by text edits

@@ -332,9 +332,20 @@ def _queue_for_approval(client_id: int, plan_id: str, index: int, item: dict):
         planned = social_queue.next_weekday(int(item.get("day")))
     except (TypeError, ValueError):
         planned = ""                          # the queue's default: tomorrow
-    social_queue.add_safely(client_id, item["file_id"], kind, [item["platform"]], caption=item.get("caption", ""),
-                            planned_date=planned, producer="media", source="plan",
-                            title=item["title"], plan_ref={"plan": str(plan_id), "index": index})
+    queued = social_queue.add_safely(client_id, item["file_id"], kind, [item["platform"]], caption=item.get("caption", ""),
+                                     planned_date=planned, producer="media", source="plan",
+                                     title=item["title"], plan_ref={"plan": str(plan_id), "index": index})
+    # Governance §1: for a client whose switch is on, whose brief THEY approved and who approved this plan
+    # themselves, the plan was the approval — the item does not wait for a second one. An item that carries a
+    # notice (flags) always waits. This approves; it publishes nothing (there is no publish call in this module).
+    if queued and queued.get("status") == "waiting" and not queued.get("flags"):
+        from core import governance
+        if governance.plan_is_approval(client_id, plan_id):
+            try:
+                social_queue.approve(client_id, [queued["id"]], by=f"plan:{plan_id}")
+                print(f"[{SERVICE_NAME}] client {client_id}: plan {plan_id} item {index} approved by the plan itself")
+            except Exception as e:
+                print(f"[{SERVICE_NAME}] client {client_id}: plan item not approved by the plan ({type(e).__name__}) — it waits")
 
 
 def produce(client_id: int, plan_id: str):

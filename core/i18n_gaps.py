@@ -82,7 +82,7 @@ KNOWN_DEBT = {
     "core/chat_route.py": 3,
     "core/client_auth.py": 2,
     "core/client_journey.py": 1,
-    "core/client_settings.py": 14,          # admin-only labels (label_he); +2 drive-folders cap settings (publish snapshot removed 2026-11-24); +2 governance (package size, sync escalation) 2026-11-26
+    "core/client_settings.py": 15,          # +1 the per-client plan-is-approval switch 2026-11-28; admin-only labels (label_he); +2 drive-folders cap settings (publish snapshot removed 2026-11-24); +2 governance (package size, sync escalation) 2026-11-26
     "core/connection_catalog.py": 34,
     "core/connection_help.py": 2,
     "core/control_room.py": 17,

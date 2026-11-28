@@ -104,7 +104,7 @@ class TheBrief(Base):
         sla.sweep(NOW, force=True)
         self.assertEqual(len(self.alerts), 1)
         self.assertIn("client 41", self.alerts[0])
-        self.assertIn("waiting for your approval", self.alerts[0])
+        self.assertIn("the client has not approved it", self.alerts[0])
         sla.sweep(NOW, force=True)
         self.assertEqual(len(self.alerts), 1)
         # approved: measured, and the mark is forgotten so a later wait alerts again

@@ -3554,9 +3554,9 @@ function crRenderBrief(el, clientId, notice) {
         ? `✓ הטקסט השמור זהה בדיוק לקובץ ${esc(d.repo_file.path)} (${Number(d.repo_file.stored_chars).toLocaleString('he-IL')} תווים)`
         : `⚠️ הטקסט השמור שונה מהקובץ ${esc(d.repo_file.path)} (${Number(d.repo_file.stored_chars).toLocaleString('he-IL')} מול ${Number(d.repo_file.file_chars).toLocaleString('he-IL')} תווים — עריכות או קובץ שהשתנה)`}
       <button type="button" class="manage-btn" style="margin-inline-start:8px;" onclick="crBriefPost(${Number(clientId)}, 'remigrate', {}, 'הועבר מחדש מהקובץ ✓ (גרסה חדשה)')">העברה מחדש מהקובץ</button></div>` : ''}
-    ${d.status !== 'approved' ? `<div style="font-size:12px;color:var(--gray);margin-bottom:6px;">הסוכנים כבר עובדים מהטיוטה. שדות "הסקה" משמשים רק לכיוון ולא לטענות עובדתיות בתוכן שמתפרסם.</div>` : ''}
+    <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">${crBrApproval(d.approval || {})} הסוכנים קוראים את התדריך כמידע גם כשהוא טיוטה; האישור של הלקוח משנה רק את הסמכות להחליט בלי לשאול.</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;">
-      ${d.status !== 'approved' ? `<button type="button" class="manage-btn" id="crBrApprove" onclick="crBriefApprove(${Number(clientId)})">אישור התדריך</button>` : ''}
+      ${((d.approval || {}).owner || {}).allowed ? `<button type="button" class="manage-btn" id="crBrApprove" onclick="crBriefApprove(${Number(clientId)})">אישור בשם הלקוח (יירשם ויוצג ללקוח)</button>` : ''}
       <input type="text" id="crBrBy" maxlength="30" placeholder="שם המאשר/ת" style="width:130px;" value="${esc(crBrWho())}" dir="auto">
       <span id="crBrMsg" style="font-size:12px;color:var(--gray);">${notice ? esc(notice) : ''}</span>
     </div>
@@ -3593,7 +3593,17 @@ function crBriefSavePalette(clientId) {
   const pal = Object.assign({}, (crBr.data || {}).palette || {}, { variants, status: 'manager' });
   crBriefPost(clientId, 'edit', { palette: pal }, 'הפלטה נשמרה ✓');
 }
-function crBriefApprove(clientId) { crBriefPost(clientId, 'approve', {}, 'התדריך אושר ✓'); }
+function crBriefApprove(clientId) { crBriefPost(clientId, 'approve', {}, 'אושר בשם הלקוח ✓ (נרשם, ומוצג ללקוח בעמוד המיתוג)'); }
+// Who granted the system its authority (core/brief_approval). The CLIENT approves; the owner only for a silent client.
+function crBrApproval(a) {
+  const day = s => esc(String(s || '').slice(0, 10)), o = a.owner || {};
+  if (a.state === 'granted') return a.by === 'owner_on_behalf' ? `<b>אושר בשם הלקוח</b> ב-${day(a.at)}.` : `<b>הלקוח אישר</b> ב-${day(a.at)}.`;
+  if (a.state === 'none') return 'אין עדיין תדריך לאשר.';
+  if (a.state !== 'waiting') return 'מצב האישור לא נקרא.';
+  if (o.allowed) return `<b>הלקוח לא אישר.</b> נשאל ב-${day(a.presented_at)} ושותק ${esc(o.silent_hours)} שעות — אפשר לאשר בשמו.`;
+  if (o.reason === 'client_has_time') return `<b>מחכה לאישור הלקוח.</b> נשאל ב-${day(a.presented_at)}; אישור בשמו אפשרי בעוד ${esc(o.hours_left)} שעות אם ישתוק.`;
+  return '<b>מחכה לאישור הלקוח.</b> הלקוח עוד לא נשאל (נשאל אוטומטית אחרי שיחת האפיון), ולכן אי אפשר לאשר בשמו.';
+}
 async function crBriefDraft(clientId) {
   const btn = document.getElementById('crBrDraft');
   if (btn) btn.disabled = true;

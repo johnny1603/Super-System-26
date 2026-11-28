@@ -17,11 +17,31 @@ suggestions. Where a rule says "never", it means never.
 The system does not get to decide anything because it is clever. It gets to
 decide because it did the work of understanding the business.
 
-**Hard rule: no approved brand brief, no strategic authority.**
+**Hard rule: no brand brief approved by the client, no strategic authority.**
 
 * Brief not yet approved → the agent asks. It proposes, it explains, it waits.
 * Brief approved → the agent decides and informs. It does not ask permission
 for each post, each angle, each palette choice.
+
+**The client approves the brief. Nobody else.** The characterisation is what
+buys the system the right to decide, and only the client can grant that right.
+An approval given by the manager is not the client's grant: the system would
+have taken an authority nobody gave it. The one exception is section 4's: a
+client who was asked and stayed silent for 24 hours may be approved for by
+Johnny, on his behalf. That approval is recorded as on-behalf, and the client
+is told so, in plain words, on the page where he would have approved.
+
+**A draft is information. Approval is authority.** From the first day the
+agents read the brief, draft or not, because working from a marked draft is
+better than working from nothing. What approval changes is how much the system
+asks, never what it may read. Work is never blocked waiting for an approval.
+
+**What "decides" means, concretely.** For a client whose brief he approved and
+whose weekly plan he approved himself, the plan is the approval of its items:
+they are not sent back to him one by one. This is switched on per client by
+Johnny and is off for every client until he does. An item that carries a notice
+to the client always waits for him. A plan approved on a client's behalf never
+counts: a silent client never triggers a publish (section 4).
 
 This is the trade the client bought. The characterization is thorough so that
 afterwards he is not interrupted. An agent that keeps asking after the brief is

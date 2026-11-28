@@ -265,18 +265,41 @@ def repo_file_check(client_id: int, body: str) -> dict:
             "file_chars": len(seed["text"]), "stored_chars": len(body or "")}
 
 
-def approve(client_id: int, by: str = "manager") -> dict:
-    """Clears the draft state: the Status line says approved; the text the
-    manager corrected is kept as it is."""
+GRANTS = ("client", "owner_on_behalf")      # who may grant the system its authority (governance §1)
+_GRANT_SAYS = {"client": "the client", "owner_on_behalf": "the manager ON THE CLIENT'S BEHALF (the client was asked and did not answer)"}
+
+
+def approve(client_id: int, by: str = "client", grant: str = "client") -> dict:
+    """The approval that grants authority: the CLIENT's, or the owner's on a
+    silent client's behalf — recorded as which (`grant`) on the version and in
+    the Status line. Callers: core/brief_approval only (it holds the rules)."""
+    if grant not in GRANTS:
+        raise BriefError("bad_grant")
     cur = current(client_id)
     if not cur:
         raise BriefError("no_brief")
-    line = f"Status: APPROVED by the manager — {datetime.now(timezone.utc).date().isoformat()}"
+    line = f"Status: APPROVED by {_GRANT_SAYS[grant]} — {datetime.now(timezone.utc).date().isoformat()}"
     body = cur["text"]
     body = STATUS_LINE_RE.sub(line, body, count=1) if STATUS_LINE_RE.search(body) else line + "\n" + body
-    return _append(client_id, {"by": str(by)[:40], "kind": "approved", "status": "approved", "text": body,
+    return _append(client_id, {"by": str(by)[:40], "kind": "approved", "status": "approved", "grant": grant, "text": body,
                                "palette": cur.get("palette"), "gaps": list(cur.get("gaps") or []),
                                "sources": dict(cur.get("sources") or {})})
+
+
+def granted(client_id: int) -> dict:
+    """{"exists", "status", "granted", "by", "at"} — authority is granted only
+    by an approval whose `grant` is the client's or the owner's on their
+    behalf. A brief approved before 2026-11-28 (by the manager, or a migrated
+    file) is "approved" with NO grant: protected, but not the client's yes."""
+    versions = record(client_id)["versions"]
+    cur = versions[-1] if versions else {}
+    out = {"exists": bool(cur), "status": (cur.get("status") or "draft") if cur else "missing", "granted": False, "by": "", "at": ""}
+    if out["status"] != "approved":
+        return out
+    last = next((v for v in reversed(versions) if v.get("kind") == "approved"), {})
+    if last.get("grant") in GRANTS:
+        out.update(granted=True, by=last["grant"], at=str(last.get("at") or ""))
+    return out
 
 
 # ─── What agents get ─────────────────────────────────────────────────────────
@@ -517,7 +540,13 @@ def admin_view(client_id: int) -> dict:
             "palette": pal, "neutral": NEUTRAL, "gaps": gaps, "sources": cur.get("sources") or {},
             "draft_job": rec["draft_job"], "repo_file": repo_file_check(client_id, cur.get("text", "")) if cur else {},
             "unmarked": unmarked_fields(cur.get("text", "")) if cur else [],
-            "history": [{k: v.get(k) for k in ("v", "at", "by", "kind", "status")} for v in reversed(rec["versions"])][:15]}
+            "history": [{k: v.get(k) for k in ("v", "at", "by", "kind", "status", "grant")} for v in reversed(rec["versions"])][:15],
+            "approval": _approval_state(client_id)}
+
+
+def _approval_state(client_id: int) -> dict:
+    from core import brief_approval
+    return brief_approval.admin_state(client_id)
 
 
 # ─── Auto-draft at onboarding (the intake agent) ─────────────────────────────

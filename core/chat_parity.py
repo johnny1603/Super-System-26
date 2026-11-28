@@ -79,6 +79,9 @@ PARITY = {
     "POST /api/client/brand-identity/never-say": (
         GAP, "P3: set what may never be said about the business from the chat (asked once in onboarding; today the "
              "page's edit link)"),
+    "POST /api/client/brand-identity/approve": (
+        NOT_CHAT, "the client approves what we understood about them on the page that shows it - the grant of authority "
+                  "is never a typed yes in a chat"),
     "POST /api/client/brand-identity/assessment/dismiss": (NOT_CHAT, "closing a note on the page it is shown on"),
     # ── Brand fonts (core/brand_fonts) ───────────────────────────────────────
     "GET /api/client/brand-identity/font-sample": (NOT_CHAT, "a picture of one font for the picker on the page"),
