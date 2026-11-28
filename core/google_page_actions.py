@@ -72,6 +72,11 @@ def build(aa) -> dict:
 
     def prepare_strategy(client_id, params, context, rows):
         lang = (context or {}).get("language") or "he"
+        # No strategy before its inputs (governance §5, core/target_inputs): the same gate as the goals card
+        from core import target_inputs
+        now = target_inputs.state(client_id)
+        if now["missing"]:
+            return {"clarify": target_inputs.missing_text(now, lang)}
         if not google_page.has_material(client_id):
             return {"refuse": _refusal(strategy_refusals, "nothing_to_plan", lang)}
         if rows:

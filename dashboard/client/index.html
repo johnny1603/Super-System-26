@@ -13316,7 +13316,10 @@ function renderGoalTrack(g) {
       a.textContent = t('gt_terms_link');
       tg.appendChild(a);
     }
-    tg.hidden = !rows.length;
+    // The learning period agreed in place of a result target (core/target_inputs): the server's lines, as they are
+    const learn = Array.isArray(g.learning) ? g.learning : [];
+    learn.forEach((line, i) => tg.appendChild(bsEl('div', i ? 'gt-unk' : 'gt-th', line || '')));
+    tg.hidden = !rows.length && !learn.length;
   }
   box.hidden = false;
 }

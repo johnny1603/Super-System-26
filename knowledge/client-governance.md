@@ -148,6 +148,34 @@ dashboard. Shin Sekai is exempt; it is the training account.
 
 ###### can be reclassified.---
 
+### No target before its inputs
+
+Same shape as section 1: no approved brief, no strategic authority — and no
+required input, no proposal. An agent does not propose targets, a budget split
+or a strategy while a required input is missing. It names what is missing,
+obtains it, and only then proposes. A number first and its justification when
+asked is a guess.
+
+Required before any target:
+
+- the monthly marketing budget
+- what is sold, and at what margin
+- which action counts as a result
+- the measured performance of the last 30 days
+- constraints: lead time, capacity, seasonality
+
+Every number shown to the client states what it rests on. "Every estimate is
+labelled as one" is a disclaimer, not a basis.
+
+### A thin baseline is not extrapolated
+
+When the last 30 days hold fewer than 5 measured enquiries, or no advertising
+spend, there is nothing to extrapolate from. The system says so and agrees a
+learning period in place of a result target: what we will spend, what we expect
+to learn, and when there will be enough data to set a real target. Not a softer
+number — a different kind of statement. The threshold lives in code
+(`core/target_inputs.py`) and is printed on the card.
+
 ## 6\. Credits
 
 The client sees, on the main page, in plain sight:

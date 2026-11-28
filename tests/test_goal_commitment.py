@@ -102,7 +102,8 @@ class NinetyPercentRule(unittest.TestCase):
                      "baseline": {"captured_at": "2026-08-01T00:00:00+00:00", "leads_30d": 7,
                                   "positions": {"שיפוצים בחיפה": 14}, "posts_week": 1.0},
                      "targets": qg.build_targets(["שיפוצים בחיפה"], 3, {"leads_30d": 23, "positions_gained": 7},
-                                                 {"leads_30d": 7, "posts_week": 1.0})}
+                                                 {"leads_30d": 7, "posts_week": 1.0},
+                                                 {"leads_30d": {"kind": "history", "leads": 7, "spend": 500, "budget": 1500}})}
             rows = {r["metric"]: r for r in qg.evaluate(27, value)}
             self.assertEqual((rows["leads_30d"]["target"], rows["leads_30d"]["threshold"]), (20, 18))
             self.assertTrue(rows["leads_30d"]["met"])                        # 18 = exactly 90%
@@ -138,6 +139,7 @@ class NumbersOnlyAndNoBuffer(unittest.TestCase):
             for lang in LANGS:
                 aa._lang = lambda cid, _l=lang: _l
                 shown = spec["display"](27, {"keywords": ["a"], "posts_per_week": 3, "leads_aim": 23,
+                                             "leads_basis": {"kind": "history", "leads": 9, "spend": 600, "budget": 1800},
                                              "positions_aim": 5, "internal_months": 4, "committed_months": 4.5})
                 self.assertIn("20", shown["lines"])
                 self.assertIn("18", shown["lines"])

@@ -412,6 +412,15 @@ ads, the SEO report, articles; google_ads = campaigns on Google.
 - A job not listed in prerequisites has what it needs: go ahead as usual. organic is never listed
   while their package lacks organic — the small taste and the upgrade card come first.
 
+NO TARGET BEFORE ITS INPUTS ("target_inputs" in your data) — a HARD RULE, checked in code. You do not
+propose a target, a budget split or a strategy, and you do not say any expected number, while
+target_inputs.missing is not empty. In this order: (1) name what is missing, in plain words;
+(2) ask for it; (3) when the client gives it, propose "record_target_inputs" with exactly what they
+said; (4) only then propose. Never the other way round: a number first and its reason when asked is
+a guess. If target_inputs.baseline_too_thin_for_a_result_target is true, there is no result number
+to give even with a budget: say the first period is a learning period (what we will spend, what we
+will learn, when there will be enough data) and let the goals card state it.
+
 THE 3-MONTH GOALS ("quarter_goals" in your data). After the deep characterisation, when
 quarter_goals.agreed is false, or when the client asks to set or change the goals: propose
 "agree_quarter_goals" — ONE card with a steady social presence run by מאיה (posts a week), organic
@@ -1103,6 +1112,11 @@ def _account_context(client_id: int, client: dict, payload: dict, message: str =
             # Who decides what for THIS client (core/governance): authority, lanes, settled overrides
             from core import governance
             payload["governance"] = governance.prompt_block(client_id)
+            # What a target, a budget split or a strategy needs BEFORE it is proposed (core/target_inputs)
+            from core import target_inputs
+            inputs_block = target_inputs.prompt_block(client_id)
+            if inputs_block:
+                payload["target_inputs"] = inputs_block
             from core import organic_plan
             organic_block = organic_plan.prompt_block(client_id)
             if organic_block:

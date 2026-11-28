@@ -943,6 +943,14 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   3-month goals; `onboarding()`), the idea feed waits. `core/quarter_goals` + card
   `agree_quarter_goals`: the goal path on home, measured or labelled, never a promise; organic works
   only on the agreed keywords. `tests/test_home_focus.py`.
+- **No target before its inputs (2026-11-28, governance §5, `core/target_inputs.py`)**: no target,
+  budget split or strategy is proposed while a required input is missing (monthly budget, what is
+  sold and at what margin, what counts as a result, the measured 30 days, constraints) — the goals
+  card and the Google strategy card answer with what is missing instead of a card; the client's
+  answers are kept by `record_target_inputs` (store `target_inputs:<id>`). Every number on the
+  goals card carries a basis (`basis_line` raises on a bare one). A thin baseline
+  (`MIN_BASELINE_RESULTS` = 5 results of the client's own kind in 30 days, or no ad spend) gets a
+  learning period, never a softer number. `tests/test_target_inputs.py`.
 - **No vendor names to clients (2026-11-16, `docs/VENDOR-NAMES.md`)**: `core/vendor_names` is THE
   list + plain words; backstops on every model text that reaches a client (chat, idea cards,
   client cards, proposal QA, weekly plan, briefing/interview posts), never on links. Allow-list:

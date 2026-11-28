@@ -132,16 +132,21 @@ def clean_keywords(value) -> list:
 
 
 def save(client_id: int, keywords: list, posts_per_week: int, improve: str = "", plan: dict = None,
-         aims: dict = None) -> dict:
+         aims: dict = None, bases: dict = None, learning: dict = None) -> dict:
     """`aims` = {metric: internal aim}; the stored `targets` are the COMMITTED
-    numbers (what the client approved), the aims stay in `internal`."""
+    numbers (what the client approved), the aims stay in `internal`.
+    `bases` = {metric: what the number rests on} (core/target_inputs);
+    `learning` = the learning period the client approved IN PLACE of a result
+    target, when the baseline was too thin to carry one."""
     words = clean_keywords(keywords)
     posts = max(1, min(7, int(posts_per_week)))
     baseline = capture_baseline(client_id, words)
     value = {"agreed_at": _now().isoformat(), "keywords": words,
              "posts_per_week": posts, "improve": str(improve or "")[:300],
              "baseline": baseline, "reported_months": []}
-    value["targets"] = build_targets(words, posts, aims or {}, baseline)
+    value["targets"] = build_targets(words, posts, aims or {}, baseline, bases)
+    if learning:
+        value["learning"] = learning
     value["internal"] = {m: float(a) for m, a in (aims or {}).items() if m in BUFFERED and a}
     if plan:
         value["plan"] = {k: v for k, v in plan.items() if k != "internal_months"}
@@ -216,17 +221,24 @@ def _visitors_30(client_id: int):
     return (view.get("windows") or {}).get("last_30_days", {}).get("visitors")
 
 
-def build_targets(words: list, posts: int, aims: dict, baseline: dict = None) -> list:
-    """The numeric targets the client approves: [{metric, target, baseline}]."""
-    baseline = baseline or {}
+def build_targets(words: list, posts: int, aims: dict, baseline: dict = None, bases: dict = None) -> list:
+    """The numeric targets the client approves: [{metric, target, baseline,
+    basis}]. Every number carries what it rests on (§9 point 4): our own
+    output and the organic plan have a fixed basis; a RESULT target (enquiries)
+    exists only with the history basis the caller built — with none, there is
+    no such target (ValueError), never a bare number."""
+    baseline, bases = baseline or {}, bases or {}
     out = [{"metric": "posts_per_week", "target": committed_target("posts_per_week", posts),
-            "baseline": baseline.get("posts_week")}]
+            "baseline": baseline.get("posts_week"), "basis": {"kind": "own_output"}}]
     if aims.get("leads_30d"):
+        basis = bases.get("leads_30d") or {}
+        if basis.get("kind") != "history":
+            raise ValueError("a result target with nothing it rests on")
         out.append({"metric": "leads_30d", "target": committed_target("leads_30d", aims["leads_30d"]),
-                    "baseline": baseline.get("leads_30d")})
+                    "baseline": baseline.get("leads_30d"), "basis": basis})
     if words and aims.get("positions_gained"):
         out.append({"metric": "positions_gained", "target": committed_target("positions_gained", aims["positions_gained"]),
-                    "baseline": 0})
+                    "baseline": 0, "basis": {"kind": "plan"}})
     return out
 
 
@@ -281,6 +293,7 @@ def evaluate(client_id: int, value: dict) -> list:
         now = current_value(client_id, value, item["metric"])
         rows.append({"metric": item["metric"], "target": item["target"], "threshold": threshold(item["target"]),
                      "baseline": item.get("baseline"), "baseline_date": date, "current": now,
+                     "basis": item.get("basis"),
                      "measured": now is not None, "met": goal_met(now, item["target"])})
     return rows
 
@@ -510,7 +523,24 @@ def target_line(row: dict, lang: str) -> str:
               c=num(row["current"]) if row.get("current") is not None else nm)
     if row.get("met") is not None:
         line += " · " + pick(T["met_yes" if row["met"] else "met_no"], lang)
+    if row.get("basis"):          # goals agreed before 2026-11-28 carry none: nothing is invented for them
+        from core import target_inputs
+        try:
+            line += " · " + target_inputs.basis_line(row["basis"], lang)
+        except target_inputs.BasisMissing:
+            pass
     return line
+
+
+def learning_lines(value: dict, lang: str) -> list:
+    """The learning period the client approved in place of a result target."""
+    if not value.get("learning"):
+        return []
+    from core import target_inputs
+    try:
+        return target_inputs.learning_lines(value["learning"], lang)
+    except target_inputs.BasisMissing:
+        return []
 
 
 def month_of(value: dict) -> int:
@@ -544,6 +574,7 @@ def monthly_report(client_id: int, value: dict, lang: str = None) -> str:
     if rows:
         lines.append(pick(T["targets_title"], lang) + ":")
         lines.extend("• " + target_line(r, lang) for r in rows)
+    lines.extend(learning_lines(value, lang))
     lines.append(pick(T["monthly_scope"], lang))
     lines.append(pick(T["terms_line"], lang))
     return "\n".join(lines)
@@ -595,6 +626,7 @@ def track(client_id: int, lang: str = None) -> dict:
             "honest": pick(T["honest"], lang), "baseline": _baseline_line(value, lang), "estimate": estimate,
             "targets_title": pick(T["targets_title"], lang) if rows else "",
             "targets": [dict(r, text=target_line(r, lang)) for r in rows],
+            "learning": learning_lines(value, lang),
             "terms_url": "/terms/#s6",
             "steps": [_social(client_id, value, lang), _organic(client_id, value, lang), _improve(client_id, value, lang)]}
 
@@ -616,7 +648,11 @@ def prompt_block(client_id: int) -> dict:
                 "posts_per_week": value.get("posts_per_week"), "improve": value.get("improve", ""),
                 "baseline": value.get("baseline") or {},
                 "plan_estimate": {k: v for k, v in (value.get("plan") or {}).items() if k != "internal_months"},
-                "targets": value.get("targets") or [], "met_rule": "90% of a numeric target counts as met (terms §6)",
+                "targets": value.get("targets") or [],
+                "learning_period": ({"until": value["learning"].get("until"),
+                                     "note": "no result target was agreed: the baseline was too thin. Never state one."}
+                                    if value.get("learning") else None),
+                "met_rule": "90% of a numeric target counts as met (terms §6)",
                 "measure_only_these": True}
                if value else {"agreed": False,
                               # the client's OWN phrases are an INPUT to the keyword research

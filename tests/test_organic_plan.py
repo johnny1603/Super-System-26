@@ -169,6 +169,10 @@ class GoalsCard(Steps):
                        (qg, "_positions", qg._positions), (aa, "_post_client_message", aa._post_client_message),
                        (aa, "_lang", aa._lang)]
         seo_report.coverage = lambda cid: {"readable": True, "covered": True}
+        from core import target_inputs
+        self.saved.append((target_inputs, "state", target_inputs.state))      # every required input on record (core/target_inputs)
+        target_inputs.state = lambda cid: {"missing": [], "thin": [], "kind": "leads", "baseline": {"leads": 7, "spend": 700.0},
+                                           "inputs": {"budget": {"known": True, "value": 2000.0}}}
         qg._count_leads = lambda cid, a, b: 7
         qg._sales_30 = lambda cid: None
         qg._visitors_30 = lambda cid: (_ for _ in ()).throw(RuntimeError("off"))
