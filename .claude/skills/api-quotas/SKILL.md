@@ -23,9 +23,12 @@ One shared function, `increment_call_counter(platform, window_days)` in
 instances via `ON CONFLICT ... DO UPDATE`) and returns the SUM of counts over
 the trailing `window_days` days including today.
 
-- `core/google_ads_service.py._count_operation()` calls it with
-  `window_days=1` — a plain daily counter, same semantics as the old code
-  (raise over `DAILY_OP_LIMIT`, warn at 80%).
+- `core/google_ads_quota.spend(n)` (called by `google_ads_service._count_operation`)
+  calls it with `window_days=1`, once PER OPERATION (a mutate of 25 operations = 25).
+  The ceiling is the one constant `OPERATIONS_PER_DAY` there (2,880 at Explorer;
+  15,000 when Basic is approved). `status()` feeds `/admin/connections/`
+  (`GET /api/admin/google-ads/quota`), `require(n)` refuses by name before work
+  starts, the owner is alerted on the operation that reaches half.
 - `core/meta_service.py._count_marketing_call()` calls it with
   `window_days=MARKETING_CALL_ROLLING_WINDOW_DAYS` (15) — a genuine rolling
   sum. The OLD counter reset every day and was mislabeled as "trailing 15
@@ -112,5 +115,5 @@ first: research degrades silently, a failed upload is a client deliverable.
 
 Row cleanup/archival for old `api_call_counters` rows (harmless growth for a
 long time at 2 rows/day), a dashboard/admin view of current usage against
-each limit (today it's log-line-only, same as before), applying this same
+each limit for Meta (Google Ads and YouTube have one on /admin/connections/), applying this same
 pattern to any future TikTok integration's quota.

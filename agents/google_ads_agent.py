@@ -298,6 +298,58 @@ def connection_info(client_id: int) -> dict:
     return info
 
 
+_PROBE_GAQL = "SELECT customer.id, customer.descriptive_name, customer.status FROM customer"
+# What the CLIENT has to do, per state (admin reads it; plain English, no token, no secret)
+_PROBE_NEXT = {
+    "never_authorised": "The client signs in to their dashboard, opens the connections page and presses "
+                        "Connect on the Google Ads card, then approves the Google consent screen with the "
+                        "Google login that OWNS (or administers) their Google Ads account.",
+    "authorised_no_account_chosen": "The consent is stored but no account was picked: the client picks their "
+                                    "account on the Google Ads card, or the admin picks it in the Control Room.",
+    "authorised_grant_dead": "Google no longer accepts the stored consent (revoked, expired or replaced): the "
+                             "client presses Connect on the Google Ads card again.",
+    "authorised_errors": "Nothing for the client to do until the error below is understood: the consent is "
+                         "stored and Google answered with an error.",
+    "authorised_readable": "",
+}
+
+
+def connection_probe(client_id: int) -> dict:
+    """The REAL state of one client's Google Ads connection, for the admin:
+    never_authorised | authorised_no_account_chosen | authorised_grant_dead |
+    authorised_errors | authorised_readable. One live operation (a read of the
+    account's own name and status) when a consent and an account are stored;
+    none otherwise. Never returns a token. Never raises."""
+    def answer(state: str, **extra) -> dict:
+        return {"client_id": int(client_id), "state": state, "next_step": _PROBE_NEXT[state], **extra}
+
+    try:
+        row = _stored_row(client_id)
+    except Exception as e:
+        return {"client_id": int(client_id), "state": "unknown",
+                "next_step": "", "error": f"the stored connection could not be read ({type(e).__name__})"}
+    if not row.get("access_token"):
+        return answer("never_authorised")
+    customer_id = str(row.get("account_id") or "")
+    stored = {"stored_status": row.get("status", ""), "customer_id": gads.format_customer_id(customer_id)}
+    if row.get("status") == PENDING_STATUS or not customer_id:
+        return answer("authorised_no_account_chosen", **stored)
+    grant = _grant(row)
+    from core import google_ads_health
+    try:
+        rows = gads.search(row["access_token"], customer_id, _PROBE_GAQL)
+    except gads.GrantRevoked as e:
+        google_ads_health.record_dead(client_id, grant, e.google_reason)
+        return answer("authorised_grant_dead", error=str(e.google_reason)[:80], **stored)
+    except Exception as e:
+        # Google's own message (or ours, e.g. the daily operations limit): no token is ever in it
+        return answer("authorised_errors", error=str(e)[:400], error_type=type(e).__name__, **stored)
+    google_ads_health.record_ok(client_id, grant)
+    customer = (rows[0] if rows else {}).get("customer", {})
+    return answer("authorised_readable", account_name=customer.get("descriptiveName", ""),
+                  account_status=customer.get("status", "UNKNOWN"), **stored)
+
+
 def select_account(client_id: int, customer_id: str, chosen_by: str) -> dict:
     """Store the customer account the client or admin picked, re-using the
     stored login (no new consent). The id must be one this login can reach
@@ -1572,6 +1624,14 @@ def optimize_ad_copy(client_id: int, conn: dict, winners: list) -> dict:
     for group_id, existing in groups.items():
         if existing["count"] >= AD_COPY_MAX_ADS_PER_GROUP:
             continue
+        try:
+            # Asked BEFORE the model is paid for a variant that could not be sent (core/google_ads_quota)
+            from core import google_ads_quota
+            google_ads_quota.require(1)
+        except Exception as e:
+            _log_optimization(client_id, "ad_copy_skipped", f"refused before writing: {e}",
+                              {"ad_group_id": group_id}, applied=False)
+            return {"created": created, "skipped": str(e)}
         payload = json.dumps({
             "converting_keywords": [w["text"] for w in winners][:10],
             "existing_headlines": existing["headlines"][:15],

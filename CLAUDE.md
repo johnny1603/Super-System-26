@@ -1088,6 +1088,12 @@ TikTok campaign management) do not exist yet — today the system sells; it does
   that is MEASURED, never given grammar: `enforce(agent=)` counts failed / net / blocked per agent
   (api_call_counters `speech_*`), `net_report` → `GET /api/admin/client-speech/net` → `/admin/connections/`. Do not
   build agreement fixing. fr/ar/ru forms are `UNREVIEWED_LANGS` — a native check before the first such client.
+- **Google Ads access (2026-11-28)**: the access level belongs to the Cloud project (Explorer: PRODUCTION accounts,
+  2,880 operations a day, shared by every client). NO developer token is required — never make a missing token, or
+  the absence of Basic access, a reason to refuse or to show "not connected". The ceiling is ONE constant,
+  `core/google_ads_quota.OPERATIONS_PER_DAY` (15,000 when Basic is approved): counted per operation, shown on
+  `/admin/connections/`, refused by name before a call goes out, owner alerted at half. A client's real connection
+  state: `google_ads_agent.connection_probe` (the button on the same page).
 - **The client's Google page** (`core/google_page.py`, `docs/GOOGLE-PAGE.md`, store `google_page:{id}`): five sections,
   all text server-built under §9. Never present one rendering as "the ad" (examples are labelled examples); results
   are PER LANE from the lane recorded at campaign creation, never a blended number and never a guessed lane; a figure

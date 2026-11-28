@@ -87,6 +87,19 @@ button { font-family:inherit; font-size:13px; background:var(--panel-2); color:v
     <div class="muted">ספירה שלנו, לא נתון מגוגל. היום מתחלף בחצות לפי שעון החוף המערבי (Pacific), כמו אצל גוגל. הגדלה דורשת את ביקורת התאימות של YouTube API.</div>
     <div id="ytQuotaOut" class="muted" style="margin-top:10px;">טוען…</div>
   </div>
+  <!-- Google Ads operations today: READ-ONLY (GET /api/admin/google-ads/quota, core/google_ads_quota).
+       One daily ceiling for the whole Cloud project, shared by every client. OUR count, on the server's date.
+       The check button asks Google once (one operation) what a client's connection really is. -->
+  <div class="card" id="gaQuota">
+    <h2>Google Ads — פעולות היום (תקרה אחת לכל הלקוחות)</h2>
+    <div class="muted">ספירה שלנו, לא נתון מגוגל. רמת הגישה שייכת לפרויקט בענן, לא למפתח מפתחים. קריאה = פעולה אחת; שינוי = פעולה לכל פריט בבקשה.</div>
+    <div id="gaQuotaOut" class="muted" style="margin-top:10px;">טוען…</div>
+    <div class="row">
+      <label class="muted" style="margin:0;">מספר לקוח <input type="text" dir="ltr" id="gaClient" value="27" inputmode="numeric" style="width:90px;"></label>
+      <button id="gaBtn">בדיקת חיבור מול גוגל (פעולה אחת)</button>
+    </div>
+    <div id="gaConnOut" class="muted" style="margin-top:10px;"></div>
+  </div>
   <!-- How agents speak to clients: READ-ONLY (GET /api/admin/client-speech/net). How often an agent's
        text failed the client-language check and the automatic replacement went out. OUR count. -->
   <div class="card" id="speechNet">
@@ -252,6 +265,49 @@ async function ytQuota() {
   } catch (e) { out.textContent = e.message === "auth" ? "" : "הטעינה נכשלה — לנסות שוב"; }
 }
 ytQuota();
+const GA_LEVEL = {explorer: "Explorer"};
+async function gaQuota() {
+  const out = document.getElementById("gaQuotaOut");
+  try {
+    const d = await api("/api/admin/google-ads/quota");
+    if (!d.known) { out.textContent = "לא הצלחתי לקרוא את הספירה של היום — אין מספר להציג."; return; }
+    out.innerHTML = `<div style="margin-top:6px;"><span style="font-size:1.2em;">פעולות: נשארו <b>${esc(d.remaining)}</b></span>
+      · נוצלו ${esc(d.used)} מתוך ${esc(d.limit)} ביום (רמת גישה: <span dir="ltr">${esc(GA_LEVEL[d.access_level] || d.access_level)}</span>) · ${esc(Math.round((d.share || 0) * 100))}%
+      ${d.used >= d.alert_at ? '<span class="badge">עברנו חצי — נשלחה התראה</span>' : ""}</div>
+      <div style="margin-top:6px;">יום הספירה: <span dir="ltr">${esc(d.day)}</span> (שעון השרת)</div>`;
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הטעינה נכשלה — לנסות שוב"; }
+}
+gaQuota();
+const GA_STATE = {
+  never_authorised: ["warn", "מעולם לא אושר — אין אצלנו אישור Google Ads של הלקוח"],
+  authorised_no_account_chosen: ["warn", "אושר, אבל לא נבחר חשבון פרסום"],
+  authorised_grant_dead: ["warn", "אושר בעבר — גוגל כבר לא מקבלת את האישור (בוטל, פג או הוחלף)"],
+  authorised_errors: ["warn", "אושר, אבל גוגל מחזירה שגיאה"],
+  authorised_readable: ["ok", "אושר וקריא — גוגל ענתה עכשיו"],
+  unknown: ["warn", "לא הצלחתי לקרוא את החיבור השמור"],
+};
+const GA_NEXT = {
+  never_authorised: "הלקוח נכנס לדשבורד שלו, לוחץ על חיבור בכרטיס Google Ads, ומאשר את מסך ההרשאות של גוגל עם המשתמש שהוא הבעלים (או מנהל) של חשבון הפרסום.",
+  authorised_no_account_chosen: "האישור שמור אבל לא נבחר חשבון: הלקוח בוחר את החשבון בכרטיס Google Ads, או שבוחרים עבורו בחדר הבקרה.",
+  authorised_grant_dead: "הלקוח לוחץ שוב על חיבור בכרטיס Google Ads ומאשר מחדש.",
+  authorised_errors: "אין מה לבקש מהלקוח עד שמבינים את השגיאה שלמעלה: האישור שמור, וגוגל ענתה בשגיאה.",
+};
+async function gaConnection() {
+  const out = document.getElementById("gaConnOut");
+  const cid = parseInt(document.getElementById("gaClient").value, 10);
+  if (!cid) { out.textContent = "חסר מספר לקוח"; return; }
+  out.textContent = "בודק מול Google…";
+  try {
+    const d = await api("/api/admin/google-ads/connection?client_id=" + cid);
+    const s = GA_STATE[d.state] || ["warn", d.state];
+    out.innerHTML = `<div>לקוח ${esc(d.client_id)}: <span class="badge ${s[0]}">${esc(s[1])}</span></div>
+      ${d.customer_id ? `<div>חשבון שמור: <bdi dir="ltr">${esc(d.customer_id)}</bdi>${d.account_name ? " · " + esc(d.account_name) : ""}${d.account_status ? ` · <span dir="ltr">${esc(d.account_status)}</span>` : ""}</div>` : ""}
+      ${d.error ? `<div dir="ltr" style="text-align:left;">error: <code>${esc(d.error)}</code></div>` : ""}
+      ${GA_NEXT[d.state] ? `<div style="margin-top:6px;">מה צריך: ${esc(GA_NEXT[d.state])}</div>` : ""}`;
+    gaQuota();
+  } catch (e) { out.textContent = e.message === "auth" ? "" : "הבדיקה נכשלה — לנסות שוב"; }
+}
+document.getElementById("gaBtn").onclick = gaConnection;
 async function speechNet() {
   const out = document.getElementById("speechNetOut");
   try {

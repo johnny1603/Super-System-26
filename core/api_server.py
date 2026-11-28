@@ -3130,6 +3130,23 @@ def admin_youtube_quota(request: Request):
     from core import youtube_quota
     return {"success": True, "data": youtube_quota.status()}
 
+@app.get("/api/admin/google-ads/quota")
+def admin_google_ads_quota(request: Request):
+    # READ-ONLY: today's Google Ads operations against the project-wide daily ceiling
+    # (our own tally, core/google_ads_quota) — what is left for ALL clients. No Google call.
+    _require_admin(request)
+    from core import google_ads_quota
+    return {"success": True, "data": google_ads_quota.status()}
+
+@app.get("/api/admin/google-ads/connection")
+def admin_google_ads_connection(request: Request, client_id: int = 27):
+    # The REAL state of one client's Google Ads connection: never authorised / authorised and
+    # readable / authorised but erroring (google_ads_agent.connection_probe). Costs ONE operation
+    # when a consent and an account are stored. Never returns a token. Plain `def`: a Google call.
+    _require_admin(request)
+    from agents.google_ads_agent import connection_probe
+    return {"success": True, "data": connection_probe(client_id)}
+
 @app.get("/api/admin/client-speech/net")
 def admin_client_speech_net(request: Request, days: int = 30):
     # READ-ONLY: how often an agent's text failed the client-language check and the automatic

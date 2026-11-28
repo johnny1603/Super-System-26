@@ -5,9 +5,14 @@ Auth model (deliberate — see .claude/skills/google-ads/SKILL.md):
   in the dashboard). We store the per-client refresh token in client_accounts.
 - Service accounts are NOT used: the Google Ads API only accepts them through
   Workspace domain-wide delegation, which doesn't fit standalone client accounts.
-- The developer token (GOOGLE_ADS_DEVELOPER_TOKEN) is ours, one for the whole
-  system; the OAuth client (GOOGLE_OAUTH_CLIENT_ID/SECRET) is ours; the refresh
-  token is the client's. All three go on every API call.
+- The OAuth client (GOOGLE_OAUTH_CLIENT_ID/SECRET) is ours; the refresh token
+  is the client's. Both go on every API call.
+- NO DEVELOPER TOKEN IS REQUIRED (2026-11-28). Since 9 September 2026 the
+  access level belongs to the Google Cloud project that owns the OAuth client
+  (super-system-500410, Explorer access: production accounts, 2,880
+  operations a day - core/google_ads_quota). GOOGLE_ADS_DEVELOPER_TOKEN is
+  sent when it happens to be set and is never a condition: a missing token
+  must not stop a call or turn a client's page into "not connected".
 
 Business logic lives in agents/google_ads_agent.py — this module only talks HTTP.
 """
@@ -18,7 +23,7 @@ from urllib.parse import urlencode
 import httpx
 
 from agents.keys_agent import get_key
-from core.api_call_counters import increment_call_counter
+from core import google_ads_quota
 
 # Bump in one place when Google sunsets this version. Google moved to MONTHLY
 # releases in January 2026, so a major version now lives ~6 months, not ~a year
@@ -42,26 +47,20 @@ PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://app.uallak.com")
 REDIRECT_PATH = "/api/oauth/google-ads/callback"
 TIMEOUT = 20
 
-# Explorer Access allows 2,880 operations/day. Persisted in Supabase
-# (core/api_call_counters.py) so the count survives Cloud Run restarts —
-# still a best-effort brake (fails open on a DB hiccup), not an exact meter,
-# but good enough to keep a runaway loop from burning the developer token's
-# reputation during the approval period.
-DAILY_OP_LIMIT = 2880
+# The daily operations ceiling lives in ONE place: core/google_ads_quota
+# (OPERATIONS_PER_DAY, Explorer today). Counted there, shown on
+# /admin/connections/, the owner alerted at half.
 
 # refresh_token -> (access_token, expires_at_epoch). Access tokens live ~1h;
 # in-memory cache is fine (rule 7: no local-file state, memory is allowed).
 _access_token_cache = {}
 
 
-def _count_operation():
-    count = increment_call_counter("google_ads", window_days=1)
-    if count > DAILY_OP_LIMIT:
-        raise RuntimeError(
-            f"Google Ads daily operation limit reached ({DAILY_OP_LIMIT}) - refusing call"
-        )
-    if count > DAILY_OP_LIMIT * 0.8:
-        print(f"[google_ads_service] WARNING: {count}/{DAILY_OP_LIMIT} daily ops used")
+def _count_operation(operations: int = 1):
+    """Count before the call goes out; google_ads_quota.QuotaExceeded (by name,
+    with the day's figures) when it does not fit. A get / search is 1; a
+    mutate is one per operation inside it."""
+    google_ads_quota.spend(operations)
 
 
 def redirect_uri() -> str:
@@ -185,9 +184,13 @@ def _access_token(refresh_token: str) -> str:
 def _headers(refresh_token: str) -> dict:
     headers = {
         "Authorization": f"Bearer {_access_token(refresh_token)}",
-        "developer-token": get_key("GOOGLE_ADS_DEVELOPER_TOKEN"),
         "Content-Type": "application/json",
     }
+    # Optional since 9 September 2026 (the access level is the Cloud project's):
+    # sent when configured, NEVER required - see the module header
+    developer_token = os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip()
+    if developer_token:
+        headers["developer-token"] = developer_token
     # Only needed when the authorized user reaches the account through an MCC
     # (manager) account - harmless to omit for directly-owned accounts
     login_customer_id = os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
@@ -327,7 +330,7 @@ def atomic_mutate(refresh_token: str, customer_id: str, mutate_operations: list)
     Operations may reference each other through temporary resource IDs (negative
     numbers, e.g. customers/{cid}/campaignBudgets/-1). All-or-nothing: a failure
     anywhere rolls back everything, so we never strand a half-built campaign."""
-    _count_operation()
+    _count_operation(len(mutate_operations or []))
     response = httpx.post(
         f"{ADS_BASE_URL}/customers/{customer_id}/googleAds:mutate",
         headers=_headers(refresh_token),
@@ -416,7 +419,7 @@ def set_campaign_bid_ceiling(refresh_token: str, customer_id: str,
 def mutate_ad_group_criteria(refresh_token: str, customer_id: str, operations: list) -> dict:
     """Keyword-level changes: pause an underperformer (update + status mask),
     or add a winner (create). Caller builds the operations."""
-    _count_operation()
+    _count_operation(len(operations or []))
     response = httpx.post(
         f"{ADS_BASE_URL}/customers/{customer_id}/adGroupCriteria:mutate",
         headers=_headers(refresh_token),
@@ -430,7 +433,7 @@ def mutate_ad_group_ads(refresh_token: str, customer_id: str, operations: list) 
     """Ad-level changes. NOTE: a Responsive Search Ad's headlines/descriptions
     are effectively IMMUTABLE — iterating copy means create-a-new-ad (+ pause or
     remove the old one), never an in-place update of the text."""
-    _count_operation()
+    _count_operation(len(operations or []))
     response = httpx.post(
         f"{ADS_BASE_URL}/customers/{customer_id}/adGroupAds:mutate",
         headers=_headers(refresh_token),

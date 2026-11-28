@@ -13,8 +13,11 @@ KEYS = {
     # urlsafe base64 of 32 bytes. Missing = connecting any tool fails closed.
     "SECRETS_ENCRYPTION_KEY": os.environ.get("SECRETS_ENCRYPTION_KEY", ""),
     "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD", ""),
-    "GOOGLE_ADS_DEVELOPER_TOKEN": os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
-    # Google Ads authenticates with the developer token + the GOOGLE_OAUTH_* pair
+    # GOOGLE_ADS_DEVELOPER_TOKEN is deliberately NOT a key here (2026-11-28): since
+    # 9 September 2026 the Google Ads access level belongs to the Cloud project, the
+    # token is optional, and listing it made its absence a "Missing keys" warning.
+    # core/google_ads_service sends it when the env var happens to be set.
+    # Google Ads authenticates with the GOOGLE_OAUTH_* pair
     # + the CLIENT's refresh token — there is deliberately no service-account key
     # here. The Google Ads API does not accept service accounts at all (except
     # Workspace domain-wide delegation, which can't reach a client-owned ad

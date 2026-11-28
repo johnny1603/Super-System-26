@@ -9,9 +9,12 @@ description: How uallak's Google Ads integration works — OAuth client-connect 
 
 Each client connects THEIR OWN Google Ads account via OAuth2 from the dashboard
 ("Connect Now" → `/api/oauth/google-ads/start` → Google consent →
-`/api/oauth/google-ads/callback`). Every API call then carries three credentials:
+`/api/oauth/google-ads/callback`). Every API call then carries two credentials
+(**no developer token is required since 2026-11-28**: from 9 September 2026 the access
+level belongs to the Google Cloud project `super-system-500410`, not to a token;
+`GOOGLE_ADS_DEVELOPER_TOKEN` is sent only when it happens to be set, is not in
+`keys_agent`, and its absence must never stop a call or show a client "not connected"):
 
-1. **Developer token** (`GOOGLE_ADS_DEVELOPER_TOKEN`) — ours, one for the whole system
 2. **OAuth client id/secret** (`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`)
    — ours, a "Web application" OAuth client in Google Cloud Console
 3. **Refresh token** — the client's, stored per-client in Supabase
@@ -194,9 +197,17 @@ beyond campaign creation had ever run against a live account when this shipped.
 
 - **Refresh token only arrives with `access_type=offline&prompt=consent`.**
   Without `prompt=consent` Google returns one only on the FIRST authorization ever.
-- **Explorer Access developer token works only against TEST Ads accounts** (2,880
-  ops/day). Production accounts fail until Basic Access is approved. A weird
-  `DEVELOPER_TOKEN_NOT_APPROVED` / permission error on a real account = this.
+- **Explorer access works against PRODUCTION accounts: 2,880 operations a day for the
+  whole project** (owner, 2026-11-28). Basic (15,000) waits for brand verification and
+  is an upgrade, NOT a prerequisite — never write "needs Basic" as a blocker. The one
+  real Explorer restriction we hit is Keyword Planner (docs/ORGANIC-PLAN.md). The
+  ceiling is ONE constant, `core/google_ads_quota.OPERATIONS_PER_DAY`: counted per
+  operation (a mutate = one per operation inside it), shown on `/admin/connections/`,
+  refused by name (`QuotaExceeded`) before a call goes out, owner alerted at half.
+- **What is a client's connection REALLY?** `google_ads_agent.connection_probe` /
+  `GET /api/admin/google-ads/connection?client_id=` (the button on `/admin/connections/`):
+  never_authorised | authorised_no_account_chosen | authorised_grant_dead |
+  authorised_errors | authorised_readable. One operation.
 - **Redirect URI must match EXACTLY** what's registered on the OAuth client,
   including scheme and path: `{PUBLIC_APP_URL}/api/oauth/google-ads/callback`.
   `PUBLIC_APP_URL` defaults to `https://app.uallak.com` — the app's own

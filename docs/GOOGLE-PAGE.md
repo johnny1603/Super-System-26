@@ -43,6 +43,11 @@ numbers}`. Registered for deletion in `client_deletion.py`, `deletion_guard.py`,
 ## Known gaps (2026-11-28)
 
 - Nothing here has run against a live Google account, a live model, or a browser.
+- The API itself is reachable (owner, 2026-11-28: the Cloud project has Explorer access, production accounts,
+  2,880 operations a day — `core/google_ads_quota`; no developer token is required). Whether a given client
+  AUTHORISED us is a separate question, answered per client by the check on `/admin/connections/`
+  (`GET /api/admin/google-ads/connection`). When the day's operations run out the page's live read is refused
+  and it shows the last remembered figures with their date.
 - Lanes are recorded only for campaigns created from now on; every existing campaign shows as "unrecorded".
 - An exclusion Yoav decides is NOT applied in the Google account by the system: the owner is alerted and the page
   says "the change in the account has not been made yet". Nothing marks it applied yet.
