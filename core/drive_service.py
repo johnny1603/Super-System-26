@@ -654,7 +654,7 @@ def trash_file(file_id: str) -> None:
     Content manager — which may trash but not delete. Drive answered the
     delete with 404 "File not found" on a file it had just listed (the call
     already sent supportsAllDrives=true, so that wasn't it). Shared Drive
-    trash empties itself after 30 days."""
+    trash is emptied by Google Drive itself, on Google's schedule: Drive's own behaviour for media files, separate from our data deletion policy (7 calendar days, /privacy/ section 9)."""
     response = httpx.patch(f"{DRIVE_FILES_URL}/{file_id}",
                            headers={**_headers(), "Content-Type": "application/json"},
                            params={"supportsAllDrives": "true", "fields": "id,trashed"},

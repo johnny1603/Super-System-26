@@ -66,7 +66,7 @@ Single item or bulk (checked items, or "all N matching the filter"). Two actions
   never returns them and the folder counts leave them out.
 - **מחיקת הקובץ** (`mode: file`): `drive_service.delete_file` — a permanent delete, or the Drive trash
   when Drive refuses a permanent delete (a Shared Drive Content manager may only trash; the trash
-  empties itself after 30 days) — then out of the index. Works in every connected folder; there is no
+  is emptied by Google Drive itself, on Google's schedule: Drive's own behaviour for media files, separate from our data deletion policy of 7 calendar days, /privacy/ section 9) — then out of the index. Works in every connected folder; there is no
   role restriction. **A failed delete still takes the item out of the library** (same as `index`:
   the agents stop using it) and is listed per item with `file_deleted: false` and a reason CODE
   (`media_inventory.REASONS`): `owner_only` (a regular Drive where the client owns the file — only the

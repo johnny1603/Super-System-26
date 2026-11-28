@@ -19,7 +19,7 @@ explicit steps, never a delete before a verification:
               moves to the client's Drive, so every new file goes there.
   4. free   — only on explicit confirmation (the typed phrase) and only after
               ANOTHER fresh verification: our Shared Drive folder is moved to
-              the trash (the Shared Drive empties it after 30 days). Never
+              the trash (emptied by Google Drive itself, on Google's schedule: Drive's own behaviour, separate from our data deletion policy). Never
               before the flip.
 
 State lives in drive_storage's record under "migration" ({"copied": {src:
